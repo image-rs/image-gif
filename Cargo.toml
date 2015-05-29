@@ -5,7 +5,8 @@ license = "MIT"
 version = "0.3.0"
 description = "GIF de- and encoder"
 authors = ["nwin <nwin@users.noreply.github.com>"]
-repository = "https://github.com/nwin/gif.git"
+readme = "README.md"
+repository = "https://github.com/PistonDevelopers/image-gif.git"
 exclude = [
     "tests/*",
 ]
