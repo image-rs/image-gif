@@ -1,0 +1,4 @@
+"tests/samples/alpha_gif_a.gif": 3871893825
+"tests/samples/anim-gr.gif": 291646878
+"tests/samples/moon_impact.gif": 2438689726
+"tests/samples/sample_1.gif": 3275424619
