@@ -1,4 +1,4 @@
-# GIF en- and decoding library
+# GIF en- and decoding library [![Build Status](https://travis-ci.org/PistonDevelopers/image-gif.svg?branch=master)](https://travis-ci.org/PistonDevelopers/image-gif)
 
 GIF en- and decoder written in Rust. 
 
