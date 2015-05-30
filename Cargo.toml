@@ -2,11 +2,14 @@
 
 name = "gif"
 license = "MIT"
-version = "0.4.0"
+version = "0.4.1"
 description = "GIF de- and encoder"
 authors = ["nwin <nwin@users.noreply.github.com>"]
 readme = "README.md"
 repository = "https://github.com/PistonDevelopers/image-gif.git"
+documentation = "http://www.piston.rs/image/gif/index.html"
+homepage = "https://github.com/PistonDevelopers/image-gif"
+
 exclude = [
     "tests/*",
 ]
