@@ -163,7 +163,7 @@ impl<R> Reader<R> where R: Read {
     }
     
     /// Returns the next frame info
-    pub fn next_frame(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
+    pub fn next_frame_info(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
         loop {
             match try!(self.decoder.decode_next()) {
                 Some(Decoded::Frame(frame)) => {
@@ -185,9 +185,9 @@ impl<R> Reader<R> where R: Read {
 
     /// Reads the next frame from the image.
     ///
-    /// Do not call `Self::next_frame` beforehand.
+    /// Do not call `Self::next_frame_info` beforehand.
     pub fn read_next_frame(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
-        if try!(self.next_frame()).is_some() {
+        if try!(self.next_frame_info()).is_some() {
             let mut vec = vec![0; self.buffer_size()];
             if !try!(self.fill_buffer(&mut vec)) {
                 return Err(DecodingError::Format(

@@ -128,7 +128,7 @@ pub use reader::{StreamingDecoder, Decoded, DecodingError};
 pub use reader::{ColorOutput, Extensions};
 pub use reader::{Reader, Decoder};
 
-pub use encoder::{Encoder, HeaderWritten, ExtensionData};
+pub use encoder::{Encoder, Writer, ExtensionData};
 
 #[cfg(test)]
 #[test]

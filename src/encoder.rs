@@ -106,11 +106,11 @@ impl<'a, W: Write + 'a> Drop for BlockWriter<'a, W> {
 }
 
 /// Wrapper for `Encoder` that indicates that the file headers have been written.
-pub struct HeaderWritten<W: Write> {
+pub struct Writer<W: Write> {
 	enc: Encoder<W>
 }
 
-impl<W: Write> HeaderWritten<W> {
+impl<W: Write> Writer<W> {
 	/// Writes a complete frame to the image
 	///
 	/// Note: This function also writes a control extention if necessary.
@@ -129,7 +129,7 @@ impl<W: Write> HeaderWritten<W> {
 	}
 }
 
-impl<W: Write> Drop for HeaderWritten<W> {
+impl<W: Write> Drop for Writer<W> {
 
     #[cfg(feature = "raii_no_panic")]
 	fn drop(&mut self) {
@@ -180,7 +180,7 @@ impl<W: Write> Encoder<W> {
 	}
 
 	/// Writes the global color palette
-	pub fn write_global_palette(mut self, palette: &[u8]) -> io::Result<HeaderWritten<W>> {
+	pub fn write_global_palette(mut self, palette: &[u8]) -> io::Result<Writer<W>> {
 		self.global_palette = true;
 		let mut flags = 0;
 		flags |= 0b1000_0000;
@@ -189,7 +189,7 @@ impl<W: Write> Encoder<W> {
 		flags |= flag_size(num_colors) << 4; // wtf flag
 		try!(self.write_screen_desc(flags));
 		try!(self.write_color_table(palette));
-		Ok(HeaderWritten {
+		Ok(Writer {
 			enc: self
 		})
 	}
