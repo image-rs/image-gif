@@ -1,4 +1,5 @@
 language: rust
 rust:
+  - 1.0.0
   - nightly
 script: cargo test -v

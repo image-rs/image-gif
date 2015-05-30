@@ -102,8 +102,8 @@
 // ```
 #![deny(missing_docs)]
 
-#![cfg_attr(test, feature(test))]
-#![feature(alloc)]
+// Uncomment to run tests
+//#![cfg_attr(test, feature(test))]
 
 #[cfg(feature = "c_api")]
 extern crate libc;

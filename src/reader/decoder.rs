@@ -1,7 +1,6 @@
 use std::cmp;
 use std::mem;
 use std::default::Default;
-use std::rc::Rc;
 
 use std::io;
 use std::io::prelude::*;
@@ -56,6 +55,10 @@ impl Parameter<StreamingDecoder> for Extensions {
 pub enum Decoded<'a> {
     /// Decoded nothing.
     Nothing,
+    /// Global palette.
+    GlobalPalette(Vec<u8>),
+    /// Index of the background color in the global palette.
+    BackgroundColor(u8),
     /// Decoded the image trailer.
     Trailer,
     /// The start of a block.
@@ -64,8 +67,6 @@ pub enum Decoded<'a> {
     SubBlockFinished(u8, &'a [u8]),
     /// Decoded the last (or only) sub-block of a block.
     BlockFinished(u8, &'a [u8]),
-    /// Decoded the global palette.
-    GlobalPalette(Rc<Vec<u8>>),
     /// Decoded all information of the next frame.
     /// The returned frame does **not** any image data.
     Frame(&'a Frame<'static>),
@@ -136,7 +137,7 @@ pub struct StreamingDecoder {
     version: &'static str,
     width: u16,
     height: u16,
-    global_color_table: Rc<Vec<u8>>,
+    global_color_table: Vec<u8>,
     background_color: [u8; 4],
     /// ext buffer
     ext: (u8, Vec<u8>, bool),
@@ -156,7 +157,7 @@ impl StreamingDecoder {
             version: "",
             width: 0,
             height: 0,
-            global_color_table: Rc::new(Vec::new()),
+            global_color_table: Vec::new(),
             background_color: [0, 0, 0, 0xFF],
             ext: (0, Vec::with_capacity(256), true), // 0xFF + 1 byte length
             current: None
@@ -204,13 +205,6 @@ impl StreamingDecoder {
         }
         Ok((len-buf.len(), Decoded::Nothing))
         
-    }
-    
-    /// Index of the background color in the global palette
-    pub fn bg_color(&self) -> usize {
-        self.global_color_table.chunks(PLTE_CHANNELS).position(
-            |v| v == &self.background_color[..3] 
-        ).unwrap_or(0) as usize
     }
     
     /// Returns the data of the last extension that has been decoded.
@@ -324,7 +318,7 @@ impl StreamingDecoder {
                         let global_table = b & 0x80 != 0;
                         let entries = if global_table {
                             let entries = PLTE_CHANNELS*(1 << ((b & 0b111) + 1) as usize);
-                            self.global_color_table.make_unique().reserve_exact(entries);
+                            self.global_color_table.reserve_exact(entries);
                             entries
                         } else {
                             0usize
@@ -332,8 +326,10 @@ impl StreamingDecoder {
                         goto!(Byte(Background { table_size: entries }))
                     },
                     Background { table_size } => {
-                        self.background_color[0] = b;
-                        goto!(Byte(AspectRatio { table_size: table_size }))
+                        goto!(
+                            Byte(AspectRatio { table_size: table_size }),
+                            emit Decoded::BackgroundColor(b)
+                        )
                     },
                     AspectRatio { table_size } => {
                         goto!(GlobalPalette(table_size))
@@ -387,7 +383,7 @@ impl StreamingDecoder {
             GlobalPalette(left) => {
                 let n = cmp::min(left, buf.len());
                 if left > 0 {
-                    self.global_color_table.make_unique().extend(buf[..n].iter().cloned());
+                    self.global_color_table.extend(buf[..n].iter().cloned());
                     goto!(n, GlobalPalette(left - n))
                 } else {
                     let idx = self.background_color[0];
@@ -398,7 +394,7 @@ impl StreamingDecoder {
                         None => self.background_color[0] = 0
                     }
                     goto!(BlockStart(Block::from_u8(b)), emit Decoded::GlobalPalette(
-                        self.global_color_table.clone()
+                        mem::replace(&mut self.global_color_table, Vec::new())
                     ))
                 }
             }

@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::io;
 use std::cmp;
 use std::mem;
-use std::rc::Rc;
 use std::io::prelude::*;
 
 use traits::{Parameter, SetParameter};
@@ -110,7 +109,8 @@ impl<R: Read> ReadDecoder<R> {
 pub struct Reader<R: Read> {
     decoder: ReadDecoder<R>,
     color_output: ColorOutput,
-    global_palette: Option<Rc<Vec<u8>>>,
+    bg_color: Option<u8>,
+    global_palette: Option<Vec<u8>>,
     current_frame: Frame<'static>,
     buffer: Vec<u8>,
     // Offset in current frame
@@ -126,6 +126,7 @@ impl<R> Reader<R> where R: Read {
                 decoder: decoder,
                 at_eof: false
             },
+            bg_color: None,
             global_palette: None,
             buffer: Vec::with_capacity(32),
             color_output: color_output,
@@ -137,6 +138,9 @@ impl<R> Reader<R> where R: Read {
     fn init(mut self) -> Result<Self, DecodingError> {
         loop {
             match try!(self.decoder.decode_next()) {
+                Some(Decoded::BackgroundColor(bg_color)) => {
+                    self.bg_color = Some(bg_color)
+                }
                 Some(Decoded::GlobalPalette(palette)) => {
                     self.global_palette = if palette.len() > 0 {
                         Some(palette)
@@ -146,6 +150,8 @@ impl<R> Reader<R> where R: Read {
                     break
                 },
                 Some(_) => {
+                    // Unreachable since this loop exists after the global
+                    // palette has been read.
                     unreachable!()
                 },
                 None => return Err(DecodingError::Format(
@@ -293,7 +299,7 @@ impl<R> Reader<R> where R: Read {
     
     /// The global color palette
     pub fn global_palette(&self) -> Option<&[u8]> {
-        self.global_palette.as_ref().map(|v| &***v)
+        self.global_palette.as_ref().map(|v| &**v)
     }
 
     /// Width of the image
@@ -307,21 +313,20 @@ impl<R> Reader<R> where R: Read {
     }
 
     /// Index of the background color in the global palette
-    pub fn bg_color(&self) -> usize {
-        self.decoder.decoder.bg_color()
+    pub fn bg_color(&self) -> Option<usize> {
+        self.bg_color.map(|v| v as usize)
     }
 }
 
 #[cfg(test)]
 mod test {
-    extern crate test;
-
     use std::fs::File;
-    use std::io::prelude::*;
 
     use super::Decoder;
     
-    
+    /* Commented because test::Bencher is unstable
+    extern crate test;
+    use std::io::prelude::*;
     #[bench]
     fn bench_tiny(b: &mut test::Bencher) {
         let mut data = Vec::new();
@@ -334,11 +339,10 @@ mod test {
         let mut decoder = Decoder::new(&*data).read_info().unwrap();
         b.bytes = decoder.read_next_frame().unwrap().unwrap().buffer.len() as u64
     }
-    
     #[bench]
     fn bench_big(b: &mut test::Bencher) {
         let mut data = Vec::new();
-        File::open("tests/samples/sample_big.gif").unwrap().read_to_end(&mut data).unwrap();
+        File::open("tests/sample_big.gif").unwrap().read_to_end(&mut data).unwrap();
         b.iter(|| {
             let mut decoder = Decoder::new(&*data).read_info().unwrap();
             let frame = decoder.read_next_frame().unwrap().unwrap();
@@ -346,7 +350,7 @@ mod test {
         });
         let mut decoder = Decoder::new(&*data).read_info().unwrap();
         b.bytes = decoder.read_next_frame().unwrap().unwrap().buffer.len() as u64
-    }
+    }*/
     
     #[test]
     fn test_simple_indexed() {
