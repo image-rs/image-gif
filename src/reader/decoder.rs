@@ -474,6 +474,12 @@ impl StreamingDecoder {
                 }
             }
             LzwInit(code_size) => {
+                // LZW spec: max 12 bits per code
+                if code_size > 11 {
+                    return Err(DecodingError::Format(
+                        "invalid minimal code size"
+                    ))
+                }
                 self.lzw_reader = Some(lzw::Decoder::new(lzw::LsbReader::new(), code_size));
                 goto!(DecodeSubBlock(b as usize), emit Decoded::Frame(self.current_frame_mut()))
             }
