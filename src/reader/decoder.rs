@@ -7,7 +7,7 @@ use std::io::prelude::*;
 
 use lzw;
 
-use traits::{SetParameter, Parameter};
+use traits::Parameter;
 use common::{Frame, Block, Extension, DisposalMethod};
 
 /// GIF palettes are RGB
@@ -144,8 +144,6 @@ pub struct StreamingDecoder {
     /// Frame data
     current: Option<Frame<'static>>,
 }
-
-impl SetParameter for StreamingDecoder {}
 
 impl StreamingDecoder {
     /// Creates a new streaming decoder

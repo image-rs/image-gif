@@ -43,12 +43,23 @@ impl<R: Read> Parameter<Decoder<R>> for ColorOutput {
     }
 }
 
-impl<R: Read> SetParameter for Decoder<R> {}
+#[derive(Debug)]
+/// Memory limit in bytes. `MemoryLimit::Some(0)` means
+/// that there is no memory limit set.
+pub struct MemoryLimit(pub u32);
+
+impl<R: Read> Parameter<Decoder<R>> for MemoryLimit {
+    fn set_param(self, this: &mut Decoder<R>) {
+        let MemoryLimit(limit) = self;
+        this.memory_limit = limit
+    }
+}
 
 /// GIF decoder
 pub struct Decoder<R: Read> {
     r: R,
     decoder: StreamingDecoder,
+    memory_limit: u32,
     color_output: ColorOutput,
 }
 
@@ -58,6 +69,7 @@ impl<R: Read> Decoder<R> {
         Decoder {
             r: r,
             decoder: StreamingDecoder::new(),
+            memory_limit: 50_000_000, // 50 MB
             color_output: ColorOutput::Indexed
         }
     }
@@ -66,7 +78,7 @@ impl<R: Read> Decoder<R> {
     ///
     /// Returns a `Reader`. All decoder configuration has to be done beforehand.
     pub fn read_info(self) -> Result<Reader<R>, DecodingError> {
-        Reader::new(self.r, self.decoder, self.color_output).init()
+        Reader::new(self.r, self.decoder, self.color_output, self.memory_limit).init()
     }
 }
 
@@ -82,9 +94,9 @@ impl<R: Read> ReadDecoder<R> {
             let (consumed, result) = {
                 let buf = try!(self.reader.fill_buf());
                 if buf.len() == 0 {
-                    /*return Err(DecodingError::Format(
+                    return Err(DecodingError::Format(
                         "unexpected EOF"
-                    ))*/
+                    ))
                 }
                 try!(self.decoder.update(buf))
             };
@@ -109,6 +121,7 @@ impl<R: Read> ReadDecoder<R> {
 pub struct Reader<R: Read> {
     decoder: ReadDecoder<R>,
     color_output: ColorOutput,
+    memory_limit: u32,
     bg_color: Option<u8>,
     global_palette: Option<Vec<u8>>,
     current_frame: Frame<'static>,
@@ -119,7 +132,9 @@ pub struct Reader<R: Read> {
 }
 
 impl<R> Reader<R> where R: Read {
-    fn new(reader: R, decoder: StreamingDecoder, color_output: ColorOutput) -> Reader<R> {
+    fn new(reader: R, decoder: StreamingDecoder,
+           color_output: ColorOutput, memory_limit: u32
+    ) -> Reader<R> {
         Reader {
             decoder: ReadDecoder {
                 reader: io::BufReader::new(reader),
@@ -130,6 +145,7 @@ impl<R> Reader<R> where R: Read {
             global_palette: None,
             buffer: Vec::with_capacity(32),
             color_output: color_output,
+            memory_limit: memory_limit,
             current_frame: Frame::default(),
             offset: 0
         }
@@ -173,6 +189,14 @@ impl<R> Reader<R> where R: Read {
                             "No color table available for current frame."
                         ))
                     }
+                    if self.memory_limit > 0  && (
+                        (frame.width as u32 * frame.height as u32)
+                        > self.memory_limit
+                    ) {
+                        return Err(DecodingError::Format(
+                            "Image is too large to decode."
+                        ))
+                    }
                     break  
                 },
                 Some(_) => (),
@@ -203,7 +227,7 @@ impl<R> Reader<R> where R: Read {
     
     /// Reads data of the current frame into a pre-allocated buffer.
     ///
-    /// `Self::next_frame` needs to be called beforehand. The returned boolean indicates
+    /// `Self::next_frame_info` needs to be called beforehand. The returned boolean indicates
     /// whether more data is available in the current frame. Should not be called after a `false`
     /// had been returned.
     pub fn fill_buffer(&mut self, mut buf: &mut [u8]) -> Result<bool, DecodingError> {

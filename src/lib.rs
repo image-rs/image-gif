@@ -125,7 +125,7 @@ pub use common::{Block, Extension, DisposalMethod, Frame};
 
 pub use reader::{StreamingDecoder, Decoded, DecodingError};
 /// StreamingDecoder configuration parameters
-pub use reader::{ColorOutput, Extensions};
+pub use reader::{ColorOutput, MemoryLimit, Extensions};
 pub use reader::{Reader, Decoder};
 
 pub use encoder::{Encoder, Writer, ExtensionData};

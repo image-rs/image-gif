@@ -20,6 +20,8 @@ pub trait SetParameter: Sized {
     }
 }
 
+impl<T> SetParameter for T {}
+
 /// Writer extension to write little endian data
 pub trait WriteBytesExt<T> {
 	/// Writes `T` to a bytes stream. Least significant byte first.

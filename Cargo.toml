@@ -2,7 +2,7 @@
 
 name = "gif"
 license = "MIT"
-version = "0.4.1"
+version = "0.5.0"
 description = "GIF de- and encoder"
 authors = ["nwin <nwin@users.noreply.github.com>"]
 readme = "README.md"
@@ -19,7 +19,7 @@ name = "gif"
 crate-type = ["dylib", "rlib"]
 
 [dependencies]
-lzw = "0.5"
+lzw = "0.8"
 color_quant = "1.0"
 
 [dev-dependencies]
