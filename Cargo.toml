@@ -14,10 +14,6 @@ exclude = [
     "tests/*",
 ]
 
-[lib]
-name = "gif"
-crate-type = ["dylib", "rlib"]
-
 [dependencies]
 lzw = "0.8"
 color_quant = "1.0"
