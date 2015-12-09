@@ -5,8 +5,11 @@ use std::io;
 ///
 /// Use the list of implementors to see which parameters are available for which struct.
 pub trait Parameter<Object> {
+    /// Result type of `set_param`.
+    // TODO: Use default type () when associated type defaults get stable.
+    type Result;
     /// Sets `self` as a parameter of `Object`.
-    fn set_param(self, &mut Object);
+    fn set_param(self, &mut Object) -> Self::Result;
 }
 
 /// Implemented for objects that have parameters.
@@ -14,9 +17,8 @@ pub trait Parameter<Object> {
 /// Provides a unified `set`-method to simplify the configuration.
 pub trait SetParameter: Sized {
     /// Sets `value` as a parameter of `self`.
-    fn set<T: Parameter<Self>>(&mut self, value: T) -> &mut Self {
-        value.set_param(self);
-        self
+    fn set<T: Parameter<Self>>(&mut self, value: T) -> <T as Parameter<Self>>::Result {
+        value.set_param(self)
     }
 }
 

@@ -9,9 +9,24 @@ use std::io::prelude::*;
 
 use lzw;
 
-use traits::WriteBytesExt;
+use traits::{Parameter, WriteBytesExt};
 use common::{Block, Frame, Extension, DisposalMethod};
 use util;
+
+/// Number of repetitions
+pub enum Repeat {
+    /// Finite number of repetitions
+    Finite(u16),
+    /// Infinite number of repetitions
+    Infinite
+}
+
+impl<W: Write> Parameter<Writer<W>> for Repeat {
+    type Result = Result<(), io::Error>;
+    fn set_param(self, this: &mut Writer<W>) -> Self::Result {
+        this.write_extension(ExtensionData::Repetitions(self))
+    }
+}
 
 /// Extension data.
 pub enum ExtensionData {
@@ -23,7 +38,9 @@ pub enum ExtensionData {
 	    delay: u16,
 	    /// Transparent index.
 	    trns: u8
-    }
+    },
+    /// Sets the number of repetitions
+    Repetitions(Repeat)
 }
 
 impl ExtensionData {
@@ -123,8 +140,11 @@ impl<W: Write> Writer<W> {
 		self.enc.write_extension(extension)
 	}
 
-	/// Writes a raw extension to the image
-	pub fn write_raw_extension(&mut self, func: u8, data: &[u8]) -> io::Result<()> {
+	/// Writes a raw extension to the image. 
+    ///
+    /// `func` specifies the type on the extension and `data`
+    /// is a slice containing the extension’s data blocks.
+	pub fn write_raw_extension(&mut self, func: u8, data: &[&[u8]]) -> io::Result<()> {
 		self.enc.write_raw_extension(func, data)
 	}
 }
@@ -259,6 +279,11 @@ impl<W: Write> Encoder<W> {
 	/// Writes an extension to the image
 	fn write_extension(&mut self, extension: ExtensionData) -> io::Result<()> {
 		use self::ExtensionData::*;
+        // 0 finite repetitions can only be achieved
+        // if the corresponting extension is not written
+        if let Repetitions(Repeat::Finite(0)) = extension {
+            return Ok(())
+        }
 		try!(self.w.write_le(Block::Extension as u8));
 		match extension {
 			Control { flags, delay, trns } => {
@@ -268,19 +293,32 @@ impl<W: Write> Encoder<W> {
 				try!(self.w.write_le(delay));
 				try!(self.w.write_le(trns));
 			}
+            Repetitions(repeat) => {
+				try!(self.w.write_le(Extension::Application as u8));
+                try!(self.w.write_le(11u8));
+                try!(self.w.write(b"NETSCAPE2.0"));
+                try!(self.w.write_le(3u8));
+                try!(self.w.write_le(1u8));
+                match repeat {
+                    Repeat::Finite(no) => try!(self.w.write_le(no)),
+                    Repeat::Infinite => try!(self.w.write_le(0u16)),
+                }
+            }
 		}
 		self.w.write_le(0u8)
 	}
 
 	/// Writes a raw extension to the image
-	fn write_raw_extension(&mut self, func: u8, data: &[u8]) -> io::Result<()> {
+	fn write_raw_extension(&mut self, func: u8, data: &[&[u8]]) -> io::Result<()> {
 		try!(self.w.write_le(Block::Extension as u8));
 		try!(self.w.write_le(func as u8));
-		for chunk in data.chunks(0xFF) {
-			try!(self.w.write_le(chunk.len() as u8));
-			try!(self.w.write_all(chunk));
-		}
-		self.w.write_le(0u8)
+        for block in data {
+    		for chunk in block.chunks(0xFF) {
+    			try!(self.w.write_le(chunk.len() as u8));
+    			try!(self.w.write_all(chunk));
+    		}
+        }
+        self.w.write_le(0u8)
 	}
 
 	/// Writes the logical screen desriptor

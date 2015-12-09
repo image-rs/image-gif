@@ -17,6 +17,7 @@ const N_CHANNELS: usize = 4;
 
 impl<T, R> Parameter<Decoder<R>> for T
 where T: Parameter<StreamingDecoder>, R: Read {
+    type Result = ();
     fn set_param(self, this: &mut Decoder<R>) {
         this.decoder.set(self);
     }
@@ -38,6 +39,7 @@ pub enum ColorOutput {
 }
 
 impl<R: Read> Parameter<Decoder<R>> for ColorOutput {
+    type Result = ();
     fn set_param(self, this: &mut Decoder<R>) {
         this.color_output = self
     }
@@ -49,6 +51,7 @@ impl<R: Read> Parameter<Decoder<R>> for ColorOutput {
 pub struct MemoryLimit(pub u32);
 
 impl<R: Read> Parameter<Decoder<R>> for MemoryLimit {
+    type Result = ();
     fn set_param(self, this: &mut Decoder<R>) {
         let MemoryLimit(limit) = self;
         this.memory_limit = limit
