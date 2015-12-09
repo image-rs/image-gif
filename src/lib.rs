@@ -1,5 +1,9 @@
+//! # GIF en- and decoding library [![Build Status](https://travis-ci.org/PistonDevelopers/image-gif.svg?branch=master)](https://travis-ci.org/PistonDevelopers/image-gif)
+//! 
+//! GIF en- and decoder written in Rust ([API Documentation](http://www.piston.rs/image/gif/index.html)). 
+//! 
 //! # GIF encoding and decoding library
-//!
+//! 
 //! This library provides all functions necessary to de- and encode GIF files. 
 //! 
 //! ## High level interface
@@ -11,7 +15,7 @@
 //! 
 //! ### Decoding GIF files
 //! 
-//! ```
+//! ```rust
 //! // Open the file
 //! use std::fs::File;
 //! use gif::SetParameter;
@@ -31,7 +35,7 @@
 //!
 //! The encoder can be used so save simple computer generated images:
 //! 
-//! ```
+//! ```rust
 //! use gif::{Frame, Encoder, Repeat, SetParameter};
 //! use std::fs::File;
 //! use std::borrow::Cow;
@@ -69,7 +73,7 @@
 //! [`Frame::from_*`](struct.Frame.html) can be used to convert a true color image to a paletted
 //! image with a maximum of 256 colors:
 //!
-//! ```
+//! ```rust
 //! use std::fs::File;
 //! 
 //! // Get pixel data from some source
@@ -92,7 +96,7 @@
 //! The C API is unstable and widely untested. It can be activated using the feature flag `c_api`.
 
 // TODO: make this compile
-// ```
+// ```rust
 // use gif::{Frame, Encoder};
 // use std::fs::File;
 // let color_map = &[0, 0, 0, 0xFF, 0xFF, 0xFF];

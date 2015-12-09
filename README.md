@@ -9,13 +9,13 @@ This library provides all functions necessary to de- and encode GIF files.
 ## High level interface
 
 The high level interface consists of the two types
-Encoder and Decoder.
+[`Encoder`](struct.Encoder.html) and [`Decoder`](struct.Decoder.html).
 They as builders for the actual en- and decoders and can be used to set various
 options beforehand.
 
 ### Decoding GIF files
 
-```
+```rust
 // Open the file
 use std::fs::File;
 use gif::SetParameter;
@@ -29,36 +29,51 @@ while let Some(frame) = decoder.read_next_frame().unwrap() {
 }
 ```
 
+
+
 ### Encoding GIF files
 
 The encoder can be used so save simple computer generated images:
 
-```
-use gif::{Frame, Encoder};
+```rust
+use gif::{Frame, Encoder, Repeat, SetParameter};
 use std::fs::File;
 use std::borrow::Cow;
 
-let color_map = &[0, 0, 0, 0xFF, 0xFF, 0xFF];
-let mut frame = Frame::default();
-let mut buffer = Vec::new();
-// Generate checkerboard lattice
-for (i, j) in (0..10).zip(0..10) {
-	buffer.push(if (i * j) % 2 == 0 {
-		1
-	} else {
-		0
-	})
+let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];
+let (width, height) = (6, 6);
+let mut beacon_states = [[
+    0, 0, 0, 0, 0, 0,
+    0, 1, 1, 0, 0, 0,
+    0, 1, 1, 0, 0, 0,
+    0, 0, 0, 1, 1, 0,
+    0, 0, 0, 1, 1, 0,
+    0, 0, 0, 0, 0, 0,
+], [
+    0, 0, 0, 0, 0, 0,
+    0, 1, 1, 0, 0, 0,
+    0, 1, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 0,
+    0, 0, 0, 1, 1, 0,
+    0, 0, 0, 0, 0, 0,
+]];
+let mut image = File::create("target/beacon.gif").unwrap();;
+let mut encoder = Encoder::new(&mut image, width, height);
+let mut encoder = encoder.write_global_palette(color_map).unwrap();
+encoder.set(Repeat::Infinite).unwrap();
+for state in &beacon_states {
+    let mut frame = Frame::default();
+    frame.width = width;
+    frame.height = height;
+    frame.buffer = Cow::Borrowed(&*state);
+    encoder.write_frame(&frame).unwrap();
 }
-frame.buffer = Cow::Owned(buffer);
-let mut image = Vec::new();
-let mut encoder = Encoder::new(&mut image, 100, 100);
-encoder.write_global_palette(color_map).unwrap().write_frame(&frame).unwrap();
 ```
 
-`Frame::from_*` can be used to convert a true color image to a paletted
+[`Frame::from_*`](struct.Frame.html) can be used to convert a true color image to a paletted
 image with a maximum of 256 colors:
 
-```
+```rust
 use std::fs::File;
 
 // Get pixel data from some source
@@ -66,7 +81,7 @@ let mut pixels: Vec<u8> = vec![0; 30_000];
 // Create frame from data
 let frame = gif::Frame::from_rgb(100, 100, &mut *pixels);
 // Create encoder
-let mut image = Vec::new();
+let mut image = File::create("target/indexed_color.gif").unwrap();
 let encoder = gif::Encoder::new(&mut image, frame.width, frame.height);
 // Write header to file
 let mut encoder = encoder.write_global_palette(&[]).unwrap();
