@@ -32,25 +32,38 @@
 //! The encoder can be used so save simple computer generated images:
 //! 
 //! ```
-//! use gif::{Frame, Encoder};
+//! use gif::{Frame, Encoder, Repeat, SetParameter};
 //! use std::fs::File;
 //! use std::borrow::Cow;
 //! 
-//! let color_map = &[0, 0, 0, 0xFF, 0xFF, 0xFF];
-//! let mut frame = Frame::default();
-//! let mut buffer = Vec::new();
-//! // Generate checkerboard lattice
-//! for (i, j) in (0..10).zip(0..10) {
-//! 	buffer.push(if (i * j) % 2 == 0 {
-//! 		1
-//! 	} else {
-//! 		0
-//! 	})
+//! let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];
+//! let (width, height) = (6, 6);
+//! let mut beacon_states = [[
+//!     0, 0, 0, 0, 0, 0,
+//!     0, 1, 1, 0, 0, 0,
+//!     0, 1, 1, 0, 0, 0,
+//!     0, 0, 0, 1, 1, 0,
+//!     0, 0, 0, 1, 1, 0,
+//!     0, 0, 0, 0, 0, 0,
+//! ], [
+//!     0, 0, 0, 0, 0, 0,
+//!     0, 1, 1, 0, 0, 0,
+//!     0, 1, 0, 0, 0, 0,
+//!     0, 0, 0, 0, 1, 0,
+//!     0, 0, 0, 1, 1, 0,
+//!     0, 0, 0, 0, 0, 0,
+//! ]];
+//! let mut image = File::create("target/beacon.gif").unwrap();;
+//! let mut encoder = Encoder::new(&mut image, width, height);
+//! let mut encoder = encoder.write_global_palette(color_map).unwrap();
+//! encoder.set(Repeat::Infinite).unwrap();
+//! for state in &beacon_states {
+//!     let mut frame = Frame::default();
+//!     frame.width = width;
+//!     frame.height = height;
+//!     frame.buffer = Cow::Borrowed(&*state);
+//!     encoder.write_frame(&frame).unwrap();
 //! }
-//! frame.buffer = Cow::Owned(buffer);
-//! let mut image = Vec::new();
-//! let mut encoder = Encoder::new(&mut image, 100, 100);
-//! encoder.write_global_palette(color_map).unwrap().write_frame(&frame).unwrap();
 //! ```
 //!
 //! [`Frame::from_*`](struct.Frame.html) can be used to convert a true color image to a paletted
@@ -64,7 +77,7 @@
 //! // Create frame from data
 //! let frame = gif::Frame::from_rgb(100, 100, &mut *pixels);
 //! // Create encoder
-//! let mut image = Vec::new();
+//! let mut image = File::create("target/indexed_color.gif").unwrap();
 //! let encoder = gif::Encoder::new(&mut image, frame.width, frame.height);
 //! // Write header to file
 //! let mut encoder = encoder.write_global_palette(&[]).unwrap();
@@ -128,7 +141,7 @@ pub use reader::{StreamingDecoder, Decoded, DecodingError};
 pub use reader::{ColorOutput, MemoryLimit, Extensions};
 pub use reader::{Reader, Decoder};
 
-pub use encoder::{Encoder, Writer, ExtensionData};
+pub use encoder::{Encoder, Writer, ExtensionData, Repeat};
 
 #[cfg(test)]
 #[test]

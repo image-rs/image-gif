@@ -41,6 +41,7 @@ pub enum Extensions {
 }
 
 impl Parameter<StreamingDecoder> for Extensions {
+    type Result = ();
     fn set_param(self, this: &mut StreamingDecoder) {
         this.skip_extensions = match self {
             Extensions::Skip => true,
