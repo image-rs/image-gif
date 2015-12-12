@@ -30,7 +30,7 @@ impl<W: Write> Parameter<Encoder<W>> for Repeat {
 
 /// Extension data.
 pub enum ExtensionData {
-    /// Control extension
+    /// Control extension. Use `ExtensionData::new_control_ext` to construct.
 	Control { 
 	    /// Flags.
 	    flags: u8,
@@ -45,6 +45,8 @@ pub enum ExtensionData {
 
 impl ExtensionData {
     /// Constructor for control extension data.
+    ///
+    /// `delay` is given in units of 10 ms.
 	pub fn new_control_ext(delay: u16, dispose: DisposalMethod, 
 						   needs_user_input: bool, trns: Option<u8>) -> ExtensionData {
 		let mut flags = 0;
@@ -132,6 +134,9 @@ pub struct Encoder<W: Write> {
 
 impl<W: Write> Encoder<W> {
     /// Creates a new encoder.
+    ///
+    /// `global_palette` gives the global color palette in the format `[r, g, b, ...]`,
+    /// if no global palette shall be used an empty slice may be supplied.
 	pub fn new(w: W, width: u16, height: u16, global_palette: &[u8]) -> io::Result<Self> {
 		Encoder {
 			w: w,
@@ -141,7 +146,7 @@ impl<W: Write> Encoder<W> {
 		}.write_global_palette(global_palette)
 	}
 
-	/// Writes the global color palette
+	/// Writes the global color palette.
 	pub fn write_global_palette(mut self, palette: &[u8]) -> io::Result<Self> {
 		self.global_palette = true;
 		let mut flags = 0;
@@ -154,7 +159,7 @@ impl<W: Write> Encoder<W> {
 		Ok(self)
 	}
 
-	/// Writes a complete frame to the image
+	/// Writes a frame to the image.
 	///
 	/// Note: This function also writes a control extension if necessary.
 	pub fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
@@ -216,7 +221,9 @@ impl<W: Write> Encoder<W> {
         Ok(())
 	}
 
-	/// Writes an extension to the image
+	/// Writes an extension to the image.
+    ///
+    /// It is normally not necessary to call this method manually.
 	pub fn write_extension(&mut self, extension: ExtensionData) -> io::Result<()> {
 		use self::ExtensionData::*;
         // 0 finite repetitions can only be achieved
@@ -248,7 +255,11 @@ impl<W: Write> Encoder<W> {
 		self.w.write_le(0u8)
 	}
 
-	/// Writes a raw extension to the image
+	/// Writes a raw extension to the image.
+    ///
+    /// This method can be used to write an unsupported extesion to the file. `func` is the extension 
+    /// identifier (e.g. `Extension::Application as u8`). `data` are the extension payload blocks. If any
+    /// contained slice has a lenght > 255 it is automatically divided into sub-blocks.
 	pub fn write_raw_extension(&mut self, func: u8, data: &[&[u8]]) -> io::Result<()> {
 		try!(self.w.write_le(Block::Extension as u8));
 		try!(self.w.write_le(func as u8));
