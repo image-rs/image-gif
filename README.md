@@ -29,8 +29,6 @@ while let Some(frame) = decoder.read_next_frame().unwrap() {
 }
 ```
 
-
-
 ### Encoding GIF files
 
 The encoder can be used so save simple computer generated images:
@@ -58,8 +56,7 @@ let mut beacon_states = [[
     0, 0, 0, 0, 0, 0,
 ]];
 let mut image = File::create("target/beacon.gif").unwrap();;
-let mut encoder = Encoder::new(&mut image, width, height);
-let mut encoder = encoder.write_global_palette(color_map).unwrap();
+let mut encoder = Encoder::new(&mut image, width, height, color_map).unwrap();
 encoder.set(Repeat::Infinite).unwrap();
 for state in &beacon_states {
     let mut frame = Frame::default();
@@ -82,9 +79,8 @@ let mut pixels: Vec<u8> = vec![0; 30_000];
 let frame = gif::Frame::from_rgb(100, 100, &mut *pixels);
 // Create encoder
 let mut image = File::create("target/indexed_color.gif").unwrap();
-let encoder = gif::Encoder::new(&mut image, frame.width, frame.height);
-// Write header to file
-let mut encoder = encoder.write_global_palette(&[]).unwrap();
+let mut encoder = gif::Encoder::new(&mut image, frame.width, frame.height, &[]).unwrap();
 // Write frame to file
 encoder.write_frame(&frame).unwrap();
 ```
+
