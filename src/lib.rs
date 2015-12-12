@@ -58,8 +58,7 @@
 //!     0, 0, 0, 0, 0, 0,
 //! ]];
 //! let mut image = File::create("target/beacon.gif").unwrap();;
-//! let mut encoder = Encoder::new(&mut image, width, height);
-//! let mut encoder = encoder.write_global_palette(color_map).unwrap();
+//! let mut encoder = Encoder::new(&mut image, width, height, color_map).unwrap();
 //! encoder.set(Repeat::Infinite).unwrap();
 //! for state in &beacon_states {
 //!     let mut frame = Frame::default();
@@ -82,9 +81,7 @@
 //! let frame = gif::Frame::from_rgb(100, 100, &mut *pixels);
 //! // Create encoder
 //! let mut image = File::create("target/indexed_color.gif").unwrap();
-//! let encoder = gif::Encoder::new(&mut image, frame.width, frame.height);
-//! // Write header to file
-//! let mut encoder = encoder.write_global_palette(&[]).unwrap();
+//! let mut encoder = gif::Encoder::new(&mut image, frame.width, frame.height, &[]).unwrap();
 //! // Write frame to file
 //! encoder.write_frame(&frame).unwrap();
 //! ```
@@ -145,7 +142,7 @@ pub use reader::{StreamingDecoder, Decoded, DecodingError};
 pub use reader::{ColorOutput, MemoryLimit, Extensions};
 pub use reader::{Reader, Decoder};
 
-pub use encoder::{Encoder, Writer, ExtensionData, Repeat};
+pub use encoder::{Encoder, ExtensionData, Repeat};
 
 #[cfg(test)]
 #[test]
@@ -159,10 +156,7 @@ fn round_trip() {
 	let frame = decoder.read_next_frame().unwrap().unwrap();
 	let mut data2 = vec![];
 	{
-    	let encoder = {
-    		Encoder::new(&mut data2, frame.width, frame.height)
-    	};
-		let mut encoder = encoder.write_global_palette(&palette).unwrap();		
+    	let mut encoder = Encoder::new(&mut data2, frame.width, frame.height, &palette).unwrap();
 		encoder.write_frame(frame).unwrap();
 	}
 	assert_eq!(&data[..], &data2[..])

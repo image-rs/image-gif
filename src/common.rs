@@ -83,7 +83,7 @@ impl Extension {
 /// A GIF frame
 #[derive(Debug, Clone)]
 pub struct Frame<'a> {
-    /// Frame delay.
+    /// Frame delay in units of 10 ms.
     pub delay: u16,
     /// Disposal method.
     pub dispose: DisposalMethod,
