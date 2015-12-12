@@ -21,9 +21,9 @@ pub enum Repeat {
     Infinite
 }
 
-impl<W: Write> Parameter<Writer<W>> for Repeat {
+impl<W: Write> Parameter<Encoder<W>> for Repeat {
     type Result = Result<(), io::Error>;
-    fn set_param(self, this: &mut Writer<W>) -> Self::Result {
+    fn set_param(self, this: &mut Encoder<W>) -> Self::Result {
         this.write_extension(ExtensionData::Repetitions(self))
     }
 }
@@ -122,64 +122,6 @@ impl<'a, W: Write + 'a> Drop for BlockWriter<'a, W> {
 	}
 }
 
-/// Wrapper for `Encoder` that indicates that the file headers have been written.
-pub struct Writer<W: Write> {
-	enc: Encoder<W>
-}
-
-impl<W: Write> Writer<W> {
-	/// Writes a complete frame to the image
-	///
-	/// Note: This function also writes a control extention if necessary.
-	pub fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
-		self.enc.write_frame(frame)
-	}
-
-	/// Writes an extension to the image
-	pub fn write_extension(&mut self, extension: ExtensionData) -> io::Result<()> {
-		self.enc.write_extension(extension)
-	}
-
-	/// Writes a raw extension to the image. 
-    ///
-    /// `func` specifies the type on the extension and `data`
-    /// is a slice containing the extension’s data blocks.
-	pub fn write_raw_extension(&mut self, func: u8, data: &[&[u8]]) -> io::Result<()> {
-		self.enc.write_raw_extension(func, data)
-	}
-}
-
-impl<W: Write> Drop for Writer<W> {
-
-    #[cfg(feature = "raii_no_panic")]
-	fn drop(&mut self) {
-		let _ = self.enc.w.write_le(Block::Trailer as u8);
-	}
-
-    #[cfg(not(feature = "raii_no_panic"))]
-	fn drop(&mut self) {
-		self.enc.w.write_le(Block::Trailer as u8).unwrap()
-	}
-}
-
-/*
-
-pub struct Frame {
-    pub delay: u16,
-    pub dispose: DisposalMethod,
-    pub transparent: Option<usize>,
-    pub needs_user_input: bool,
-    pub top: u16,
-    pub left: u16,
-    pub width: u16,
-    pub height: u16,
-    pub interlaced: bool,
-    pub palette: Option<Vec<u8>>,
-    pub buffer: Vec<u8>
-}
-
-*/
-
 /// GIF encoder.
 pub struct Encoder<W: Write> {
     w: W,
@@ -190,17 +132,17 @@ pub struct Encoder<W: Write> {
 
 impl<W: Write> Encoder<W> {
     /// Creates a new encoder.
-	pub fn new(w: W, width: u16, height: u16) -> Self {
+	pub fn new(w: W, width: u16, height: u16, global_palette: &[u8]) -> io::Result<Self> {
 		Encoder {
 			w: w,
 			global_palette: false,
 			width: width,
 			height: height
-		}
+		}.write_global_palette(global_palette)
 	}
 
 	/// Writes the global color palette
-	pub fn write_global_palette(mut self, palette: &[u8]) -> io::Result<Writer<W>> {
+	pub fn write_global_palette(mut self, palette: &[u8]) -> io::Result<Self> {
 		self.global_palette = true;
 		let mut flags = 0;
 		flags |= 0b1000_0000;
@@ -209,15 +151,13 @@ impl<W: Write> Encoder<W> {
 		flags |= flag_size(num_colors) << 4; // wtf flag
 		try!(self.write_screen_desc(flags));
 		try!(self.write_color_table(palette));
-		Ok(Writer {
-			enc: self
-		})
+		Ok(self)
 	}
 
 	/// Writes a complete frame to the image
 	///
 	/// Note: This function also writes a control extension if necessary.
-	fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
+	pub fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
 		// TODO commented off to pass test in lib.rs
 		//if frame.delay > 0 || frame.transparent.is_some() {
 			try!(self.write_extension(ExtensionData::new_control_ext(
@@ -277,7 +217,7 @@ impl<W: Write> Encoder<W> {
 	}
 
 	/// Writes an extension to the image
-	fn write_extension(&mut self, extension: ExtensionData) -> io::Result<()> {
+	pub fn write_extension(&mut self, extension: ExtensionData) -> io::Result<()> {
 		use self::ExtensionData::*;
         // 0 finite repetitions can only be achieved
         // if the corresponting extension is not written
@@ -309,7 +249,7 @@ impl<W: Write> Encoder<W> {
 	}
 
 	/// Writes a raw extension to the image
-	fn write_raw_extension(&mut self, func: u8, data: &[&[u8]]) -> io::Result<()> {
+	pub fn write_raw_extension(&mut self, func: u8, data: &[&[u8]]) -> io::Result<()> {
 		try!(self.w.write_le(Block::Extension as u8));
 		try!(self.w.write_le(func as u8));
         for block in data {
@@ -329,6 +269,19 @@ impl<W: Write> Encoder<W> {
 		try!(self.w.write_le(flags)); // packed field
 		try!(self.w.write_le(0u8)); // bg index
 		self.w.write_le(0u8) // aspect ratio
+	}
+}
+
+impl<W: Write> Drop for Encoder<W> {
+
+    #[cfg(feature = "raii_no_panic")]
+	fn drop(&mut self) {
+		let _ = self.w.write_le(Block::Trailer as u8);
+	}
+
+    #[cfg(not(feature = "raii_no_panic"))]
+	fn drop(&mut self) {
+		self.w.write_le(Block::Trailer as u8).unwrap()
 	}
 }
 
