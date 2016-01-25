@@ -201,7 +201,10 @@ impl<W: Write> Encoder<W> {
 
 	fn write_image_block(&mut self, data: &[u8]) -> io::Result<()> {
 		{
-			let min_code_size: u8 = flag_size((*data.iter().max().unwrap_or(&0) as usize + 1)) + 1;
+			let mut min_code_size: u8 = flag_size((*data.iter().max().unwrap_or(&0) as usize + 1)) + 1;
+			if min_code_size < 2 {
+				min_code_size = 2;
+			}
 			try!(self.w.write_le(min_code_size));
 			let mut bw = BlockWriter::new(&mut self.w);
 			let mut enc = try!(lzw::Encoder::new(lzw::LsbWriter::new(&mut bw), min_code_size));
