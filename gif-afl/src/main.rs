@@ -2,7 +2,7 @@
 #![feature(plugin)]
 #![plugin(afl_coverage_plugin)]
 
-extern crate afl_coverage;
+extern crate afl;
 extern crate test;
 extern crate gif;
 
