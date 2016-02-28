@@ -57,7 +57,7 @@
 //!     0, 0, 0, 1, 1, 0,
 //!     0, 0, 0, 0, 0, 0,
 //! ]];
-//! let mut image = File::create("target/beacon.gif").unwrap();;
+//! let mut image = File::create("tests/samples/beacon.gif").unwrap();;
 //! let mut encoder = Encoder::new(&mut image, width, height, color_map).unwrap();
 //! encoder.set(Repeat::Infinite).unwrap();
 //! for state in &beacon_states {
