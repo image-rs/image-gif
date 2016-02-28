@@ -15,7 +15,7 @@ exclude = [
 ]
 
 [dependencies]
-lzw = "0.9"
+lzw = "0.10"
 color_quant = "1.0"
 
 [dev-dependencies]
