@@ -1,8 +1,8 @@
 [package]
 
 name = "gif"
-license = "MIT"
-version = "0.7.0"
+license = "MIT/Apache-2.0"
+version = "0.8.0"
 description = "GIF de- and encoder"
 authors = ["nwin <nwin@users.noreply.github.com>"]
 readme = "README.md"
