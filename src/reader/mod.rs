@@ -228,11 +228,11 @@ impl<R> Reader<R> where R: Read {
         }
     }
     
-    /// Reads data of the current frame into a pre-allocated buffer.
+    /// Reads data of the current frame into a pre-allocated buffer until the buffer has been
+    /// filled completely.
     ///
-    /// `Self::next_frame_info` needs to be called beforehand. The returned boolean indicates
-    /// whether more data is available in the current frame. Should not be called after a `false`
-    /// had been returned.
+    /// `Self::next_frame_info` needs to be called beforehand. Returns `true` if the supplied
+    /// buffer could be filled completely. Should not be called after `false` had been returned.
     pub fn fill_buffer(&mut self, mut buf: &mut [u8]) -> Result<bool, DecodingError> {
         use self::ColorOutput::*;
         const PLTE_CHANNELS: usize = 3;
