@@ -179,6 +179,9 @@ impl<W: Write> Encoder<W> {
         try!(self.w.write_le(frame.width));
         try!(self.w.write_le(frame.height));
         let mut flags = 0;
+        if frame.interlaced {
+            flags |= 0b0100_0000;
+        }
         try!(match frame.palette {
             Some(ref palette) => {
                 flags |= 0b1000_0000;
