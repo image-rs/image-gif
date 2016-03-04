@@ -9,7 +9,7 @@ This library provides all functions necessary to de- and encode GIF files.
 ## High level interface
 
 The high level interface consists of the two types
-[`Encoder`](struct.Encoder.html) and [`Decoder`](struct.Decoder.html).
+[`Encoder`](http://www.piston.rs/image/gif/struct.Encoder.html) and [`Decoder`](http://www.piston.rs/image/gif/struct.Decoder.html).
 They as builders for the actual en- and decoders and can be used to set various
 options beforehand.
 
@@ -67,7 +67,7 @@ for state in &beacon_states {
 }
 ```
 
-[`Frame::from_*`](struct.Frame.html) can be used to convert a true color image to a paletted
+[`Frame::from_*`](http://www.piston.rs/image/gif/struct.Frame.html) can be used to convert a true color image to a paletted
 image with a maximum of 256 colors:
 
 ```rust
