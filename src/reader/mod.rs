@@ -216,18 +216,28 @@ impl<R> Reader<R> where R: Read {
     pub fn read_next_frame(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
         if try!(self.next_frame_info()).is_some() {
             let mut vec = vec![0; self.buffer_size()];
-            if !try!(self.fill_buffer(&mut vec)) {
-                return Err(DecodingError::Format(
-                    "Image truncated"
-                ))
-            }
+            try!(self.read_into_buffer(&mut vec));
             self.current_frame.buffer = Cow::Owned(vec);
             Ok(Some(&self.current_frame))
         } else {
             Ok(None)
         }
     }
-    
+
+    /// Reads the data of the current frame into a pre-allocated buffer.
+    ///
+    /// `Self::next_frame_info` needs to be called beforehand.
+    /// The length of `buf` must be at least `Self::buffer_size`.
+    pub fn read_into_buffer(&mut self, buf: &mut [u8]) -> Result<(), DecodingError> {
+        let buf = &mut buf[..self.buffer_size()];
+        if !try!(self.fill_buffer(buf)) {
+            return Err(DecodingError::Format(
+                    "Image truncated"
+                    ))
+        }
+        Ok(())
+    }
+
     /// Reads data of the current frame into a pre-allocated buffer until the buffer has been
     /// filled completely.
     ///
