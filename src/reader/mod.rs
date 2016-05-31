@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::io;
 use std::cmp;
 use std::mem;
+use std::iter;
 use std::io::prelude::*;
 
 use traits::{Parameter, SetParameter};
@@ -213,11 +214,13 @@ impl<R> Reader<R> where R: Read {
     /// Reads the next frame from the image.
     ///
     /// Do not call `Self::next_frame_info` beforehand.
+    /// Deinterlaces the result.
     pub fn read_next_frame(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
         if try!(self.next_frame_info()).is_some() {
             let mut vec = vec![0; self.buffer_size()];
             try!(self.read_into_buffer(&mut vec));
             self.current_frame.buffer = Cow::Owned(vec);
+            self.current_frame.interlaced = false;
             Ok(Some(&self.current_frame))
         } else {
             Ok(None)
@@ -228,13 +231,26 @@ impl<R> Reader<R> where R: Read {
     ///
     /// `Self::next_frame_info` needs to be called beforehand.
     /// The length of `buf` must be at least `Self::buffer_size`.
+    /// Deinterlaces the result.
     pub fn read_into_buffer(&mut self, buf: &mut [u8]) -> Result<(), DecodingError> {
-        let buf = &mut buf[..self.buffer_size()];
-        if !try!(self.fill_buffer(buf)) {
-            return Err(DecodingError::Format(
-                    "Image truncated"
-                    ))
-        }
+        if self.current_frame.interlaced {
+            let width = self.line_length();
+            let height = self.current_frame.height as usize;
+            for row in (InterlaceIterator { len: height, next: 0, pass: 0 }) {
+                if !try!(self.fill_buffer(&mut buf[row*width..][..width])) {
+                    return Err(DecodingError::Format(
+                            "Image truncated"
+                            ))
+                }
+            }
+        } else {
+            let buf = &mut buf[..self.buffer_size()];
+            if !try!(self.fill_buffer(buf)) {
+                return Err(DecodingError::Format(
+                        "Image truncated"
+                        ))
+            }
+        };
         Ok(())
     }
 
@@ -352,6 +368,29 @@ impl<R> Reader<R> where R: Read {
     /// Index of the background color in the global palette
     pub fn bg_color(&self) -> Option<usize> {
         self.bg_color.map(|v| v as usize)
+    }
+}
+
+struct InterlaceIterator {
+    len: usize,
+    next: usize,
+    pass: usize
+}
+
+impl iter::Iterator for InterlaceIterator {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pass > 3 {
+            return None
+        }
+        let mut next = self.next + [8, 8, 4, 2][self.pass];
+        while next >= self.len {
+            next = [4, 2, 1, 0][self.pass];
+            self.pass += 1;
+        }
+        mem::swap(&mut next, &mut self.next);
+        Some(next)
     }
 }
 
