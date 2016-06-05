@@ -19,13 +19,8 @@ use reader::{Decoder, Reader, Decoded};
 use c_api_utils::{CInterface, CFile, FnInputFile};
 use util;
 
-#[repr(u8)]
-enum_from_primitive!{
-/// FIXME replace this with proper definition as soon it exists
-pub enum _Bool { False = 0, True = 1 }
-}
-/// FIXME replace this with proper definition as soon it exists
-pub type c_bool = _Bool;
+/// NOTE As of rust issue #954 `bool` is compatible with c_bool.
+pub type c_bool = bool;
 
 pub type GifPixelType = c_uchar;
 pub type GifRowType = *mut c_uchar;
@@ -69,7 +64,7 @@ pub struct SavedImage {
     /// on malloc(3) heap
     pub RasterBits: *mut GifByteType,
     /// Count of extensions before image
-    pub ExtensionBlockCount: c_int, 
+    pub ExtensionBlockCount: c_int,
     /// Extensions before image
     pub ExtensionBlocks: *mut ExtensionBlock
 }
@@ -184,7 +179,7 @@ macro_rules! try_get_decoder {
     );
 }
 
-#[no_mangle] pub unsafe extern "C" 
+#[no_mangle] pub unsafe extern "C"
 fn DGifOpenFileName(gif_file_name: *const c_char, err: *mut c_int) -> *mut GifFileType {
     let file = try_capi!(
         File::open(try_capi!(
@@ -197,28 +192,28 @@ fn DGifOpenFileName(gif_file_name: *const c_char, err: *mut c_int) -> *mut GifFi
         Decoder::new(file).read_info(),
         err, D_GIF_ERR_READ_FAILED, ptr::null_mut()
     ).into_c_interface();
-    let this: *mut GifFileType = boxed::into_raw(Box::new(mem::zeroed()));
+    let this: *mut GifFileType = Box::into_raw(Box::new(mem::zeroed()));
     decoder.read_screen_desc(&mut *this);
-    let decoder = boxed::into_raw(Box::new(boxed::into_raw(decoder)));
+    let decoder = Box::into_raw(Box::new(Box::into_raw(decoder)));
     (*this).Private = mem::transmute(decoder);
     this
 }
 
-#[no_mangle] pub unsafe extern "C" 
+#[no_mangle] pub unsafe extern "C"
 fn DGifOpenFileHandle(fp: c_int, err: *mut c_int) -> *mut GifFileType {
     let mut decoder = try_capi!(
         Decoder::new(CFile::new(fp)).read_info(),
         err, D_GIF_ERR_READ_FAILED, ptr::null_mut()
     ).into_c_interface();
-    let this: *mut GifFileType = boxed::into_raw(Box::new(mem::zeroed()));
+    let this: *mut GifFileType = Box::into_raw(Box::new(mem::zeroed()));
     decoder.read_screen_desc(&mut *this);
-    let decoder = boxed::into_raw(Box::new(boxed::into_raw(decoder)));
+    let decoder = Box::into_raw(Box::new(Box::into_raw(decoder)));
     (*this).Private = mem::transmute(decoder);
     this
 }
 
 /*
-#[no_mangle] pub unsafe extern "C" 
+#[no_mangle] pub unsafe extern "C"
 fn DGifSlurp(this: *mut GifFileType) -> c_int {
     match try_get_decoder!(this).read_to_end(mem::transmute(this)) {
         Ok(()) => GIF_OK,
@@ -228,7 +223,7 @@ fn DGifSlurp(this: *mut GifFileType) -> c_int {
 */
 #[no_mangle] pub unsafe extern "C"
 fn DGifOpen(user_data: *mut c_void, read_fn: InputFunc, err: *mut c_int) -> *mut GifFileType {
-    let this: *mut GifFileType = boxed::into_raw(Box::new(mem::zeroed()));
+    let this: *mut GifFileType = Box::into_raw(Box::new(mem::zeroed()));
     (*this).UserData = user_data;
     let decoder = try_capi!(
         Decoder::new(FnInputFile::new(read_fn, this)).read_info(),
@@ -240,7 +235,7 @@ fn DGifOpen(user_data: *mut c_void, read_fn: InputFunc, err: *mut c_int) -> *mut
             ptr::null_mut()
         }
     ).into_c_interface();
-    let decoder = boxed::into_raw(Box::new(boxed::into_raw(decoder)));
+    let decoder = Box::into_raw(Box::new(Box::into_raw(decoder)));
     (*this).Private = mem::transmute(decoder);
     this
 }

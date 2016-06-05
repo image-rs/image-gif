@@ -7,7 +7,7 @@ use libc::{malloc, size_t, c_int, read, close};
 
 use common::Block;
 use reader::{Decoded, DecodingError, PLTE_CHANNELS};
-use c_api::{GifFileType, SavedImage, ColorMapObject, GifColorType, _Bool,
+use c_api::{GifFileType, SavedImage, ColorMapObject, GifColorType, c_bool,
            InputFunc
 };
 use util;
@@ -47,7 +47,7 @@ pub unsafe fn copy_colormap(map: &Option<Vec<u8>>) -> *mut ColorMapObject {
     let new_map = mem::transmute::<_, *mut ColorMapObject>(malloc(mem::size_of::<ColorMapObject>() as size_t));
     (*new_map).ColorCount = (map.len()/PLTE_CHANNELS) as c_int;
     (*new_map).BitsPerPixel = 8;
-    (*new_map).SortFlag = _Bool::False;
+    (*new_map).SortFlag = false;
     let colors = mem::transmute::<_, *mut GifColorType>(malloc(
         (mem::size_of::<GifColorType>() *  (*new_map).ColorCount as usize) as size_t
     ));
