@@ -201,7 +201,7 @@ impl<R> Reader<R> where R: Read {
                             "Image is too large to decode."
                         ))
                     }
-                    break  
+                    break
                 },
                 Some(_) => (),
                 None => return Ok(None)
@@ -453,7 +453,6 @@ mod c_interface {
     use std::io::prelude::*;
     use std::ptr;
     use std::borrow::Cow;
-    use num;
 
     use libc::c_int;
     
@@ -466,7 +465,8 @@ mod c_interface {
 
     use super::{Reader};
 
-    impl<R> Reader<R> where R: Read + 'static {   
+    impl<R> Reader<R> where R: Read + 'static {
+        /// Converts `Reader` into `CInterface`.
         pub fn into_c_interface(self) -> Box<CInterface> {
             Box::new(self)
         }
@@ -477,7 +477,7 @@ mod c_interface {
             this.SWidth = self.width() as GifWord;
             this.SHeight = self.height() as GifWord;
             this.SColorResolution = 255;//self.global_palette().len() as GifWord;
-            this.SBackGroundColor = self.bg_color() as GifWord;
+            this.SBackGroundColor = self.bg_color().unwrap_or(0) as GifWord;
             this.AspectByte = 0;
             self.offset = 0;
         }
