@@ -381,7 +381,7 @@ impl iter::Iterator for InterlaceIterator {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.pass > 3 {
+        if self.len == 0 || self.pass > 3 {
             return None
         }
         let mut next = self.next + [8, 8, 4, 2][self.pass];
@@ -398,7 +398,7 @@ impl iter::Iterator for InterlaceIterator {
 mod test {
     use std::fs::File;
 
-    use super::Decoder;
+    use super::{Decoder, InterlaceIterator};
     
     /* Commented because test::Bencher is unstable
     extern crate test;
@@ -444,6 +444,34 @@ mod test {
             2, 2, 2, 2, 2, 1, 1, 1, 1, 1,
             2, 2, 2, 2, 2, 1, 1, 1, 1, 1
         ][..])
+    }
+
+    #[test]
+    fn test_interlace_iterator() {
+        for &(len, expect) in &[
+            (0, &[][..]),
+            (1, &[0][..]),
+            (2, &[0, 1][..]),
+            (3, &[0, 2, 1][..]),
+            (4, &[0, 2, 1, 3][..]),
+            (5, &[0, 4, 2, 1, 3][..]),
+            (6, &[0, 4, 2, 1, 3, 5][..]),
+            (7, &[0, 4, 2, 6, 1, 3, 5][..]),
+            (8, &[0, 4, 2, 6, 1, 3, 5, 7][..]),
+            (9, &[0, 8, 4, 2, 6, 1, 3, 5, 7][..]),
+            (10, &[0, 8, 4, 2, 6, 1, 3, 5, 7, 9][..]),
+            (11, &[0, 8, 4, 2, 6, 10, 1, 3, 5, 7, 9][..]),
+            (12, &[0, 8, 4, 2, 6, 10, 1, 3, 5, 7, 9, 11][..]),
+            (13, &[0, 8, 4, 12, 2, 6, 10, 1, 3, 5, 7, 9, 11][..]),
+            (14, &[0, 8, 4, 12, 2, 6, 10, 1, 3, 5, 7, 9, 11, 13][..]),
+            (15, &[0, 8, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13][..]),
+            (16, &[0, 8, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..]),
+            (17, &[0, 8, 16, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..]),
+        ] {
+            let iter = InterlaceIterator { len: len, next: 0, pass: 0 };
+            let lines = iter.collect::<Vec<_>>();
+            assert_eq!(lines, expect);
+        }
     }
 }
 
