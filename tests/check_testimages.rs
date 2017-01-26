@@ -4,6 +4,7 @@ extern crate glob;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
+use std::error::Error;
 
 use std::io::BufReader;
 use std::io::prelude::*;
@@ -58,6 +59,11 @@ where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
             crc
         )
     }
+}
+
+#[test]
+fn error_cast() {
+    let _ : Box<Error> = gif::DecodingError::Internal("testing").into();
 }
 
 #[test]
