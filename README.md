@@ -40,7 +40,7 @@ use std::borrow::Cow;
 
 let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];
 let (width, height) = (6, 6);
-let mut beacon_states = [[
+let beacon_states = [[
     0, 0, 0, 0, 0, 0,
     0, 1, 1, 0, 0, 0,
     0, 1, 1, 0, 0, 0,
@@ -55,7 +55,7 @@ let mut beacon_states = [[
     0, 0, 0, 1, 1, 0,
     0, 0, 0, 0, 0, 0,
 ]];
-let mut image = File::create("target/beacon.gif").unwrap();;
+let mut image = File::create("target/beacon.gif").unwrap();
 let mut encoder = Encoder::new(&mut image, width, height, color_map).unwrap();
 encoder.set(Repeat::Infinite).unwrap();
 for state in &beacon_states {
