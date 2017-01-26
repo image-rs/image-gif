@@ -5,6 +5,9 @@ use std::default::Default;
 use std::io;
 use std::io::prelude::*;
 
+use std::fmt;
+use std::error;
+
 use lzw;
 
 use traits::Parameter;
@@ -22,6 +25,33 @@ pub enum DecodingError {
     Internal(&'static str),
     /// Wraps `std::io::Error`.
     Io(io::Error),
+}
+
+impl fmt::Display for DecodingError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            DecodingError::Format(ref d) => d.fmt(fmt),
+            DecodingError::Internal(ref d) => d.fmt(fmt),
+            DecodingError::Io(ref err) => err.fmt(fmt),
+        }
+    }
+}
+
+impl error::Error for DecodingError {
+    fn description(&self) -> &str {
+        match *self {
+            DecodingError::Format(ref d) => d,
+            DecodingError::Internal(ref d) => d,
+            DecodingError::Io(ref err) => err.description(),
+        }
+    }
+
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            DecodingError::Io(ref err) => Some(err),
+            _ => None,
+        }
+    }
 }
 
 impl From<io::Error> for DecodingError {
