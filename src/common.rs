@@ -5,7 +5,7 @@ use std::mem;
 use std::borrow::Cow;
 
 /// Disposal method
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum DisposalMethod {
     /// StreamingDecoder is not required to take any action.
@@ -30,7 +30,7 @@ impl DisposalMethod {
 }
 
 /// Known GIF block types
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Block {
     /// Image block.
@@ -55,7 +55,7 @@ impl Block {
 
 
 /// Known GIF extensions
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Extension {
     /// Text extension.
