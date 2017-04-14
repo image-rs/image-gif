@@ -158,19 +158,17 @@ impl Frame<'static> {
     }
 
     /// Creates a frame from a palette and indexed pixels
-    pub fn from_palette_pixels(width: u16, height: u16, palette: &[u8], pixels: &mut [u8]) -> Frame<'static> {
+    pub fn from_palette_pixels(width: u16, height: u16, pixels: &[u8], palette: &[u8], transparent: Option<u8>) -> Frame<'static> {
         assert!(palette.len() <= 256*3);
         let mut frame = Frame::default();
 
         frame.width = width;
         frame.height = height;
 
-        // FIXME do we need the clones?
-        frame.buffer = Cow::Owned(pixels.iter().cloned().collect());
-        frame.palette = Some(palette.iter().cloned().collect());
+        frame.buffer = Cow::Owned(pixels.to_vec());
+        frame.palette = Some(palette.to_vec());
 
-        // FIXME set the transparent
-        frame.transparent = None;
+        frame.transparent = transparent;
 
         frame
     }
