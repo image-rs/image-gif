@@ -159,6 +159,7 @@ impl Frame<'static> {
 
     /// Creates a frame from a palette and indexed pixels
     pub fn from_palette_pixels(width: u16, height: u16, pixels: &[u8], palette: &[u8], transparent: Option<u8>) -> Frame<'static> {
+        assert_eq!(width as usize * height as usize, pixels.len());
         assert!(palette.len() <= 256*3);
         let mut frame = Frame::default();
 
