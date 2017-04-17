@@ -126,12 +126,12 @@ impl<'a> Default for Frame<'a> {
     }
 }
 
-impl Frame<'static> {
+impl<'a> Frame<'a> {
     
     /// Creates a frame from pixels in RGBA format.
     ///
     /// *Note: This method is not optimized for speed.*
-    pub fn from_rgba(width: u16, height: u16, pixels: &mut [u8]) -> Frame<'static> {
+    pub fn from_rgba(width: u16, height: u16, pixels: &mut [u8]) -> Frame<'a> {
         assert_eq!(width as usize * height as usize * 4, pixels.len());
         let mut frame = Frame::default();
         let mut transparent = None;
@@ -160,7 +160,7 @@ impl Frame<'static> {
     /// Creates a frame from pixels in RGB format.
     ///
     /// *Note: This method is not optimized for speed.*
-    pub fn from_rgb(width: u16, height: u16, pixels: &[u8]) -> Frame<'static> {
+    pub fn from_rgb(width: u16, height: u16, pixels: &[u8]) -> Frame<'a> {
         assert_eq!(width as usize * height as usize * 3, pixels.len());
         let mut vec: Vec<u8> = Vec::with_capacity(pixels.len() + width as usize * height as usize);
         for v in pixels.chunks(3) {
