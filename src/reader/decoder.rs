@@ -521,9 +521,17 @@ impl StreamingDecoder {
                 }  else if b != 0 { // decode next sub-block
                     goto!(DecodeSubBlock(b as usize))
                 } else {
-                    // end of image data reached
-                    self.current = None;
-                    goto!(0, FrameDecoded, emit Decoded::DataEnd)
+                    // The end of the lzw stream is only reached if left == 0 and an additional call
+                    // to `decode_bytes` results in an empty slice.
+                    let decoder = self.lzw_reader.as_mut().unwrap();
+                    let (_, bytes) = try!(decoder.decode_bytes(&[]));
+                    if bytes.len() > 0 {
+                        goto!(0, DecodeSubBlock(0), emit Decoded::Data(bytes))
+                    } else {
+                        // end of image data reached
+                        self.current = None;
+                        goto!(0, FrameDecoded, emit Decoded::DataEnd)
+                    }
                 }
             }
             FrameDecoded => {

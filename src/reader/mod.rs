@@ -238,17 +238,13 @@ impl<R> Reader<R> where R: Read {
             let height = self.current_frame.height as usize;
             for row in (InterlaceIterator { len: height, next: 0, pass: 0 }) {
                 if !try!(self.fill_buffer(&mut buf[row*width..][..width])) {
-                    return Err(DecodingError::Format(
-                            "Image truncated"
-                            ))
+                    return Err(DecodingError::Format("Image truncated"))
                 }
             }
         } else {
             let buf = &mut buf[..self.buffer_size()];
             if !try!(self.fill_buffer(buf)) {
-                return Err(DecodingError::Format(
-                        "Image truncated"
-                        ))
+                return Err(DecodingError::Format("Image truncated"))
             }
         };
         Ok(())
