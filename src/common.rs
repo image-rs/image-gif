@@ -89,7 +89,7 @@ pub struct Frame<'a> {
     pub dispose: DisposalMethod,
     /// Transparent index (if available).
     pub transparent: Option<u8>,
-    /// True if the frame needs user input do be displayed.
+    /// True if the frame needs user input to be displayed.
     pub needs_user_input: bool,
     /// Offset from the top border of the canvas.
     pub top: u16,
