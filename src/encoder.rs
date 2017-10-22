@@ -152,6 +152,9 @@ impl<W: Write> Encoder<W> {
         let mut flags = 0;
         flags |= 0b1000_0000;
         let num_colors = palette.len() / 3;
+        if num_colors > 256 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Too many colors"));
+        }
         flags |= flag_size(num_colors);
         flags |= flag_size(num_colors) << 4; // wtf flag
         try!(self.write_screen_desc(flags));
@@ -186,6 +189,9 @@ impl<W: Write> Encoder<W> {
             Some(ref palette) => {
                 flags |= 0b1000_0000;
                 let num_colors = palette.len() / 3;
+                if num_colors > 256 {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "Too many colors"));
+                }
                 flags |= flag_size(num_colors);
                 try!(self.w.write_le(flags));
                 self.write_color_table(palette)
@@ -218,6 +224,9 @@ impl<W: Write> Encoder<W> {
 
     fn write_color_table(&mut self, table: &[u8]) -> io::Result<()> {
         let num_colors = table.len() / 3;
+        if num_colors > 256 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Too many colors"));
+        }
         let size = flag_size(num_colors);
         try!(self.w.write_all(&table[..num_colors * 3]));
         // Waste some space as of gif spec
