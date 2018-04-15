@@ -156,7 +156,40 @@ impl Frame<'static> {
         
         
     }
-    
+
+    /// Creates a frame from a palette and indexed pixels
+    pub fn from_palette_pixels(width: u16, height: u16, pixels: &[u8], palette: &[u8], transparent: Option<u8>) -> Frame<'static> {
+        assert_eq!(width as usize * height as usize, pixels.len());
+        assert!(palette.len() <= 256*3);
+        let mut frame = Frame::default();
+
+        frame.width = width;
+        frame.height = height;
+
+        frame.buffer = Cow::Owned(pixels.to_vec());
+        frame.palette = Some(palette.to_vec());
+
+        frame.transparent = transparent;
+
+        frame
+    }
+
+    /// Creates a frame from indexed pixels in the global palette
+    pub fn from_indexed_pixels(width: u16, height: u16, pixels: &[u8], transparent: Option<u8>) -> Frame<'static> {
+        assert_eq!(width as usize * height as usize, pixels.len());
+        let mut frame = Frame::default();
+
+        frame.width = width;
+        frame.height = height;
+
+        frame.buffer = Cow::Owned(pixels.to_vec());
+        frame.palette = None;
+
+        frame.transparent = transparent;
+
+        frame
+    }
+
     /// Creates a frame from pixels in RGB format.
     ///
     /// *Note: This method is not optimized for speed.*
