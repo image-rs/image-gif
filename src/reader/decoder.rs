@@ -376,9 +376,7 @@ impl StreamingDecoder {
                             (control_flags & 0b11100) >> 2
                         ) {
                             Some(method) => method,
-                            None => return Err(DecodingError::Format(
-                                "unknown disposal method"
-                            ))
+                            None => DisposalMethod::Any
                         };
                         goto!(U16(U16Value::Delay))
                     }
