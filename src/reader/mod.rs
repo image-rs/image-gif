@@ -96,13 +96,13 @@ impl<R: Read> ReadDecoder<R> {
     fn decode_next(&mut self) -> Result<Option<Decoded>, DecodingError> {
         while !self.at_eof {
             let (consumed, result) = {
-                let buf = try!(self.reader.fill_buf());
+                let buf = self.reader.fill_buf()?;
                 if buf.len() == 0 {
                     return Err(DecodingError::Format(
                         "unexpected EOF"
                     ))
                 }
-                try!(self.decoder.update(buf))
+                self.decoder.update(buf)?
             };
             self.reader.consume(consumed);
             match result {
@@ -157,7 +157,7 @@ impl<R> Reader<R> where R: Read {
     
     fn init(mut self) -> Result<Self, DecodingError> {
         loop {
-            match try!(self.decoder.decode_next()) {
+            match self.decoder.decode_next()? {
                 Some(Decoded::BackgroundColor(bg_color)) => {
                     self.bg_color = Some(bg_color)
                 }
@@ -185,7 +185,7 @@ impl<R> Reader<R> where R: Read {
     /// Returns the next frame info
     pub fn next_frame_info(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
         loop {
-            match try!(self.decoder.decode_next()) {
+            match self.decoder.decode_next()? {
                 Some(Decoded::Frame(frame)) => {
                     self.current_frame = frame.clone();
                     if frame.palette.is_none() && self.global_palette.is_none() {
@@ -216,9 +216,9 @@ impl<R> Reader<R> where R: Read {
     /// Do not call `Self::next_frame_info` beforehand.
     /// Deinterlaces the result.
     pub fn read_next_frame(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
-        if try!(self.next_frame_info()).is_some() {
+        if self.next_frame_info()?.is_some() {
             let mut vec = vec![0; self.buffer_size()];
-            try!(self.read_into_buffer(&mut vec));
+            self.read_into_buffer(&mut vec)?;
             self.current_frame.buffer = Cow::Owned(vec);
             self.current_frame.interlaced = false;
             Ok(Some(&self.current_frame))
@@ -237,13 +237,13 @@ impl<R> Reader<R> where R: Read {
             let width = self.line_length();
             let height = self.current_frame.height as usize;
             for row in (InterlaceIterator { len: height, next: 0, pass: 0 }) {
-                if !try!(self.fill_buffer(&mut buf[row*width..][..width])) {
+                if !self.fill_buffer(&mut buf[row*width..][..width])? {
                     return Err(DecodingError::Format("Image truncated"))
                 }
             }
         } else {
             let buf = &mut buf[..self.buffer_size()];
-            if !try!(self.fill_buffer(buf)) {
+            if !self.fill_buffer(buf)? {
                 return Err(DecodingError::Format("Image truncated"))
             }
         };
@@ -303,7 +303,7 @@ impl<R> Reader<R> where R: Read {
             }
         }
         loop {
-            match try!(self.decoder.decode_next()) {
+            match self.decoder.decode_next()? {
                 Some(Decoded::Data(data)) => {
                     let (len, channels) = handle_data!(data);
                     let buf_ = buf; buf = &mut buf_[len*channels..]; // shorten buf
@@ -340,9 +340,9 @@ impl<R> Reader<R> where R: Read {
         // TODO prevent planic
         Ok(match self.current_frame.palette {
             Some(ref table) => &*table,
-            None => &*try!(self.global_palette.as_ref().ok_or(DecodingError::Format(
+            None => &*self.global_palette.as_ref().ok_or(DecodingError::Format(
                 "No color table available for current frame."
-            ))),
+            ))?,
         })
     }
     
