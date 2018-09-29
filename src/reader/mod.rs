@@ -179,6 +179,12 @@ impl<R> Reader<R> where R: Read {
                 ))
             }
         }
+        // If the background color is invalid, ignore it
+        if let &Some(ref palette) = &self.global_palette {
+            if self.bg_color.unwrap_or(0) as usize >= palette.len() {
+                self.bg_color = None;
+            }
+        }
         Ok(self)
     }
     
