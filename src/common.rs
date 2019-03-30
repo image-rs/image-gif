@@ -127,12 +127,13 @@ impl<'a> Default for Frame<'a> {
 }
 
 impl Frame<'static> {
-    
     /// Creates a frame from pixels in RGBA format.
-    ///
     /// *Note: This method is not optimized for speed.*
+    ///
+    /// # Panics:
+    /// *   If the length of pixels does not equal `width * height * 4`.
     pub fn from_rgba(width: u16, height: u16, pixels: &mut [u8]) -> Frame<'static> {
-        assert_eq!(width as usize * height as usize * 4, pixels.len());
+        assert_eq!(width as usize * height as usize * 4, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
         let mut frame = Frame::default();
         let mut transparent = None;
         for pix in pixels.chunks_mut(4) {
@@ -157,10 +158,14 @@ impl Frame<'static> {
         
     }
 
-    /// Creates a frame from a palette and indexed pixels
+    /// Creates a frame from a palette and indexed pixels.
+    ///
+    /// # Panics:
+    /// *   If the length of pixels does not equal `width * height`.
+    /// *   If the length of palette > `256 * 3`.
     pub fn from_palette_pixels(width: u16, height: u16, pixels: &[u8], palette: &[u8], transparent: Option<u8>) -> Frame<'static> {
-        assert_eq!(width as usize * height as usize, pixels.len());
-        assert!(palette.len() <= 256*3);
+        assert_eq!(width as usize * height as usize, pixels.len(), "Too many or too little pixels for the given width and height to create a GIF Frame");
+        assert!(palette.len() <= 256*3, "Too many palette values to create a GIF Frame");
         let mut frame = Frame::default();
 
         frame.width = width;
@@ -174,9 +179,12 @@ impl Frame<'static> {
         frame
     }
 
-    /// Creates a frame from indexed pixels in the global palette
+    /// Creates a frame from indexed pixels in the global palette.
+    ///
+    /// # Panics:
+    /// *   If the length of pixels does not equal `width * height`.
     pub fn from_indexed_pixels(width: u16, height: u16, pixels: &[u8], transparent: Option<u8>) -> Frame<'static> {
-        assert_eq!(width as usize * height as usize, pixels.len());
+        assert_eq!(width as usize * height as usize, pixels.len(), "Too many or too little pixels for the given width and height to create a GIF Frame");
         let mut frame = Frame::default();
 
         frame.width = width;
@@ -191,10 +199,12 @@ impl Frame<'static> {
     }
 
     /// Creates a frame from pixels in RGB format.
-    ///
     /// *Note: This method is not optimized for speed.*
+    ///
+    /// # Panics:
+    /// *   If the length of pixels does not equal `width * height * 3`.
     pub fn from_rgb(width: u16, height: u16, pixels: &[u8]) -> Frame<'static> {
-        assert_eq!(width as usize * height as usize * 3, pixels.len());
+        assert_eq!(width as usize * height as usize * 3, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
         let mut vec: Vec<u8> = Vec::with_capacity(pixels.len() + width as usize * height as usize);
         for v in pixels.chunks(3) {
             vec.extend([v[0], v[1], v[2], 0xFF].iter().cloned())

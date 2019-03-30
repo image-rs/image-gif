@@ -3,7 +3,6 @@ use std::mem;
 use std::default::Default;
 
 use std::io;
-use std::io::prelude::*;
 
 use std::fmt;
 use std::error;
