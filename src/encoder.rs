@@ -210,7 +210,7 @@ impl<W: Write> Encoder<W> {
 
     fn write_image_block(&mut self, data: &[u8]) -> io::Result<()> {
         {
-            let min_code_size: u8 = match flag_size((*data.iter().max().unwrap_or(&0) as usize + 1)) + 1 {
+            let min_code_size: u8 = match flag_size(*data.iter().max().unwrap_or(&0) as usize + 1) + 1 {
                 1 => 2, // As per gif spec: The minimal code size has to be >= 2
                 n => n
             };
