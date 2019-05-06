@@ -6,9 +6,9 @@ version = "0.10.1"
 description = "GIF de- and encoder"
 authors = ["nwin <nwin@users.noreply.github.com>"]
 readme = "README.md"
-repository = "https://github.com/PistonDevelopers/image-gif.git"
-documentation = "http://www.piston.rs/image/gif/index.html"
-homepage = "https://github.com/PistonDevelopers/image-gif"
+homepage = "https://github.com/image-rs/image-gif"
+repository = "https://github.com/image-rs/image-gif"
+documentation = "https://docs.rs/gif"
 
 exclude = [
     "tests/*",
