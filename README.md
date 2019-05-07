@@ -1,6 +1,6 @@
 # GIF en- and decoding library [![Build Status](https://travis-ci.org/image-rs/image-gif.svg?branch=master)](https://travis-ci.org/image-rs/image-gif)
 
-GIF en- and decoder written in Rust ([API Documentation](http://www.piston.rs/image/gif/index.html)). 
+GIF en- and decoder written in Rust ([API Documentation](https://docs.rs/gif/)).
 
 # GIF encoding and decoding library
 
@@ -9,7 +9,7 @@ This library provides all functions necessary to de- and encode GIF files.
 ## High level interface
 
 The high level interface consists of the two types
-[`Encoder`](http://www.piston.rs/image/gif/struct.Encoder.html) and [`Decoder`](http://www.piston.rs/image/gif/struct.Decoder.html).
+[`Encoder`](https://docs.rs/gif/0.10.1/gif/struct.Encoder.html) and [`Decoder`](https://docs.rs/gif/0.10.1/gif/struct.Decoder.html).
 They as builders for the actual en- and decoders and can be used to set various
 options beforehand.
 
@@ -67,7 +67,7 @@ for state in &beacon_states {
 }
 ```
 
-[`Frame::from_*`](http://www.piston.rs/image/gif/struct.Frame.html) can be used to convert a true color image to a paletted
+[`Frame::from_*`](https://docs.rs/gif/0.10.1/gif/struct.Frame.html) can be used to convert a true color image to a paletted
 image with a maximum of 256 colors:
 
 ```rust
@@ -83,4 +83,3 @@ let mut encoder = gif::Encoder::new(&mut image, frame.width, frame.height, &[]).
 // Write frame to file
 encoder.write_frame(&frame).unwrap();
 ```
-
