@@ -216,7 +216,7 @@ impl<W: Write> Encoder<W> {
             };
             self.w.write_le(min_code_size)?;
             let mut bw = BlockWriter::new(&mut self.w);
-            let mut enc = lzw::Encoder::new(lzw::LsbWriter::new(&mut bw), min_code_size));
+            let mut enc = lzw::Encoder::new(lzw::LsbWriter::new(&mut bw), min_code_size)?;
             enc.encode_bytes(data)?;
         }
         self.w.write_le(0u8)
