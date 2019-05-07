@@ -56,7 +56,7 @@ impl<W: io::Write + ?Sized> WriteBytesExt<u16> for W {
 impl<W: io::Write + ?Sized> WriteBytesExt<u32> for W {
     #[inline]
     fn write_le(&mut self, n: u32) -> io::Result<()> {
-        try!(self.write_le(n as u16));
+        self.write_le(n as u16)?;
         self.write_le((n >> 16) as u16)
         
     }
@@ -65,7 +65,7 @@ impl<W: io::Write + ?Sized> WriteBytesExt<u32> for W {
 impl<W: io::Write + ?Sized> WriteBytesExt<u64> for W {
     #[inline]
     fn write_le(&mut self, n: u64) -> io::Result<()> {
-        try!(self.write_le(n as u32));
+        self.write_le(n as u32)?;
         self.write_le((n >> 32) as u32)
         
     }

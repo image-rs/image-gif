@@ -69,11 +69,11 @@ fn error_cast() {
 #[test]
 fn render_images() {
     process_images(|path| {
-        let mut decoder = gif::Decoder::new(try!(File::open(path)));
+        let mut decoder = gif::Decoder::new(File::open(path)?);
         decoder.set(gif::ColorOutput::RGBA);
-        let mut decoder = try!(decoder.read_info());
+        let mut decoder = decoder.read_info()?;
         let mut crc = Crc32::new();
-        while let Some(frame) = try!(decoder.read_next_frame()) {
+        while let Some(frame) = decoder.read_next_frame()? {
             // First sanity check:
             assert_eq!(
                 frame.buffer.len(), 

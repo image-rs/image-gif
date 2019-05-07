@@ -221,7 +221,7 @@ impl StreamingDecoder {
                         // this is safe.
                         // ### NOTE
                         // To check that everything is sound, return the result without
-                        // the match (e.g. `return Ok(try!(self.next_state(buf)))`). If
+                        // the match (e.g. `return Ok(self.next_state(buf)?)`). If
                         // it compiles the returned lifetime is correct.
                         unsafe { 
                             mem::transmute::<Decoded, Decoded>(result)
@@ -460,7 +460,7 @@ impl StreamingDecoder {
                 if let Some(ext) = Extension::from_u8(type_) {
                     match ext {
                         Control => {
-                            goto!(try!(self.read_control_extension(b)))
+                            goto!(self.read_control_extension(b)?)
                         }
                         Text | Comment | Application => {
                             goto!(SkipBlock(b as usize))
@@ -513,7 +513,7 @@ impl StreamingDecoder {
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
                     let decoder = self.lzw_reader.as_mut().unwrap();
-                    let (consumed, bytes) = try!(decoder.decode_bytes(&buf[..n]));
+                    let (consumed, bytes) = decoder.decode_bytes(&buf[..n])?;
                     goto!(consumed, DecodeSubBlock(left - consumed), emit Decoded::Data(bytes))
                 }  else if b != 0 { // decode next sub-block
                     goto!(DecodeSubBlock(b as usize))
@@ -521,7 +521,7 @@ impl StreamingDecoder {
                     // The end of the lzw stream is only reached if left == 0 and an additional call
                     // to `decode_bytes` results in an empty slice.
                     let decoder = self.lzw_reader.as_mut().unwrap();
-                    let (_, bytes) = try!(decoder.decode_bytes(&[]));
+                    let (_, bytes) = decoder.decode_bytes(&[])?;
                     if bytes.len() > 0 {
                         goto!(0, DecodeSubBlock(0), emit Decoded::Data(bytes))
                     } else {
