@@ -19,16 +19,16 @@ fn main() {
     let mut decoder = gif::Decoder::new(file);*/
     decoder.set(gif::ColorOutput::RGBA);
     match (|| -> Result<(), gif::DecodingError> {
-        let mut decoder = try!(decoder.read_info());
+        let mut decoder = decoder.read_info()?;
         println!("width = {}, height = {}", decoder.width(), decoder.height());
         let mut i = 0;
         loop {
-            if let Some(frame) = try!(decoder.next_frame_info()) {
+            if let Some(frame) = decoder.next_frame_info()? {
                 i += 1;
                 println!("frame {}: {:?}", i, frame);
             } else { break }
             let mut vec = vec![0; decoder.buffer_size()];
-            try!(decoder.fill_buffer(&mut vec));
+            decoder.fill_buffer(&mut vec)?;
             test::black_box(vec);
         }
         Ok(())

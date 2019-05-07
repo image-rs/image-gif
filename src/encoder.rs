@@ -92,8 +92,8 @@ impl<'a, W: Write + 'a> Write for BlockWriter<'a, W> {
         self.bytes += to_copy;
         if self.bytes == 0xFF {
             self.bytes = 0;
-            try!(self.w.write_le(0xFFu8));
-            try!(self.w.write_all(&self.buf));
+            self.w.write_le(0xFFu8)?;
+            self.w.write_all(&self.buf)?;
         }
         Ok(to_copy)
     }
@@ -157,8 +157,8 @@ impl<W: Write> Encoder<W> {
         }
         flags |= flag_size(num_colors);
         flags |= flag_size(num_colors) << 4; // wtf flag
-        try!(self.write_screen_desc(flags));
-        try!(self.write_color_table(palette));
+        self.write_screen_desc(flags)?;
+        self.write_color_table(palette)?;
         Ok(self)
     }
 
@@ -168,24 +168,24 @@ impl<W: Write> Encoder<W> {
     pub fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
         // TODO commented off to pass test in lib.rs
         //if frame.delay > 0 || frame.transparent.is_some() {
-            try!(self.write_extension(ExtensionData::new_control_ext(
+            self.write_extension(ExtensionData::new_control_ext(
                 frame.delay,
                 frame.dispose,
                 frame.needs_user_input,
                 frame.transparent
 
-            )));
+            ))?;
         //}
-        try!(self.w.write_le(Block::Image as u8));
-        try!(self.w.write_le(frame.left));
-        try!(self.w.write_le(frame.top));
-        try!(self.w.write_le(frame.width));
-        try!(self.w.write_le(frame.height));
+        self.w.write_le(Block::Image as u8)?;
+        self.w.write_le(frame.left)?;
+        self.w.write_le(frame.top)?;
+        self.w.write_le(frame.width)?;
+        self.w.write_le(frame.height)?;
         let mut flags = 0;
         if frame.interlaced {
             flags |= 0b0100_0000;
         }
-        try!(match frame.palette {
+        match frame.palette {
             Some(ref palette) => {
                 flags |= 0b1000_0000;
                 let num_colors = palette.len() / 3;
@@ -193,7 +193,7 @@ impl<W: Write> Encoder<W> {
                     return Err(io::Error::new(io::ErrorKind::InvalidInput, "Too many colors"));
                 }
                 flags |= flag_size(num_colors);
-                try!(self.w.write_le(flags));
+                self.w.write_le(flags)?;
                 self.write_color_table(palette)
             },
             None => if !self.global_palette {
@@ -204,7 +204,7 @@ impl<W: Write> Encoder<W> {
             } else {
                 self.w.write_le(flags)
             }
-        });
+        }?;
         self.write_image_block(&frame.buffer)
     }
 
@@ -214,10 +214,10 @@ impl<W: Write> Encoder<W> {
                 1 => 2, // As per gif spec: The minimal code size has to be >= 2
                 n => n
             };
-            try!(self.w.write_le(min_code_size));
+            self.w.write_le(min_code_size)?;
             let mut bw = BlockWriter::new(&mut self.w);
-            let mut enc = try!(lzw::Encoder::new(lzw::LsbWriter::new(&mut bw), min_code_size));
-            try!(enc.encode_bytes(data));
+            let mut enc = lzw::Encoder::new(lzw::LsbWriter::new(&mut bw), min_code_size));
+            enc.encode_bytes(data)?;
         }
         self.w.write_le(0u8)
     }
@@ -228,10 +228,10 @@ impl<W: Write> Encoder<W> {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Too many colors"));
         }
         let size = flag_size(num_colors);
-        try!(self.w.write_all(&table[..num_colors * 3]));
+        self.w.write_all(&table[..num_colors * 3])?;
         // Waste some space as of gif spec
         for _ in 0..((2 << size) - num_colors) {
-            try!(self.w.write_all(&[0, 0, 0]))
+            self.w.write_all(&[0, 0, 0])?
         }
         Ok(())
     }
@@ -246,24 +246,24 @@ impl<W: Write> Encoder<W> {
         if let Repetitions(Repeat::Finite(0)) = extension {
             return Ok(())
         }
-        try!(self.w.write_le(Block::Extension as u8));
+        self.w.write_le(Block::Extension as u8)?;
         match extension {
             Control { flags, delay, trns } => {
-                try!(self.w.write_le(Extension::Control as u8));
-                try!(self.w.write_le(4u8));
-                try!(self.w.write_le(flags));
-                try!(self.w.write_le(delay));
-                try!(self.w.write_le(trns));
+                self.w.write_le(Extension::Control as u8)?;
+                self.w.write_le(4u8)?;
+                self.w.write_le(flags)?;
+                self.w.write_le(delay)?;
+                self.w.write_le(trns)?;
             }
             Repetitions(repeat) => {
-                try!(self.w.write_le(Extension::Application as u8));
-                try!(self.w.write_le(11u8));
-                try!(self.w.write(b"NETSCAPE2.0"));
-                try!(self.w.write_le(3u8));
-                try!(self.w.write_le(1u8));
+                self.w.write_le(Extension::Application as u8)?;
+                self.w.write_le(11u8)?;
+                self.w.write(b"NETSCAPE2.0")?;
+                self.w.write_le(3u8)?;
+                self.w.write_le(1u8)?;
                 match repeat {
-                    Repeat::Finite(no) => try!(self.w.write_le(no)),
-                    Repeat::Infinite => try!(self.w.write_le(0u16)),
+                    Repeat::Finite(no) => self.w.write_le(no)?,
+                    Repeat::Infinite => self.w.write_le(0u16)?,
                 }
             }
         }
@@ -276,12 +276,12 @@ impl<W: Write> Encoder<W> {
     /// identifier (e.g. `Extension::Application as u8`). `data` are the extension payload blocks. If any
     /// contained slice has a lenght > 255 it is automatically divided into sub-blocks.
     pub fn write_raw_extension(&mut self, func: u8, data: &[&[u8]]) -> io::Result<()> {
-        try!(self.w.write_le(Block::Extension as u8));
-        try!(self.w.write_le(func as u8));
+        self.w.write_le(Block::Extension as u8)?;
+        self.w.write_le(func as u8)?;
         for block in data {
             for chunk in block.chunks(0xFF) {
-                try!(self.w.write_le(chunk.len() as u8));
-                try!(self.w.write_all(chunk));
+                self.w.write_le(chunk.len() as u8)?;
+                self.w.write_all(chunk)?;
             }
         }
         self.w.write_le(0u8)
@@ -289,11 +289,11 @@ impl<W: Write> Encoder<W> {
 
     /// Writes the logical screen desriptor
     fn write_screen_desc(&mut self, flags: u8) -> io::Result<()> {
-        try!(self.w.write_all(b"GIF89a"));
-        try!(self.w.write_le(self.width));
-        try!(self.w.write_le(self.height));
-        try!(self.w.write_le(flags)); // packed field
-        try!(self.w.write_le(0u8)); // bg index
+        self.w.write_all(b"GIF89a")?;
+        self.w.write_le(self.width)?;
+        self.w.write_le(self.height)?;
+        self.w.write_le(flags)?; // packed field
+        self.w.write_le(0u8)?; // bg index
         self.w.write_le(0u8) // aspect ratio
     }
 }

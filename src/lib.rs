@@ -108,9 +108,9 @@
 // }
 // # (|| {
 // {
-// let mut file = try!(File::create("test.gif"));
+// let mut file = File::create("test.gif")?;
 // let mut encoder = Encoder::new(&mut file, 100, 100);
-// try!(encoder.write_global_palette(color_map)).write_frame(&frame)
+// encoder.write_global_palette(color_map)?.write_frame(&frame)
 // }
 // # })().unwrap();
 // ```
