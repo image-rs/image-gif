@@ -20,7 +20,7 @@ lzw = "0.10"
 color_quant = "1.0"
 
 [dev-dependencies]
-glob = "0.2.10"
+glob = "0.3"
 
 [features]
 default = ["raii_no_panic"]
