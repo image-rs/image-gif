@@ -133,7 +133,20 @@ impl Frame<'static> {
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height * 4`.
     pub fn from_rgba(width: u16, height: u16, pixels: &mut [u8]) -> Frame<'static> {
+        Frame::from_rgba_speed(width, height, pixels, 1)
+    }
+
+    /// Creates a frame from pixels in RGBA format.
+    /// `speed` is a value in the range [1, 30].
+    /// The higher the value the faster it runs at the cost of image quality.
+    /// A `speed` of 10 is a good compromise between speed and quality.
+    ///
+    /// # Panics:
+    /// *   If the length of pixels does not equal `width * height * 4`.
+    /// *   If `speed < 1` or `speed > 30`
+    pub fn from_rgba_speed(width: u16, height: u16, pixels: &mut [u8], speed: i32) -> Frame<'static> {
         assert_eq!(width as usize * height as usize * 4, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
+        assert!(speed >= 1 && speed <= 30, "speed needs to be in the range [1, 30]");
         let mut frame = Frame::default();
         let mut transparent = None;
         for pix in pixels.chunks_mut(4) {
@@ -145,7 +158,7 @@ impl Frame<'static> {
         }
         frame.width = width;
         frame.height = height;
-        let nq = color_quant::NeuQuant::new(1, 256, pixels);
+        let nq = color_quant::NeuQuant::new(speed, 256, pixels);
         frame.buffer = Cow::Owned(pixels.chunks(4).map(|pix| nq.index_of(pix) as u8).collect());
         frame.palette = Some(nq.color_map_rgb());
         frame.transparent = if let Some(t) = transparent {
@@ -153,9 +166,8 @@ impl Frame<'static> {
         } else {
             None
         };
+
         frame
-        
-        
     }
 
     /// Creates a frame from a palette and indexed pixels.
@@ -204,11 +216,23 @@ impl Frame<'static> {
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height * 3`.
     pub fn from_rgb(width: u16, height: u16, pixels: &[u8]) -> Frame<'static> {
+        Frame::from_rgb_speed(width, height, pixels, 1)
+    }
+
+    /// Creates a frame from pixels in RGB format.
+    /// `speed` is a value in the range [1, 30].
+    /// The higher the value the faster it runs at the cost of image quality.
+    /// A `speed` of 10 is a good compromise between speed and quality.
+    ///
+    /// # Panics:
+    /// *   If the length of pixels does not equal `width * height * 3`.
+    /// *   If `speed < 1` or `speed > 30`
+    pub fn from_rgb_speed(width: u16, height: u16, pixels: &[u8], speed: i32) -> Frame<'static> {
         assert_eq!(width as usize * height as usize * 3, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
         let mut vec: Vec<u8> = Vec::with_capacity(pixels.len() + width as usize * height as usize);
         for v in pixels.chunks(3) {
             vec.extend([v[0], v[1], v[2], 0xFF].iter().cloned())
         }
-        Frame::from_rgba(width, height, &mut vec)
+        Frame::from_rgba_speed(width, height, &mut vec, speed)
     }
 }
