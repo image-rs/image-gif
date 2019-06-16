@@ -1,7 +1,6 @@
 //! Common common used both by decoder and encoder
 extern crate color_quant;
 
-use std::mem;
 use std::borrow::Cow;
 
 /// Disposal method
@@ -21,10 +20,12 @@ pub enum DisposalMethod {
 impl DisposalMethod {
     /// Converts `u8` to `Option<Self>`
     pub fn from_u8(n: u8) -> Option<DisposalMethod> {
-        if n <= 3 {
-            Some(unsafe { mem::transmute(n) })
-        } else {
-            None
+        match n {
+            0 => Some(DisposalMethod::Any),
+            1 => Some(DisposalMethod::Keep),
+            2 => Some(DisposalMethod::Background),
+            3 => Some(DisposalMethod::Previous),
+            _ => None
         }
     }
 }
@@ -45,9 +46,9 @@ impl Block {
     /// Converts `u8` to `Option<Self>`
     pub fn from_u8(n: u8) -> Option<Block> {
         match n {
-            0x2C | 0x21 | 0x3B => {
-                Some(unsafe { mem::transmute(n) })
-            }
+            0x2C => Some(Block::Image),
+            0x21 => Some(Block::Extension),
+            0x3B => Some(Block::Trailer),
             _ => None
         }
     }
@@ -72,9 +73,10 @@ impl Extension {
     /// Converts `u8` to `Option<Self>`
     pub fn from_u8(n: u8) -> Option<Extension> {
         match n {
-            0x01 | 0xF9 | 0xFE | 0xFF => {
-                Some(unsafe { mem::transmute(n) })
-            }
+            0x01 => Some(Extension::Text),
+            0xF9 => Some(Extension::Control),
+            0xFE => Some(Extension::Comment),
+            0xFF => Some(Extension::Application),
             _ => None
         }
     }
