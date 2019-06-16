@@ -125,7 +125,6 @@ extern crate lzw;
 
 mod traits;
 mod common;
-mod util;
 mod reader;
 mod encoder;
 
