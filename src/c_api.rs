@@ -296,7 +296,7 @@ fn DGifGetLine(this: *mut GifFileType, line: *mut GifPixelType, len: c_int) -> c
     let len = cmp::min(buffer.len(), len as usize);
     *offset = *offset + len;
     let line = slice::from_raw_parts_mut(line, len);
-    util::copy_memory(buffer, line);
+    line.copy_from_slice(&buffer[..len]);
     GIF_OK
 }
 //int DGifGetPixel(GifFileType *GifFile, GifPixelType GifPixel);
