@@ -10,7 +10,6 @@ use reader::{Decoded, DecodingError, PLTE_CHANNELS};
 use c_api::{GifFileType, SavedImage, ColorMapObject, GifColorType, c_bool,
            InputFunc
 };
-use util;
 
 pub trait CInterface {
     fn read_screen_desc(&mut self, &mut GifFileType);
