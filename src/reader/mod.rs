@@ -7,7 +7,6 @@ use std::io::prelude::*;
 
 use traits::{Parameter, SetParameter};
 use common::Frame;
-use util;
 
 mod decoder;
 pub use self::decoder::{
@@ -292,7 +291,7 @@ impl<R> Reader<R> where R: Read {
                     },
                     Indexed => {
                         let len = cmp::min(buf.len(), $data.len());
-                        util::copy_memory(&$data[..len], &mut buf[..len]);
+                        buf[..len].copy_from_slice(&$data[..len]);
                         (len, 1)
                     }
                 }

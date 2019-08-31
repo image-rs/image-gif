@@ -3,6 +3,7 @@
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
+#![allow(missing_docs)] //FIXME
 
 use std::cmp;
 use std::mem;
@@ -295,7 +296,7 @@ fn DGifGetLine(this: *mut GifFileType, line: *mut GifPixelType, len: c_int) -> c
     let len = cmp::min(buffer.len(), len as usize);
     *offset = *offset + len;
     let line = slice::from_raw_parts_mut(line, len);
-    util::copy_memory(buffer, line);
+    line.copy_from_slice(&buffer[..len]);
     GIF_OK
 }
 //int DGifGetPixel(GifFileType *GifFile, GifPixelType GifPixel);
