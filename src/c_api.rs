@@ -18,7 +18,6 @@ use libc::{free, c_int, c_uint, c_char, c_uchar, c_void};
 
 use reader::{Decoder, Reader, Decoded};
 use c_api_utils::{CInterface, CFile, FnInputFile};
-use util;
 
 /// NOTE As of rust issue #954 `bool` is compatible with c_bool.
 pub type c_bool = bool;
