@@ -1,10 +1,10 @@
-//! # GIF en- and decoding library [![Build Status](https://travis-ci.org/PistonDevelopers/image-gif.svg?branch=master)](https://travis-ci.org/PistonDevelopers/image-gif)
+//! # GIF en- and decoding library [![Build Status](https://travis-ci.org/image-rs/image-gif.svg?branch=master)](https://travis-ci.org/image-rs/image-gif)
 //! 
-//! GIF en- and decoder written in Rust ([API Documentation](http://www.piston.rs/image/gif/index.html)). 
+//! GIF en- and decoder written in Rust ([API Documentation](https://docs.rs/gif)).
 //! 
 //! # GIF encoding and decoding library
 //! 
-//! This library provides all functions necessary to de- and encode GIF files. 
+//! This library provides all functions necessary to de- and encode GIF files.
 //! 
 //! ## High level interface
 //! 
@@ -115,9 +115,6 @@
 // # })().unwrap();
 // ```
 #![deny(missing_docs)]
-
-// Uncomment to run tests
-//#![cfg_attr(test, feature(test))]
 
 #[cfg(feature = "c_api")]
 extern crate libc;
