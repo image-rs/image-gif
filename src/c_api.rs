@@ -50,11 +50,12 @@ pub struct ExtensionBlock {
     /// on malloc(3) heap
     pub Bytes: *mut GifByteType, // TODO USE MALLOC for this
     /// The block function code
-    pub Function: c_int, //#define CONTINUE_EXT_FUNC_CODE    0x00    /* continuation subblock */
-                         //#define COMMENT_EXT_FUNC_CODE     0xfe    /* comment */
-                         //#define GRAPHICS_EXT_FUNC_CODE    0xf9    /* graphics control (GIF89) */
-                         //#define PLAINTEXT_EXT_FUNC_CODE   0x01    /* plaintext */
-                         //#define APPLICATION_EXT_FUNC_CODE 0xff    /* application block */
+    pub Function: c_int,
+    //#define CONTINUE_EXT_FUNC_CODE    0x00    /* continuation subblock */
+    //#define COMMENT_EXT_FUNC_CODE     0xfe    /* comment */
+    //#define GRAPHICS_EXT_FUNC_CODE    0xf9    /* graphics control (GIF89) */
+    //#define PLAINTEXT_EXT_FUNC_CODE   0x01    /* plaintext */
+    //#define APPLICATION_EXT_FUNC_CODE 0xff    /* application block */
 }
 
 #[repr(C)]
