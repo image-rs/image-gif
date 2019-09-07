@@ -45,7 +45,7 @@ impl error::Error for DecodingError {
         }
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             DecodingError::Io(ref err) => Some(err),
             _ => None,
@@ -198,7 +198,7 @@ impl StreamingDecoder {
         // NOTE: Do not change the function signature without double-checking the
         //       unsafe block!
         let len = buf.len();
-        while buf.len() > 0 && self.state.is_some() {
+        while !buf.is_empty() && self.state.is_some() {
             match self.next_state(buf) {
                 Ok((bytes, Decoded::Nothing)) => buf = &buf[bytes..],
                 Ok((bytes, Decoded::Trailer)) => {
@@ -299,7 +299,7 @@ impl StreamingDecoder {
             U16(next) => goto!(U16Byte1(next, b)),
             U16Byte1(next, value) => {
                 use self::U16Value::*;
-                let value = ((b as u16) << 8) | value as u16;
+                let value = (u16::from(b) << 8) | u16::from(value);
                 match (next, value) {
                     (ScreenWidth, width) => {
                         self.width = width;
@@ -408,9 +408,8 @@ impl StreamingDecoder {
                         .nth(idx as usize)
                     {
                         Some(chunk) => {
-                            for i in 0..PLTE_CHANNELS {
-                                self.background_color[i] = chunk[i]
-                            }
+                            self.background_color[..PLTE_CHANNELS]
+                                .clone_from_slice(&chunk[..PLTE_CHANNELS]);
                         }
                         None => self.background_color[0] = 0,
                     }
@@ -426,9 +425,11 @@ impl StreamingDecoder {
                         self.add_frame();
                         goto!(U16Byte1(U16Value::ImageLeft, b), emit Decoded::BlockStart(Image))
                     }
-                    Some(Extension) => goto!(ExtensionBlock(b), emit Decoded::BlockStart(Extension)),
+                    Some(Extension) => {
+                        goto!(ExtensionBlock(b), emit Decoded::BlockStart(Extension))
+                    }
                     Some(Trailer) => goto!(0, State::Trailer, emit Decoded::BlockStart(Trailer)),
-                    None => return Err(DecodingError::Format("unknown block type encountered")),
+                    None => Err(DecodingError::Format("unknown block type encountered")),
                 }
             }
             BlockEnd(terminator) => {
@@ -439,7 +440,7 @@ impl StreamingDecoder {
                         goto!(BlockStart(Block::from_u8(b)))
                     }
                 } else {
-                    return Err(DecodingError::Format("expected block terminator not found"));
+                    Err(DecodingError::Format("expected block terminator not found"))
                 }
             }
             ExtensionBlock(type_) => {
@@ -453,7 +454,7 @@ impl StreamingDecoder {
                         Text | Comment | Application => goto!(SkipBlock(b as usize)),
                     }
                 } else {
-                    return Err(DecodingError::Format("unknown extention block encountered"));
+                    Err(DecodingError::Format("unknown extention block encountered"))
                 }
             }
             SkipBlock(left) => {
@@ -461,14 +462,12 @@ impl StreamingDecoder {
                 if left > 0 {
                     self.ext.1.push(b);
                     goto!(n, SkipBlock(left - n))
+                } else if b == 0 {
+                    self.ext.2 = true;
+                    goto!(BlockEnd(b), emit Decoded::BlockFinished(self.ext.0, &self.ext.1))
                 } else {
-                    if b == 0 {
-                        self.ext.2 = true;
-                        goto!(BlockEnd(b), emit Decoded::BlockFinished(self.ext.0, &self.ext.1))
-                    } else {
-                        self.ext.2 = false;
-                        goto!(SkipBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.0,&self.ext.1))
-                    }
+                    self.ext.2 = false;
+                    goto!(SkipBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.0,&self.ext.1))
                 }
             }
             LocalPalette(left) => {
@@ -506,7 +505,7 @@ impl StreamingDecoder {
                     // to `decode_bytes` results in an empty slice.
                     let decoder = self.lzw_reader.as_mut().unwrap();
                     let (_, bytes) = decoder.decode_bytes(&[])?;
-                    if bytes.len() > 0 {
+                    if !bytes.is_empty() {
                         goto!(0, DecodeSubBlock(0), emit Decoded::Data(bytes))
                     } else {
                         // end of image data reached

@@ -70,7 +70,7 @@ impl<R: Read> Decoder<R> {
     /// Creates a new decoder builder
     pub fn new(r: R) -> Decoder<R> {
         Decoder {
-            r: r,
+            r,
             decoder: StreamingDecoder::new(),
             memory_limit: 50_000_000, // 50 MB
             color_output: ColorOutput::Indexed,
@@ -96,7 +96,7 @@ impl<R: Read> ReadDecoder<R> {
         while !self.at_eof {
             let (consumed, result) = {
                 let buf = self.reader.fill_buf()?;
-                if buf.len() == 0 {
+                if buf.is_empty() {
                     return Err(DecodingError::Format("unexpected EOF"));
                 }
                 self.decoder.update(buf)?
@@ -144,14 +144,14 @@ where
         Reader {
             decoder: ReadDecoder {
                 reader: io::BufReader::new(reader),
-                decoder: decoder,
+                decoder,
                 at_eof: false,
             },
             bg_color: None,
             global_palette: None,
             buffer: Vec::with_capacity(32),
-            color_output: color_output,
-            memory_limit: memory_limit,
+            color_output,
+            memory_limit,
             current_frame: Frame::default(),
             offset: 0,
         }
@@ -162,7 +162,7 @@ where
             match self.decoder.decode_next()? {
                 Some(Decoded::BackgroundColor(bg_color)) => self.bg_color = Some(bg_color),
                 Some(Decoded::GlobalPalette(palette)) => {
-                    self.global_palette = if palette.len() > 0 {
+                    self.global_palette = if !palette.is_empty() {
                         Some(palette)
                     } else {
                         None
@@ -182,7 +182,7 @@ where
             }
         }
         // If the background color is invalid, ignore it
-        if let &Some(ref palette) = &self.global_palette {
+        if let Some(ref palette) = self.global_palette {
             if self.bg_color.unwrap_or(0) as usize >= palette.len() {
                 self.bg_color = None;
             }
@@ -202,7 +202,7 @@ where
                         ));
                     }
                     if self.memory_limit > 0
-                        && ((frame.width as u32 * frame.height as u32) > self.memory_limit)
+                        && ((u32::from(frame.width) * u32::from(frame.height)) > self.memory_limit)
                     {
                         return Err(DecodingError::Format("Image is too large to decode."));
                     }
@@ -307,7 +307,7 @@ where
             self.buffer.truncate(buf_len - len);
             let buf_ = buf;
             buf = &mut buf_[len * channels..];
-            if buf.len() == 0 {
+            if buf.is_empty() {
                 return Ok(true);
             }
         }
@@ -317,10 +317,10 @@ where
                     let (len, channels) = handle_data!(data);
                     let buf_ = buf;
                     buf = &mut buf_[len * channels..]; // shorten buf
-                    if buf.len() > 0 {
+                    if !buf.is_empty() {
                         continue;
                     } else if len < data.len() {
-                        self.buffer.extend(data[len..].iter().map(|&v| v));
+                        self.buffer.extend(data[len..].iter().copied());
                     }
                     return Ok(true);
                 }
@@ -434,7 +434,6 @@ mod test {
     }*/
 
     #[test]
-    #[rustfmt::skip]
     fn test_simple_indexed() {
         let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap())
             .read_info()
@@ -455,7 +454,6 @@ mod test {
     }
 
     #[test]
-    #[rustfmt::skip]
     fn test_interlace_iterator() {
         for &(len, expect) in &[
             (0, &[][..]),
@@ -478,7 +476,7 @@ mod test {
             (17, &[0, 8, 16, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..]),
         ] {
             let iter = InterlaceIterator {
-                len: len,
+                len,
                 next: 0,
                 pass: 0,
             };

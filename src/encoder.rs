@@ -60,9 +60,9 @@ impl ExtensionData {
         flags |= (needs_user_input as u8) << 1;
         flags |= (dispose as u8) << 2;
         ExtensionData::Control {
-            flags: flags,
-            delay: delay,
-            trns: trns,
+            flags,
+            delay,
+            trns,
         }
     }
 }
@@ -76,7 +76,7 @@ struct BlockWriter<'a, W: Write + 'a> {
 impl<'a, W: Write + 'a> BlockWriter<'a, W> {
     fn new(w: &'a mut W) -> BlockWriter<'a, W> {
         BlockWriter {
-            w: w,
+            w,
             bytes: 0,
             buf: [0; 0xFF],
         }
@@ -100,10 +100,10 @@ impl<'a, W: Write + 'a> Write for BlockWriter<'a, W> {
         Ok(to_copy)
     }
     fn flush(&mut self) -> io::Result<()> {
-        return Err(io::Error::new(
+        Err(io::Error::new(
             io::ErrorKind::Other,
             "Cannot flush a BlockWriter, use `drop` instead.",
-        ));
+        ))
     }
 }
 
@@ -140,10 +140,10 @@ impl<W: Write> Encoder<W> {
     /// if no global palette shall be used an empty slice may be supplied.
     pub fn new(w: W, width: u16, height: u16, global_palette: &[u8]) -> io::Result<Self> {
         Encoder {
-            w: w,
+            w,
             global_palette: false,
-            width: width,
-            height: height,
+            width,
+            height,
         }
         .write_global_palette(global_palette)
     }
@@ -271,7 +271,7 @@ impl<W: Write> Encoder<W> {
             Repetitions(repeat) => {
                 self.w.write_le(Extension::Application as u8)?;
                 self.w.write_le(11u8)?;
-                self.w.write(b"NETSCAPE2.0")?;
+                self.w.write_all(b"NETSCAPE2.0")?;
                 self.w.write_le(3u8)?;
                 self.w.write_le(1u8)?;
                 match repeat {
@@ -324,17 +324,16 @@ impl<W: Write> Drop for Encoder<W> {
 }
 
 // Color table size converted to flag bits
-#[rustfmt::skip]
 fn flag_size(size: usize) -> u8 {
     match size {
-        0  ...2   => 0,
-        3  ...4   => 1,
-        5  ...8   => 2,
-        7  ...16  => 3,
-        17 ...32  => 4,
-        33 ...64  => 5,
-        65 ...128 => 6,
-        129...256 => 7,
+        0  ..=2   => 0,
+        3  ..=4   => 1,
+        5  ..=8   => 2,
+        7  ..=16  => 3,
+        17 ..=32  => 4,
+        33 ..=64  => 5,
+        65 ..=128 => 6,
+        129..=256 => 7,
         _ => 7
     }
 }
