@@ -1,27 +1,27 @@
 use std::borrow::Cow;
-use std::io;
 use std::cmp;
-use std::mem;
-use std::iter;
+use std::io;
 use std::io::prelude::*;
+use std::iter;
+use std::mem;
 
-use traits::{Parameter, SetParameter};
 use common::Frame;
+use traits::{Parameter, SetParameter};
 
 mod decoder;
-pub use self::decoder::{
-    PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, Extensions
-};
+pub use self::decoder::{Decoded, DecodingError, Extensions, StreamingDecoder, PLTE_CHANNELS};
 
 const N_CHANNELS: usize = 4;
 
 impl<T, R> Parameter<Decoder<R>> for T
-where T: Parameter<StreamingDecoder>, R: Read {
+where
+    T: Parameter<StreamingDecoder>,
+    R: Read,
+{
     type Result = ();
     fn set_param(self, this: &mut Decoder<R>) {
         this.decoder.set(self);
     }
-
 }
 
 /// Output mode for the image data
@@ -73,10 +73,10 @@ impl<R: Read> Decoder<R> {
             r: r,
             decoder: StreamingDecoder::new(),
             memory_limit: 50_000_000, // 50 MB
-            color_output: ColorOutput::Indexed
+            color_output: ColorOutput::Indexed,
         }
     }
-    
+
     /// Reads the logical screen descriptor including the global color palette
     ///
     /// Returns a `Reader`. All decoder configuration has to be done beforehand.
@@ -88,7 +88,7 @@ impl<R: Read> Decoder<R> {
 struct ReadDecoder<R: Read> {
     reader: io::BufReader<R>,
     decoder: StreamingDecoder,
-    at_eof: bool
+    at_eof: bool,
 }
 
 impl<R: Read> ReadDecoder<R> {
@@ -97,22 +97,20 @@ impl<R: Read> ReadDecoder<R> {
             let (consumed, result) = {
                 let buf = self.reader.fill_buf()?;
                 if buf.len() == 0 {
-                    return Err(DecodingError::Format(
-                        "unexpected EOF"
-                    ))
+                    return Err(DecodingError::Format("unexpected EOF"));
                 }
                 self.decoder.update(buf)?
             };
             self.reader.consume(consumed);
             match result {
                 Decoded::Nothing => (),
-                Decoded::BlockStart(::common::Block::Trailer) => {
-                    self.at_eof = true
-                },
-                result => return Ok(unsafe{
-                    // FIXME: #6393
-                    Some(mem::transmute::<Decoded, Decoded>(result))
-                }),
+                Decoded::BlockStart(::common::Block::Trailer) => self.at_eof = true,
+                result => {
+                    return Ok(unsafe {
+                        // FIXME: #6393
+                        Some(mem::transmute::<Decoded, Decoded>(result))
+                    });
+                }
             }
         }
         Ok(None)
@@ -130,19 +128,24 @@ pub struct Reader<R: Read> {
     current_frame: Frame<'static>,
     buffer: Vec<u8>,
     // Offset in current frame
-    offset: usize
-
+    offset: usize,
 }
 
-impl<R> Reader<R> where R: Read {
-    fn new(reader: R, decoder: StreamingDecoder,
-           color_output: ColorOutput, memory_limit: u32
+impl<R> Reader<R>
+where
+    R: Read,
+{
+    fn new(
+        reader: R,
+        decoder: StreamingDecoder,
+        color_output: ColorOutput,
+        memory_limit: u32,
     ) -> Reader<R> {
         Reader {
             decoder: ReadDecoder {
                 reader: io::BufReader::new(reader),
                 decoder: decoder,
-                at_eof: false
+                at_eof: false,
             },
             bg_color: None,
             global_palette: None,
@@ -150,32 +153,32 @@ impl<R> Reader<R> where R: Read {
             color_output: color_output,
             memory_limit: memory_limit,
             current_frame: Frame::default(),
-            offset: 0
+            offset: 0,
         }
     }
-    
+
     fn init(mut self) -> Result<Self, DecodingError> {
         loop {
             match self.decoder.decode_next()? {
-                Some(Decoded::BackgroundColor(bg_color)) => {
-                    self.bg_color = Some(bg_color)
-                }
+                Some(Decoded::BackgroundColor(bg_color)) => self.bg_color = Some(bg_color),
                 Some(Decoded::GlobalPalette(palette)) => {
                     self.global_palette = if palette.len() > 0 {
                         Some(palette)
                     } else {
                         None
                     };
-                    break
-                },
+                    break;
+                }
                 Some(_) => {
                     // Unreachable since this loop exists after the global
                     // palette has been read.
                     unreachable!()
-                },
-                None => return Err(DecodingError::Format(
-                    "File does not contain any image data"
-                ))
+                }
+                None => {
+                    return Err(DecodingError::Format(
+                        "File does not contain any image data",
+                    ))
+                }
             }
         }
         // If the background color is invalid, ignore it
@@ -186,7 +189,7 @@ impl<R> Reader<R> where R: Read {
         }
         Ok(self)
     }
-    
+
     /// Returns the next frame info
     pub fn next_frame_info(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
         loop {
@@ -195,22 +198,18 @@ impl<R> Reader<R> where R: Read {
                     self.current_frame = frame.clone();
                     if frame.palette.is_none() && self.global_palette.is_none() {
                         return Err(DecodingError::Format(
-                            "No color table available for current frame."
-                        ))
+                            "No color table available for current frame.",
+                        ));
                     }
-                    if self.memory_limit > 0  && (
-                        (frame.width as u32 * frame.height as u32)
-                        > self.memory_limit
-                    ) {
-                        return Err(DecodingError::Format(
-                            "Image is too large to decode."
-                        ))
+                    if self.memory_limit > 0
+                        && ((frame.width as u32 * frame.height as u32) > self.memory_limit)
+                    {
+                        return Err(DecodingError::Format("Image is too large to decode."));
                     }
-                    break
-                },
+                    break;
+                }
                 Some(_) => (),
-                None => return Ok(None)
-                
+                None => return Ok(None),
             }
         }
         Ok(Some(&self.current_frame))
@@ -241,15 +240,19 @@ impl<R> Reader<R> where R: Read {
         if self.current_frame.interlaced {
             let width = self.line_length();
             let height = self.current_frame.height as usize;
-            for row in (InterlaceIterator { len: height, next: 0, pass: 0 }) {
-                if !self.fill_buffer(&mut buf[row*width..][..width])? {
-                    return Err(DecodingError::Format("Image truncated"))
+            for row in (InterlaceIterator {
+                len: height,
+                next: 0,
+                pass: 0,
+            }) {
+                if !self.fill_buffer(&mut buf[row * width..][..width])? {
+                    return Err(DecodingError::Format("Image truncated"));
                 }
             }
         } else {
             let buf = &mut buf[..self.buffer_size()];
             if !self.fill_buffer(buf)? {
-                return Err(DecodingError::Format("Image truncated"))
+                return Err(DecodingError::Format("Image truncated"));
             }
         };
         Ok(())
@@ -301,56 +304,57 @@ impl<R> Reader<R> where R: Read {
         if buf_len > 0 {
             let (len, channels) = handle_data!(&self.buffer);
             // This is WRONG!!!! Cuts form the wrong side…
-            self.buffer.truncate(buf_len-len);
-            let buf_ = buf; buf = &mut buf_[len*channels..];
+            self.buffer.truncate(buf_len - len);
+            let buf_ = buf;
+            buf = &mut buf_[len * channels..];
             if buf.len() == 0 {
-                return Ok(true)
+                return Ok(true);
             }
         }
         loop {
             match self.decoder.decode_next()? {
                 Some(Decoded::Data(data)) => {
                     let (len, channels) = handle_data!(data);
-                    let buf_ = buf; buf = &mut buf_[len*channels..]; // shorten buf
+                    let buf_ = buf;
+                    buf = &mut buf_[len * channels..]; // shorten buf
                     if buf.len() > 0 {
-                        continue
+                        continue;
                     } else if len < data.len() {
                         self.buffer.extend(data[len..].iter().map(|&v| v));
                     }
-                    return Ok(true)
-                },
+                    return Ok(true);
+                }
                 Some(_) => return Ok(false), // make sure that no important result is missed
-                None => return Ok(false)
-                
+                None => return Ok(false),
             }
         }
     }
-    
+
     /// Output buffer size
     pub fn buffer_size(&self) -> usize {
         self.line_length() * self.current_frame.height as usize
     }
-    
+
     /// Line length of the current frame
     pub fn line_length(&self) -> usize {
         use self::ColorOutput::*;
         match self.color_output {
             RGBA => self.current_frame.width as usize * N_CHANNELS,
-            Indexed => self.current_frame.width as usize
+            Indexed => self.current_frame.width as usize,
         }
     }
-    
+
     /// Returns the color palette relevant for the current (next) frame
     pub fn palette(&self) -> Result<&[u8], DecodingError> {
         // TODO prevent planic
         Ok(match self.current_frame.palette {
             Some(ref table) => &*table,
             None => &*self.global_palette.as_ref().ok_or(DecodingError::Format(
-                "No color table available for current frame."
+                "No color table available for current frame.",
             ))?,
         })
     }
-    
+
     /// The global color palette
     pub fn global_palette(&self) -> Option<&[u8]> {
         self.global_palette.as_ref().map(|v| &**v)
@@ -375,7 +379,7 @@ impl<R> Reader<R> where R: Read {
 struct InterlaceIterator {
     len: usize,
     next: usize,
-    pass: usize
+    pass: usize,
 }
 
 impl iter::Iterator for InterlaceIterator {
@@ -383,7 +387,7 @@ impl iter::Iterator for InterlaceIterator {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.len == 0 || self.pass > 3 {
-            return None
+            return None;
         }
         let mut next = self.next + [8, 8, 4, 2][self.pass];
         while next >= self.len {
@@ -400,7 +404,7 @@ mod test {
     use std::fs::File;
 
     use super::{Decoder, InterlaceIterator};
-    
+
     /* Commented because test::Bencher is unstable
     extern crate test;
     use std::io::prelude::*;
@@ -428,10 +432,13 @@ mod test {
         let mut decoder = Decoder::new(&*data).read_info().unwrap();
         b.bytes = decoder.read_next_frame().unwrap().unwrap().buffer.len() as u64
     }*/
-    
+
     #[test]
+    #[rustfmt::skip]
     fn test_simple_indexed() {
-        let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap()).read_info().unwrap();
+        let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap())
+            .read_info()
+            .unwrap();
         let frame = decoder.read_next_frame().unwrap().unwrap();
         assert_eq!(&*frame.buffer, &[
             1, 1, 1, 1, 1, 2, 2, 2, 2, 2,
@@ -448,6 +455,7 @@ mod test {
     }
 
     #[test]
+    #[rustfmt::skip]
     fn test_interlace_iterator() {
         for &(len, expect) in &[
             (0, &[][..]),
@@ -469,32 +477,38 @@ mod test {
             (16, &[0, 8, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..]),
             (17, &[0, 8, 16, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..]),
         ] {
-            let iter = InterlaceIterator { len: len, next: 0, pass: 0 };
+            let iter = InterlaceIterator {
+                len: len,
+                next: 0,
+                pass: 0,
+            };
             let lines = iter.collect::<Vec<_>>();
             assert_eq!(lines, expect);
         }
     }
 }
 
-
 #[cfg(feature = "c_api")]
 mod c_interface {
+    use std::borrow::Cow;
     use std::io::prelude::*;
     use std::ptr;
-    use std::borrow::Cow;
 
     use libc::c_int;
-    
+
     use common::Block;
 
     use c_api::{self, GifWord};
-    use c_api_utils::{CInterface, copy_colormap, copy_data, saved_images_new};
+    use c_api_utils::{copy_colormap, copy_data, saved_images_new, CInterface};
 
     use super::decoder::{Decoded, DecodingError};
 
-    use super::{Reader};
+    use super::Reader;
 
-    impl<R> Reader<R> where R: Read + 'static {
+    impl<R> Reader<R>
+    where
+        R: Read + 'static,
+    {
         /// Converts `Reader` into `CInterface`.
         pub fn into_c_interface(self) -> Box<CInterface> {
             Box::new(self)
@@ -505,7 +519,7 @@ mod c_interface {
         fn read_screen_desc(&mut self, this: &mut c_api::GifFileType) {
             this.SWidth = self.width() as GifWord;
             this.SHeight = self.height() as GifWord;
-            this.SColorResolution = 255;//self.global_palette().len() as GifWord;
+            this.SColorResolution = 255; //self.global_palette().len() as GifWord;
             this.SBackGroundColor = self.bg_color().unwrap_or(0) as GifWord;
             this.AspectByte = 0;
             self.offset = 0;
@@ -527,11 +541,11 @@ mod c_interface {
                 match self.decoder.decode_next()? {
                     Some(Decoded::BlockStart(type_)) => return Ok(type_),
                     Some(_) => (),
-                    None => return Ok(Block::Trailer)
+                    None => return Ok(Block::Trailer),
                 }
             }
         }
-    
+
         fn decode_next(&mut self) -> Result<Option<Decoded>, DecodingError> {
             self.decoder.decode_next()
         }
@@ -557,7 +571,7 @@ mod c_interface {
                     ExtensionBlockCount: 0,
                     ExtensionBlocks: ptr::null_mut()
                 }
-                
+
             }
             this.SavedImages = images;
             Ok(())

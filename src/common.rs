@@ -25,7 +25,7 @@ impl DisposalMethod {
             1 => Some(DisposalMethod::Keep),
             2 => Some(DisposalMethod::Background),
             3 => Some(DisposalMethod::Previous),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -39,7 +39,7 @@ pub enum Block {
     /// Extension block.
     Extension = 0x21,
     /// Image trailer.
-    Trailer = 0x3B
+    Trailer = 0x3B,
 }
 
 impl Block {
@@ -49,11 +49,10 @@ impl Block {
             0x2C => Some(Block::Image),
             0x21 => Some(Block::Extension),
             0x3B => Some(Block::Trailer),
-            _ => None
+            _ => None,
         }
     }
 }
-
 
 /// Known GIF extensions
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -66,7 +65,7 @@ pub enum Extension {
     /// Comment extension.
     Comment = 0xFE,
     /// Application extension.
-    Application = 0xFF
+    Application = 0xFF,
 }
 
 impl Extension {
@@ -77,7 +76,7 @@ impl Extension {
             0xF9 => Some(Extension::Control),
             0xFE => Some(Extension::Comment),
             0xFF => Some(Extension::Application),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -107,7 +106,7 @@ pub struct Frame<'a> {
     pub palette: Option<Vec<u8>>,
     /// Buffer containing the image data.
     /// Only indices unless configured differently.
-    pub buffer: Cow<'a, [u8]>
+    pub buffer: Cow<'a, [u8]>,
 }
 
 impl<'a> Default for Frame<'a> {
@@ -123,7 +122,7 @@ impl<'a> Default for Frame<'a> {
             height: 0,
             interlaced: false,
             palette: None,
-            buffer: Cow::Borrowed(&[])
+            buffer: Cow::Borrowed(&[]),
         }
     }
 }
@@ -146,9 +145,17 @@ impl Frame<'static> {
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height * 4`.
     /// *   If `speed < 1` or `speed > 30`
-    pub fn from_rgba_speed(width: u16, height: u16, pixels: &mut [u8], speed: i32) -> Frame<'static> {
+    pub fn from_rgba_speed(
+        width: u16,
+        height: u16,
+        pixels: &mut [u8],
+        speed: i32,
+    ) -> Frame<'static> {
         assert_eq!(width as usize * height as usize * 4, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
-        assert!(speed >= 1 && speed <= 30, "speed needs to be in the range [1, 30]");
+        assert!(
+            speed >= 1 && speed <= 30,
+            "speed needs to be in the range [1, 30]"
+        );
         let mut frame = Frame::default();
         let mut transparent = None;
         for pix in pixels.chunks_mut(4) {
@@ -177,9 +184,22 @@ impl Frame<'static> {
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height`.
     /// *   If the length of palette > `256 * 3`.
-    pub fn from_palette_pixels(width: u16, height: u16, pixels: &[u8], palette: &[u8], transparent: Option<u8>) -> Frame<'static> {
-        assert_eq!(width as usize * height as usize, pixels.len(), "Too many or too little pixels for the given width and height to create a GIF Frame");
-        assert!(palette.len() <= 256*3, "Too many palette values to create a GIF Frame");
+    pub fn from_palette_pixels(
+        width: u16,
+        height: u16,
+        pixels: &[u8],
+        palette: &[u8],
+        transparent: Option<u8>,
+    ) -> Frame<'static> {
+        assert_eq!(
+            width as usize * height as usize,
+            pixels.len(),
+            "Too many or too little pixels for the given width and height to create a GIF Frame"
+        );
+        assert!(
+            palette.len() <= 256 * 3,
+            "Too many palette values to create a GIF Frame"
+        );
         let mut frame = Frame::default();
 
         frame.width = width;
@@ -197,8 +217,17 @@ impl Frame<'static> {
     ///
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height`.
-    pub fn from_indexed_pixels(width: u16, height: u16, pixels: &[u8], transparent: Option<u8>) -> Frame<'static> {
-        assert_eq!(width as usize * height as usize, pixels.len(), "Too many or too little pixels for the given width and height to create a GIF Frame");
+    pub fn from_indexed_pixels(
+        width: u16,
+        height: u16,
+        pixels: &[u8],
+        transparent: Option<u8>,
+    ) -> Frame<'static> {
+        assert_eq!(
+            width as usize * height as usize,
+            pixels.len(),
+            "Too many or too little pixels for the given width and height to create a GIF Frame"
+        );
         let mut frame = Frame::default();
 
         frame.width = width;

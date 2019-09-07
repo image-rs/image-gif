@@ -3,13 +3,11 @@ use std::mem;
 use std::ops;
 use std::slice;
 
-use libc::{malloc, size_t, c_int, read, close};
+use libc::{c_int, close, malloc, read, size_t};
 
+use c_api::{c_bool, ColorMapObject, GifColorType, GifFileType, InputFunc, SavedImage};
 use common::Block;
 use reader::{Decoded, DecodingError, PLTE_CHANNELS};
-use c_api::{GifFileType, SavedImage, ColorMapObject, GifColorType, c_bool,
-           InputFunc
-};
 
 pub trait CInterface {
     fn read_screen_desc(&mut self, &mut GifFileType);
@@ -22,15 +20,12 @@ pub trait CInterface {
 }
 
 pub unsafe fn saved_images_new(count: usize) -> *mut SavedImage {
-    mem::transmute::<_, *mut SavedImage>(malloc(
-        (mem::size_of::<SavedImage>() *  count) as size_t
-    ))
+    mem::transmute::<_, *mut SavedImage>(malloc((mem::size_of::<SavedImage>() * count) as size_t))
 }
 
 pub unsafe fn copy_data(buf: &[u8]) -> *mut u8 {
-    let data = mem::transmute::<_, *mut u8>(malloc(
-        (mem::size_of::<SavedImage>() *  buf.len()) as size_t
-    ));
+    let data =
+        mem::transmute::<_, *mut u8>(malloc((mem::size_of::<SavedImage>() * buf.len()) as size_t));
     slice::from_raw_parts_mut(data, buf.len()).copy_from_slice(buf);
     //for (i, &b) in buf.iter().enumerate() {
     //    *data.offset(i as isize) = b
@@ -41,14 +36,16 @@ pub unsafe fn copy_data(buf: &[u8]) -> *mut u8 {
 pub unsafe fn copy_colormap(map: &Option<Vec<u8>>) -> *mut ColorMapObject {
     let map: &[u8] = match *map {
         Some(ref map) => &*map,
-        None => &[]
+        None => &[],
     };
-    let new_map = mem::transmute::<_, *mut ColorMapObject>(malloc(mem::size_of::<ColorMapObject>() as size_t));
-    (*new_map).ColorCount = (map.len()/PLTE_CHANNELS) as c_int;
+    let new_map = mem::transmute::<_, *mut ColorMapObject>(malloc(
+        mem::size_of::<ColorMapObject>() as size_t,
+    ));
+    (*new_map).ColorCount = (map.len() / PLTE_CHANNELS) as c_int;
     (*new_map).BitsPerPixel = 8;
     (*new_map).SortFlag = false;
     let colors = mem::transmute::<_, *mut GifColorType>(malloc(
-        (mem::size_of::<GifColorType>() *  (*new_map).ColorCount as usize) as size_t
+        (mem::size_of::<GifColorType>() * (*new_map).ColorCount as usize) as size_t,
     ));
     for (i, c) in map.chunks(PLTE_CHANNELS).enumerate() {
         *colors.offset(i as isize) = GifColorType {
@@ -63,62 +60,64 @@ pub unsafe fn copy_colormap(map: &Option<Vec<u8>>) -> *mut ColorMapObject {
 
 /// A simple wrapper around a C file handle
 pub struct CFile {
-    fp: c_int
+    fp: c_int,
 }
 
 impl CFile {
     pub fn new(fp: c_int) -> CFile {
-        CFile {
-            fp: fp
-        }
+        CFile { fp: fp }
     }
 }
 
 impl Read for CFile {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let count = unsafe { read(
-            self.fp,
-            mem::transmute(buf.as_mut_ptr()),
-            buf.len() as size_t
-        ) };
+        let count = unsafe {
+            read(
+                self.fp,
+                mem::transmute(buf.as_mut_ptr()),
+                buf.len() as size_t,
+            )
+        };
         match count {
             -1 => Err(io::Error::last_os_error()),
-            n => Ok(n as usize)
+            n => Ok(n as usize),
         }
     }
 }
 
 impl ops::Drop for CFile {
     fn drop(&mut self) {
-        unsafe {close(self.fp)};
+        unsafe { close(self.fp) };
     }
 }
 
 /// A wrapper around `InputFunc`
 pub struct FnInputFile {
     func: InputFunc,
-    file: *mut GifFileType
+    file: *mut GifFileType,
 }
 
 impl FnInputFile {
     pub fn new(func: InputFunc, file: *mut GifFileType) -> FnInputFile {
         FnInputFile {
             func: func,
-            file: file
+            file: file,
         }
     }
 }
 
 impl Read for FnInputFile {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let count = unsafe { (self.func)(
-            self.file,
-            mem::transmute(buf.as_mut_ptr()),
-            buf.len() as c_int
-        ) };
+        let count = unsafe {
+            (self.func)(
+                self.file,
+                mem::transmute(buf.as_mut_ptr()),
+                buf.len() as c_int,
+            )
+        };
         match count {
             -1 => Err(io::Error::from_raw_os_error(count)),
-            n => Ok(n as usize)
+            n => Ok(n as usize),
         }
     }
 }

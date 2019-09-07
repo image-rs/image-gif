@@ -2,19 +2,21 @@ extern crate gif;
 extern crate glob;
 
 use std::collections::HashMap;
+use std::error::Error;
 use std::fs::File;
 use std::path::PathBuf;
-use std::error::Error;
 
-use std::io::BufReader;
 use std::io::prelude::*;
+use std::io::BufReader;
 
 use gif::SetParameter;
 
 const BASE_PATH: [&'static str; 2] = [".", "tests"];
 
 fn process_images<F>(func: F)
-where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
+where
+    F: Fn(PathBuf) -> Result<u32, gif::DecodingError>,
+{
     let base: PathBuf = BASE_PATH.iter().collect();
     let test_suites = &["samples"];
     let mut results = HashMap::new();
@@ -30,12 +32,12 @@ where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
                 Ok(crc) => {
                     results.insert(format!("{:?}", path), format!("{}", crc));
                     println!("{}", crc)
-                },
+                }
                 Err(_) if path.file_name().unwrap().to_str().unwrap().starts_with("x") => {
                     expected_failures += 1;
                     println!("Expected failure")
-                },   
-                err => panic!("{:?}", err)
+                }
+                err => panic!("{:?}", err),
             }
         }
     }
@@ -55,7 +57,9 @@ where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
     assert_eq!(expected_failures, failures);
     for (path, crc) in results.iter() {
         assert_eq!(
-            ref_results.get(path).expect(&format!("reference for {:?} is missing", path)), 
+            ref_results
+                .get(path)
+                .expect(&format!("reference for {:?} is missing", path)),
             crc
         )
     }
@@ -63,7 +67,7 @@ where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
 
 #[test]
 fn error_cast() {
-    let _ : Box<Error> = gif::DecodingError::Internal("testing").into();
+    let _: Box<Error> = gif::DecodingError::Internal("testing").into();
 }
 
 #[test]
@@ -76,10 +80,8 @@ fn render_images() {
         while let Some(frame) = decoder.read_next_frame()? {
             // First sanity check:
             assert_eq!(
-                frame.buffer.len(), 
-                frame.width as usize
-                * frame.height as usize
-                * 4
+                frame.buffer.len(),
+                frame.width as usize * frame.height as usize * 4
             );
             crc.update(&*frame.buffer);
         }
@@ -87,7 +89,7 @@ fn render_images() {
     })
 }
 
-
+#[rustfmt::skip]
 const CRC_TABLE: [u32; 256] = [
     0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419,
     0x706af48f, 0xe963a535, 0x9e6495a3, 0x0edb8832, 0x79dcb8a4,
@@ -152,9 +154,9 @@ pub struct Crc32 {
 impl Crc32 {
     /// Create a new hasher.
     pub fn new() -> Crc32 {
-        Crc32 {crc: 0xFFFFFFFF}
+        Crc32 { crc: 0xFFFFFFFF }
     }
-    
+
     /// Resets the hasher.
     pub fn reset(&mut self) {
         *self = Self::new()
