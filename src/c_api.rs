@@ -3,7 +3,6 @@
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
-#![allow(missing_docs)] //FIXME
 
 use std::cmp;
 use std::mem;
@@ -179,6 +178,12 @@ macro_rules! try_get_decoder {
     );
 }
 
+/// Open a file by name, returning a pointer to its allocated decoder.
+///
+/// # Return
+///
+/// Returns NULL on error, a pointer to `GifFileType` on success. If `err` is not NULL then an
+/// additional error code is written to it.
 #[no_mangle] pub unsafe extern "C"
 fn DGifOpenFileName(gif_file_name: *const c_char, err: *mut c_int) -> *mut GifFileType {
     let file = try_capi!(
@@ -199,6 +204,12 @@ fn DGifOpenFileName(gif_file_name: *const c_char, err: *mut c_int) -> *mut GifFi
     this
 }
 
+/// Wrap a file as gif, returning a newly allocated decoder.
+///
+/// # Return
+///
+/// Returns NULL on error, a pointer to `GifFileType` on success. If `err` is not NULL then an
+/// additional error code is written to it.
 #[no_mangle] pub unsafe extern "C"
 fn DGifOpenFileHandle(fp: c_int, err: *mut c_int) -> *mut GifFileType {
     let mut decoder = try_capi!(
@@ -221,6 +232,17 @@ fn DGifSlurp(this: *mut GifFileType) -> c_int {
     }
 }
 */
+
+/// Decode gif data supplied by a user defined reader function.
+///
+/// A pointer to the `GifFileType` containing the partially decoded data is passed to the reader.
+/// This pointer pointer is invalidated and must not be dereferenced when this function returns
+/// with an error value.
+///
+/// # Return
+///
+/// Returns NULL on error, a pointer to `GifFileType` on success. If `err` is not NULL then an
+/// additional error code is written to it.
 #[no_mangle] pub unsafe extern "C"
 fn DGifOpen(user_data: *mut c_void, read_fn: InputFunc, err: *mut c_int) -> *mut GifFileType {
     let this: *mut GifFileType = Box::into_raw(Box::new(mem::zeroed()));
