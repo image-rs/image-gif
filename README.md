@@ -31,7 +31,7 @@ while let Some(frame) = decoder.read_next_frame().unwrap() {
 
 ### Encoding GIF files
 
-The encoder can be used so save simple computer generated images:
+The encoder can be used to save simple computer generated images:
 
 ```rust
 use gif::{Frame, Encoder, Repeat, SetParameter};
