@@ -1,36 +1,81 @@
-use std::fs;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{black_box, BenchmarkId, BenchmarkGroup, Criterion, Throughput, measurement::Measurement};
 use gif::Decoder;
 
-fn bench_tiny(b: &mut Criterion) {
-    let data = fs::read("tests/samples/sample_1.gif").unwrap();
-    let mut g = b.benchmark_group("tiny");
+fn read_image(image: &[u8]) -> Option<Vec<u8>> {
+    let decoder = Decoder::new(black_box(image));
+    //decoder.set_param(gif::ColorOutput::RGBA);
+    let mut reader = decoder.read_info().unwrap();
 
-    let mut decoder = Decoder::new(&*data).read_info().unwrap();
-    let total_size = decoder.read_next_frame().unwrap().unwrap().buffer.len() as u64;
-    g.throughput(Throughput::Bytes(total_size));
-
-    g.bench_with_input(BenchmarkId::new("sample_1", total_size), data.as_slice(),
-        |b, i| b.iter(|| {
-            let mut decoder = Decoder::new(i).read_info().unwrap();
-            black_box(decoder.read_next_frame().unwrap().unwrap());
-        }));
+    while let Some(_) = reader.next_frame_info().unwrap() {
+        let mut v = vec![0; reader.buffer_size()];
+        reader.fill_buffer(&mut v).unwrap();
+        return Some(v);
+    }
+    None
 }
 
-fn bench_big(b: &mut Criterion) {
-    let data = fs::read("tests/sample_big.gif").unwrap();
-    let mut g = b.benchmark_group("big");
-
-    let mut decoder = Decoder::new(&*data).read_info().unwrap();
-    let total_size = decoder.read_next_frame().unwrap().unwrap().buffer.len() as u64;
-    g.throughput(Throughput::Bytes(total_size));
-
-    g.bench_with_input(BenchmarkId::new("sample_1", total_size), data.as_slice(),
-        |b, i| b.iter(|| {
-            let mut decoder = Decoder::new(i).read_info().unwrap();
-            black_box(decoder.read_next_frame().unwrap().unwrap());
-        }));
+fn read_metadata(image: &[u8]) {
+    let decoder = Decoder::new(black_box(image));
+    decoder.read_info().unwrap();
 }
 
-criterion_group!(benches, bench_tiny, bench_big);
-criterion_main!(benches);
+fn main() {
+    struct BenchDef {
+        data: &'static [u8],
+        id: &'static str,
+        sample_size: usize,
+    }
+
+    fn run_bench_def<M: Measurement>(group: &mut BenchmarkGroup<M>, def: BenchDef) {
+        group
+            .sample_size(def.sample_size)
+            .throughput(Throughput::Bytes(def.data.len() as u64))
+            .bench_with_input(
+                BenchmarkId::new(def.id, def.data.len()),
+                def.data,
+                |b, input| {
+                    b.iter(|| read_image(input))
+                }
+            );
+    };
+
+    let mut c = Criterion::default().configure_from_args();
+    let mut group = c.benchmark_group("gif");
+
+    run_bench_def(&mut group, BenchDef {
+        data: include_bytes!("note.gif"),
+        id: "note.gif",
+        sample_size: 100,
+    });
+
+    run_bench_def(&mut group, BenchDef {
+        data: include_bytes!("photo.gif"),
+        id: "photo.gif",
+        sample_size: 20,
+    });
+
+    run_bench_def(&mut group, BenchDef {
+        data: include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/samples/sample_1.gif")),
+        id: "sample_1.gif",
+        sample_size: 100,
+    });
+
+    run_bench_def(&mut group, BenchDef {
+        data: include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/sample_big.gif")),
+        id: "sample_big.gif",
+        sample_size: 20,
+    });
+
+    group
+        .bench_with_input(
+            "extract-metadata-note",
+            include_bytes!("note.gif"),
+            |b, input| {
+                b.iter(|| read_metadata(input))
+            }
+        );
+
+    group.finish();
+
+    c.final_summary();
+}
