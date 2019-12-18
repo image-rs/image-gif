@@ -21,6 +21,7 @@ color_quant = "1.0"
 
 [dev-dependencies]
 glob = "0.3"
+criterion = "0.3"
 
 [features]
 default = ["raii_no_panic"]
@@ -31,3 +32,7 @@ c_api = ["libc"]
 [dependencies.libc]
 version = "0.2.1"
 optional = true
+
+[[bench]]
+name = "decoding_benchmark"
+harness = false
