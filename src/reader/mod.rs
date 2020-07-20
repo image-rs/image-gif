@@ -5,8 +5,8 @@ use std::mem;
 use std::iter;
 use std::io::prelude::*;
 
-use traits::{Parameter, SetParameter};
-use common::Frame;
+use crate::traits::{Parameter, SetParameter};
+use crate::common::Frame;
 
 mod decoder;
 pub use self::decoder::{
@@ -106,7 +106,7 @@ impl<R: Read> ReadDecoder<R> {
             self.reader.consume(consumed);
             match result {
                 Decoded::Nothing => (),
-                Decoded::BlockStart(::common::Block::Trailer) => {
+                Decoded::BlockStart(crate::common::Block::Trailer) => {
                     self.at_eof = true
                 },
                 result => return Ok(unsafe{

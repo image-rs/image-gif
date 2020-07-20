@@ -9,8 +9,8 @@ use std::io::prelude::*;
 
 use lzw;
 
-use traits::{Parameter, WriteBytesExt};
-use common::{Block, Frame, Extension, DisposalMethod};
+use crate::traits::{Parameter, WriteBytesExt};
+use crate::common::{Block, Frame, Extension, DisposalMethod};
 
 /// Number of repetitions
 pub enum Repeat {
@@ -316,14 +316,14 @@ impl<W: Write> Drop for Encoder<W> {
 // Color table size converted to flag bits
 fn flag_size(size: usize) -> u8 {
     match size {
-        0  ...2   => 0,
-        3  ...4   => 1,
-        5  ...8   => 2,
-        7  ...16  => 3,
-        17 ...32  => 4,
-        33 ...64  => 5,
-        65 ...128 => 6,
-        129...256 => 7,
+        0  ..=2   => 0,
+        3  ..=4   => 1,
+        5  ..=8   => 2,
+        7  ..=16  => 3,
+        17 ..=32  => 4,
+        33 ..=64  => 5,
+        65 ..=128 => 6,
+        129..=256 => 7,
         _ => 7
     }
 }

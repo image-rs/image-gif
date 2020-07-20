@@ -130,15 +130,15 @@ mod c_api_utils;
 #[cfg(feature = "c_api")]
 pub mod c_api;
 
-pub use traits::{SetParameter, Parameter};
-pub use common::{Block, Extension, DisposalMethod, Frame};
+pub use crate::traits::{SetParameter, Parameter};
+pub use crate::common::{Block, Extension, DisposalMethod, Frame};
 
-pub use reader::{StreamingDecoder, Decoded, DecodingError};
+pub use crate::reader::{StreamingDecoder, Decoded, DecodingError};
 /// StreamingDecoder configuration parameters
-pub use reader::{ColorOutput, MemoryLimit, Extensions};
-pub use reader::{Reader, Decoder};
+pub use crate::reader::{ColorOutput, MemoryLimit, Extensions};
+pub use crate::reader::{Reader, Decoder};
 
-pub use encoder::{Encoder, ExtensionData, Repeat};
+pub use crate::encoder::{Encoder, ExtensionData, Repeat};
 
 #[cfg(test)]
 #[test]

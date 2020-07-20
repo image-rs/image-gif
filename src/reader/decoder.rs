@@ -9,8 +9,8 @@ use std::error;
 
 use lzw;
 
-use traits::Parameter;
-use common::{Frame, Block, Extension, DisposalMethod};
+use crate::traits::Parameter;
+use crate::common::{Frame, Block, Extension, DisposalMethod};
 
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
@@ -45,7 +45,7 @@ impl error::Error for DecodingError {
         }
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             DecodingError::Io(ref err) => Some(err),
             _ => None,
@@ -425,7 +425,7 @@ impl StreamingDecoder {
                 }
             }
             BlockStart(type_) => {
-                use common::Block::*;
+                use crate::common::Block::*;
                 match type_ {
                     Some(Image) => {
                         self.add_frame();
@@ -453,7 +453,7 @@ impl StreamingDecoder {
                 }
             }
             ExtensionBlock(type_) => {
-                use common::Extension::*;
+                use crate::common::Extension::*;
                 self.ext.0 = type_;
                 self.ext.1.clear();
                 self.ext.1.push(b);
