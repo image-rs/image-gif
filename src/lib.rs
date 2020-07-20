@@ -113,10 +113,10 @@
 // # })().unwrap();
 // ```
 #![deny(missing_docs)]
+#![cfg(feature = "std")]
 
 #[cfg(feature = "c_api")]
 extern crate libc;
-extern crate lzw;
 
 mod traits;
 mod common;
