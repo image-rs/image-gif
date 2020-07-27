@@ -85,8 +85,6 @@
 //! // Write frame to file
 //! encoder.write_frame(&frame).unwrap();
 //! ```
-
-
 //! 
 //! ## C API
 //!

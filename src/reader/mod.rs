@@ -401,34 +401,6 @@ mod test {
 
     use super::{Decoder, InterlaceIterator};
     
-    /* Commented because test::Bencher is unstable
-    extern crate test;
-    use std::io::prelude::*;
-    #[bench]
-    fn bench_tiny(b: &mut test::Bencher) {
-        let mut data = Vec::new();
-        File::open("tests/samples/sample_1.gif").unwrap().read_to_end(&mut data).unwrap();
-        b.iter(|| {
-            let mut decoder = Decoder::new(&*data).read_info().unwrap();
-            let frame = decoder.read_next_frame().unwrap().unwrap();
-            test::black_box(frame);
-        });
-        let mut decoder = Decoder::new(&*data).read_info().unwrap();
-        b.bytes = decoder.read_next_frame().unwrap().unwrap().buffer.len() as u64
-    }
-    #[bench]
-    fn bench_big(b: &mut test::Bencher) {
-        let mut data = Vec::new();
-        File::open("tests/sample_big.gif").unwrap().read_to_end(&mut data).unwrap();
-        b.iter(|| {
-            let mut decoder = Decoder::new(&*data).read_info().unwrap();
-            let frame = decoder.read_next_frame().unwrap().unwrap();
-            test::black_box(frame);
-        });
-        let mut decoder = Decoder::new(&*data).read_info().unwrap();
-        b.bytes = decoder.read_next_frame().unwrap().unwrap().buffer.len() as u64
-    }*/
-    
     #[test]
     fn test_simple_indexed() {
         let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap()).read_info().unwrap();
