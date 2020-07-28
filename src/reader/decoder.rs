@@ -514,13 +514,15 @@ impl StreamingDecoder {
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
                     let decoder = self.lzw_reader.as_mut().unwrap();
-                    self.decode_buffer.resize(1 << 20, 0);
-                    let decoded = decoder
-                        .into_stream(self.decode_buffer.as_mut_slice())
-                        .decode(&buf[..n]);
-                    decoded.status?;
-                    let bytes = &self.decode_buffer[..decoded.bytes_written];
-                    let consumed = decoded.bytes_read;
+                    if self.decode_buffer.is_empty() {
+                        self.decode_buffer = vec![0; 1 << 14];
+                    }
+                    let decoded = decoder.decode_bytes(&buf[..n], self.decode_buffer.as_mut_slice());
+                    if let Err(err) = decoded.status {
+                        return Err(io::Error::new(io::ErrorKind::InvalidData, &*format!("{:?}", err)).into());
+                    }
+                    let bytes = &self.decode_buffer[..decoded.consumed_out];
+                    let consumed = decoded.consumed_in;
                     goto!(consumed, DecodeSubBlock(left - consumed), emit Decoded::Data(bytes))
                 }  else if b != 0 { // decode next sub-block
                     goto!(DecodeSubBlock(b as usize))
@@ -528,13 +530,20 @@ impl StreamingDecoder {
                     // The end of the lzw stream is only reached if left == 0 and an additional call
                     // to `decode_bytes` results in an empty slice.
                     let decoder = self.lzw_reader.as_mut().unwrap();
-                    self.decode_buffer.resize(1 << 20, 0);
-                    let read_from: &[u8] = &[];
-                    let decoded = decoder
-                        .into_stream(self.decode_buffer.as_mut_slice())
-                        .decode_all(read_from);
-                    decoded.status?;
-                    let bytes = &self.decode_buffer[..decoded.bytes_written];
+                    if self.decode_buffer.is_empty() {
+                        self.decode_buffer = vec![0; 1 << 14];
+                    }
+                    let decoded = decoder.decode_bytes(&[], self.decode_buffer.as_mut_slice());
+                    match decoded.status {
+                        Ok(LzwStatus::Done) | Ok(LzwStatus::Ok) => {},
+                        Ok(LzwStatus::NoProgress) => {
+                            return Err(io::Error::new(io::ErrorKind::InvalidData, "No end code in lzw stream").into());
+                        },
+                        Err(err) => {
+                            return Err(io::Error::new(io::ErrorKind::InvalidData, &*format!("{:?}", err)).into());
+                        }
+                    }
+                    let bytes = &self.decode_buffer[..decoded.consumed_out];
 
                     if bytes.len() > 0 {
                         goto!(0, DecodeSubBlock(0), emit Decoded::Data(bytes))
