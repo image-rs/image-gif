@@ -507,15 +507,18 @@ impl StreamingDecoder {
                         "invalid minimal code size"
                     ))
                 }
+                // dbg!(code_size);
                 self.lzw_reader = Some(LzwDecoder::new(BitOrder::Lsb, code_size));
                 goto!(DecodeSubBlock(b as usize), emit Decoded::Frame(self.current_frame_mut()))
             }
             DecodeSubBlock(left) => {
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
+                    let max_bytes = self.current_frame().required_bytes();
                     let decoder = self.lzw_reader.as_mut().unwrap();
                     if self.decode_buffer.is_empty() {
-                        self.decode_buffer = vec![0; 1 << 14];
+                        let size = (1 << 14).min(max_bytes);
+                        self.decode_buffer = vec![0; size];
                     }
                     let decoded = decoder.decode_bytes(&buf[..n], self.decode_buffer.as_mut_slice());
                     if let Err(err) = decoded.status {
@@ -527,11 +530,13 @@ impl StreamingDecoder {
                 }  else if b != 0 { // decode next sub-block
                     goto!(DecodeSubBlock(b as usize))
                 } else {
+                    let max_bytes = self.current_frame().required_bytes();
                     // The end of the lzw stream is only reached if left == 0 and an additional call
                     // to `decode_bytes` results in an empty slice.
                     let decoder = self.lzw_reader.as_mut().unwrap();
                     if self.decode_buffer.is_empty() {
-                        self.decode_buffer = vec![0; 1 << 14];
+                        let size = (1 << 14).min(max_bytes);
+                        self.decode_buffer = vec![0; size];
                     }
                     let decoded = decoder.decode_bytes(&[], self.decode_buffer.as_mut_slice());
                     match decoded.status {
