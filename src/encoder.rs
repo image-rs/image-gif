@@ -7,7 +7,7 @@ use std::cmp::min;
 use std::io;
 use std::io::prelude::*;
 
-use lzw;
+use weezl::{BitOrder, encode::Encoder as LzwEncoder};
 
 use crate::traits::{Parameter, WriteBytesExt};
 use crate::common::{Block, Frame, Extension, DisposalMethod};
@@ -218,8 +218,8 @@ impl<W: Write> Encoder<W> {
             };
             self.w.write_le(min_code_size)?;
             let mut bw = BlockWriter::new(&mut self.w);
-            let mut enc = lzw::Encoder::new(lzw::LsbWriter::new(&mut bw), min_code_size)?;
-            enc.encode_bytes(data)?;
+            let mut enc = LzwEncoder::new(BitOrder::Lsb, min_code_size);
+            enc.into_stream(&mut bw).encode_all(data).status?;
         }
         self.w.write_le(0u8)
     }

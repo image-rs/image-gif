@@ -7,7 +7,7 @@ use std::io;
 use std::fmt;
 use std::error;
 
-use lzw;
+use weezl::{BitOrder, decode::Decoder as LzwDecoder, LzwStatus};
 
 use crate::traits::Parameter;
 use crate::common::{Frame, Block, Extension, DisposalMethod};
@@ -159,10 +159,10 @@ enum ByteValue {
 }
 
 /// GIF decoder which supports streaming
-#[derive(Debug)]
 pub struct StreamingDecoder {
     state: Option<State>,
-    lzw_reader: Option<lzw::Decoder<lzw::LsbReader>>,
+    lzw_reader: Option<LzwDecoder>,
+    decode_buffer: Vec<u8>,
     skip_extensions: bool,
     version: &'static str,
     width: u16,
@@ -181,6 +181,7 @@ impl StreamingDecoder {
         StreamingDecoder {
             state: Some(Magic(0, [0; 6])),
             lzw_reader: None,
+            decode_buffer: vec![],
             skip_extensions: true,
             version: "",
             width: 0,
@@ -506,14 +507,20 @@ impl StreamingDecoder {
                         "invalid minimal code size"
                     ))
                 }
-                self.lzw_reader = Some(lzw::Decoder::new(lzw::LsbReader::new(), code_size));
+                self.lzw_reader = Some(LzwDecoder::new(BitOrder::Lsb, code_size));
                 goto!(DecodeSubBlock(b as usize), emit Decoded::Frame(self.current_frame_mut()))
             }
             DecodeSubBlock(left) => {
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
                     let decoder = self.lzw_reader.as_mut().unwrap();
-                    let (consumed, bytes) = decoder.decode_bytes(&buf[..n])?;
+                    self.decode_buffer.resize(1 << 20, 0);
+                    let decoded = decoder
+                        .into_stream(self.decode_buffer.as_mut_slice())
+                        .decode(&buf[..n]);
+                    decoded.status?;
+                    let bytes = &self.decode_buffer[..decoded.bytes_written];
+                    let consumed = decoded.bytes_read;
                     goto!(consumed, DecodeSubBlock(left - consumed), emit Decoded::Data(bytes))
                 }  else if b != 0 { // decode next sub-block
                     goto!(DecodeSubBlock(b as usize))
@@ -521,7 +528,14 @@ impl StreamingDecoder {
                     // The end of the lzw stream is only reached if left == 0 and an additional call
                     // to `decode_bytes` results in an empty slice.
                     let decoder = self.lzw_reader.as_mut().unwrap();
-                    let (_, bytes) = decoder.decode_bytes(&[])?;
+                    self.decode_buffer.resize(1 << 20, 0);
+                    let read_from: &[u8] = &[];
+                    let decoded = decoder
+                        .into_stream(self.decode_buffer.as_mut_slice())
+                        .decode_all(read_from);
+                    decoded.status?;
+                    let bytes = &self.decode_buffer[..decoded.bytes_written];
+
                     if bytes.len() > 0 {
                         goto!(0, DecodeSubBlock(0), emit Decoded::Data(bytes))
                     } else {
