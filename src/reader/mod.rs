@@ -300,8 +300,7 @@ impl<R> Reader<R> where R: Read {
         let buf_len = self.buffer.len();
         if buf_len > 0 {
             let (len, channels) = handle_data!(&self.buffer);
-            // This is WRONG!!!! Cuts form the wrong side…
-            self.buffer.truncate(buf_len-len);
+            let _ = self.buffer.drain(..len);
             let buf_ = buf; buf = &mut buf_[len*channels..];
             if buf.len() == 0 {
                 return Ok(true)
