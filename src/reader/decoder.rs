@@ -391,8 +391,20 @@ impl StreamingDecoder {
                         let local_table = (b & 0b1000_0000) != 0;
                         let interlaced   = (b & 0b0100_0000) != 0;
                         let table_size  =  b & 0b0000_0111;
-                        
+
                         self.current_frame_mut().interlaced = interlaced;
+
+                        {
+                            // Consistency checks.
+                            let (width, height) = (self.width, self.height);
+                            let frame = self.current_frame_mut();
+                            if width.checked_sub(frame.width) < Some(frame.left)
+                                || height.checked_sub(frame.height) < Some(frame.top)
+                            {
+                                return Err(DecodingError::Format("frame descriptor is out-of-bounds"))
+                            }
+                        }
+
                         if local_table {
                             let entries = PLTE_CHANNELS * (1 << (table_size + 1));
                             
