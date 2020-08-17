@@ -456,10 +456,10 @@ mod c_interface {
 
     use libc::c_int;
     
-    use common::Block;
+    use crate::common::Block;
 
-    use c_api::{self, GifWord};
-    use c_api_utils::{CInterface, copy_colormap, copy_data, saved_images_new};
+    use crate::c_api::{self, GifWord};
+    use crate::c_api_utils::{CInterface, copy_colormap, copy_data, saved_images_new};
 
     use super::decoder::{Decoded, DecodingError};
 

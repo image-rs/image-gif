@@ -16,8 +16,8 @@ use std::slice;
 
 use libc::{free, c_int, c_uint, c_char, c_uchar, c_void};
 
-use reader::{Decoder, Reader, Decoded};
-use c_api_utils::{CInterface, CFile, FnInputFile};
+use crate::reader::{Decoder, Reader, Decoded};
+use crate::c_api_utils::{CInterface, CFile, FnInputFile};
 
 /// NOTE As of rust issue #954 `bool` is compatible with c_bool.
 pub type c_bool = bool;
@@ -304,7 +304,7 @@ fn DGifGetLine(this: *mut GifFileType, line: *mut GifPixelType, len: c_int) -> c
 /// Returns the type of the extension and the first extension sub-block `(size, data...)`
 #[no_mangle] pub unsafe extern "C"
 fn DGifGetExtension(this: *mut GifFileType, ext_type: *mut c_int, ext_block: *mut *const GifByteType) -> c_int {
-    use common::Block::*;
+    use crate::common::Block::{Extension, Image, Trailer};
     let decoder = try_get_decoder!(this);
     match try_capi!(decoder.next_record_type()) {
         Image | Trailer => {
