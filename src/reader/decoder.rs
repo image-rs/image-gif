@@ -516,6 +516,9 @@ impl StreamingDecoder {
                     let n = cmp::min(left, buf.len());
                     let max_bytes = self.current_frame().required_bytes();
                     let decoder = self.lzw_reader.as_mut().unwrap();
+                    if decoder.has_ended() {
+                        return goto!(left, DecodeSubBlock(0), emit Decoded::Data(&[]));
+                    }
                     if self.decode_buffer.is_empty() {
                         let size = (1 << 14).min(max_bytes);
                         self.decode_buffer = vec![0; size];
