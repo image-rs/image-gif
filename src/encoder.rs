@@ -1,16 +1,12 @@
-
 //! # Minimal gif encoder
-
-
-
 use std::cmp::min;
 use std::io;
 use std::io::prelude::*;
 
-use lzw;
+use weezl::{BitOrder, encode::Encoder as LzwEncoder};
 
-use traits::{Parameter, WriteBytesExt};
-use common::{Block, Frame, Extension, DisposalMethod};
+use crate::traits::{Parameter, WriteBytesExt};
+use crate::common::{Block, Frame, Extension, DisposalMethod};
 
 /// Number of repetitions
 pub enum Repeat {
@@ -218,8 +214,8 @@ impl<W: Write> Encoder<W> {
             };
             self.w.write_le(min_code_size)?;
             let mut bw = BlockWriter::new(&mut self.w);
-            let mut enc = lzw::Encoder::new(lzw::LsbWriter::new(&mut bw), min_code_size)?;
-            enc.encode_bytes(data)?;
+            let mut enc = LzwEncoder::new(BitOrder::Lsb, min_code_size);
+            enc.into_stream(&mut bw).encode_all(data).status?;
         }
         self.w.write_le(0u8)
     }
@@ -316,14 +312,14 @@ impl<W: Write> Drop for Encoder<W> {
 // Color table size converted to flag bits
 fn flag_size(size: usize) -> u8 {
     match size {
-        0  ...2   => 0,
-        3  ...4   => 1,
-        5  ...8   => 2,
-        7  ...16  => 3,
-        17 ...32  => 4,
-        33 ...64  => 5,
-        65 ...128 => 6,
-        129...256 => 7,
+        0  ..=2   => 0,
+        3  ..=4   => 1,
+        5  ..=8   => 2,
+        7  ..=16  => 3,
+        17 ..=32  => 4,
+        33 ..=64  => 5,
+        65 ..=128 => 6,
+        129..=256 => 7,
         _ => 7
     }
 }

@@ -5,8 +5,8 @@ use std::mem;
 use std::iter;
 use std::io::prelude::*;
 
-use traits::{Parameter, SetParameter};
-use common::Frame;
+use crate::traits::{Parameter, SetParameter};
+use crate::common::Frame;
 
 mod decoder;
 pub use self::decoder::{
@@ -106,7 +106,7 @@ impl<R: Read> ReadDecoder<R> {
             self.reader.consume(consumed);
             match result {
                 Decoded::Nothing => (),
-                Decoded::BlockStart(::common::Block::Trailer) => {
+                Decoded::BlockStart(crate::common::Block::Trailer) => {
                     self.at_eof = true
                 },
                 result => return Ok(unsafe{
@@ -300,8 +300,7 @@ impl<R> Reader<R> where R: Read {
         let buf_len = self.buffer.len();
         if buf_len > 0 {
             let (len, channels) = handle_data!(&self.buffer);
-            // This is WRONG!!!! Cuts form the wrong side…
-            self.buffer.truncate(buf_len-len);
+            let _ = self.buffer.drain(..len);
             let buf_ = buf; buf = &mut buf_[len*channels..];
             if buf.len() == 0 {
                 return Ok(true)
@@ -401,34 +400,6 @@ mod test {
 
     use super::{Decoder, InterlaceIterator};
     
-    /* Commented because test::Bencher is unstable
-    extern crate test;
-    use std::io::prelude::*;
-    #[bench]
-    fn bench_tiny(b: &mut test::Bencher) {
-        let mut data = Vec::new();
-        File::open("tests/samples/sample_1.gif").unwrap().read_to_end(&mut data).unwrap();
-        b.iter(|| {
-            let mut decoder = Decoder::new(&*data).read_info().unwrap();
-            let frame = decoder.read_next_frame().unwrap().unwrap();
-            test::black_box(frame);
-        });
-        let mut decoder = Decoder::new(&*data).read_info().unwrap();
-        b.bytes = decoder.read_next_frame().unwrap().unwrap().buffer.len() as u64
-    }
-    #[bench]
-    fn bench_big(b: &mut test::Bencher) {
-        let mut data = Vec::new();
-        File::open("tests/sample_big.gif").unwrap().read_to_end(&mut data).unwrap();
-        b.iter(|| {
-            let mut decoder = Decoder::new(&*data).read_info().unwrap();
-            let frame = decoder.read_next_frame().unwrap().unwrap();
-            test::black_box(frame);
-        });
-        let mut decoder = Decoder::new(&*data).read_info().unwrap();
-        b.bytes = decoder.read_next_frame().unwrap().unwrap().buffer.len() as u64
-    }*/
-    
     #[test]
     fn test_simple_indexed() {
         let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap()).read_info().unwrap();
@@ -485,10 +456,10 @@ mod c_interface {
 
     use libc::c_int;
     
-    use common::Block;
+    use crate::common::Block;
 
-    use c_api::{self, GifWord};
-    use c_api_utils::{CInterface, copy_colormap, copy_data, saved_images_new};
+    use crate::c_api::{self, GifWord};
+    use crate::c_api_utils::{CInterface, copy_colormap, copy_data, saved_images_new};
 
     use super::decoder::{Decoded, DecodingError};
 

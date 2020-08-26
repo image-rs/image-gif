@@ -63,7 +63,7 @@ where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
 
 #[test]
 fn error_cast() {
-    let _ : Box<Error> = gif::DecodingError::Internal("testing").into();
+    let _ : Box<dyn Error> = gif::DecodingError::Internal("testing").into();
 }
 
 #[test]

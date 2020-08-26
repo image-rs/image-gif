@@ -5,14 +5,12 @@ use std::slice;
 
 use libc::{malloc, size_t, c_int, read, close};
 
-use common::Block;
-use reader::{Decoded, DecodingError, PLTE_CHANNELS};
-use c_api::{GifFileType, SavedImage, ColorMapObject, GifColorType, c_bool,
-           InputFunc
-};
+use crate::common::Block;
+use crate::reader::{Decoded, DecodingError, PLTE_CHANNELS};
+use crate::c_api::{GifFileType, SavedImage, ColorMapObject, GifColorType, c_bool, InputFunc};
 
 pub trait CInterface {
-    fn read_screen_desc(&mut self, &mut GifFileType);
+    fn read_screen_desc(&mut self, _: &mut GifFileType);
     fn current_image_buffer(&mut self) -> Result<(&[u8], &mut usize), DecodingError>;
     //fn seek_to(&mut self, position: Progress) -> Result<(), DecodingError>;
     fn last_ext(&self) -> (u8, &[u8], bool);

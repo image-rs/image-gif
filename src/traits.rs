@@ -9,7 +9,7 @@ pub trait Parameter<Object> {
     // TODO: Use default type () when associated type defaults get stable.
     type Result;
     /// Sets `self` as a parameter of `Object`.
-    fn set_param(self, &mut Object) -> Self::Result;
+    fn set_param(self, _: &mut Object) -> Self::Result;
 }
 
 /// Implemented for objects that have parameters.
