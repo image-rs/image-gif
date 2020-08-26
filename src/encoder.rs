@@ -1,8 +1,4 @@
-
 //! # Minimal gif encoder
-
-
-
 use std::cmp::min;
 use std::io;
 use std::io::prelude::*;
