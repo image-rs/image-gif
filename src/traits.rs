@@ -1,29 +1,6 @@
 //! Traits used in this library
 use std::io;
 
-/// Configuration parameter trait.
-///
-/// Use the list of implementors to see which parameters are available for which struct.
-pub trait Parameter<Object> {
-    /// Result type of `set_param`.
-    // TODO: Use default type () when associated type defaults get stable.
-    type Result;
-    /// Sets `self` as a parameter of `Object`.
-    fn set_param(self, _: &mut Object) -> Self::Result;
-}
-
-/// Implemented for objects that have parameters.
-///
-/// Provides a unified `set`-method to simplify the configuration.
-pub trait SetParameter: Sized {
-    /// Sets `value` as a parameter of `self`.
-    fn set<T: Parameter<Self>>(&mut self, value: T) -> <T as Parameter<Self>>::Result {
-        value.set_param(self)
-    }
-}
-
-impl<T> SetParameter for T {}
-
 /// Writer extension to write little endian data
 pub trait WriteBytesExt<T> {
     /// Writes `T` to a bytes stream. Least significant byte first.

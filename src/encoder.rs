@@ -5,7 +5,7 @@ use std::io::prelude::*;
 
 use weezl::{BitOrder, encode::Encoder as LzwEncoder};
 
-use crate::traits::{Parameter, WriteBytesExt};
+use crate::traits::{WriteBytesExt};
 use crate::common::{Block, Frame, Extension, DisposalMethod};
 
 /// Number of repetitions
@@ -14,13 +14,6 @@ pub enum Repeat {
     Finite(u16),
     /// Infinite number of repetitions
     Infinite
-}
-
-impl<W: Write> Parameter<Encoder<W>> for Repeat {
-    type Result = Result<(), io::Error>;
-    fn set_param(self, this: &mut Encoder<W>) -> Self::Result {
-        this.write_extension(ExtensionData::Repetitions(self))
-    }
 }
 
 /// Extension data.
@@ -142,6 +135,11 @@ impl<W: Write> Encoder<W> {
             width: width,
             height: height
         }.write_global_palette(global_palette)
+    }
+
+    /// Write an extension block that signals a repeat behaviour.
+    pub fn set_repeat(&mut self, repeat: Repeat) -> Result<(), io::Error> {
+        self.write_extension(ExtensionData::Repetitions(repeat))
     }
 
     /// Writes the global color palette.

@@ -128,7 +128,6 @@ mod c_api_utils;
 #[cfg(feature = "c_api")]
 pub mod c_api;
 
-pub use crate::traits::{SetParameter, Parameter};
 pub use crate::common::{Block, Extension, DisposalMethod, Frame};
 
 pub use crate::reader::{StreamingDecoder, Decoded, DecodingError};

@@ -9,7 +9,6 @@ use std::error;
 
 use weezl::{BitOrder, decode::Decoder as LzwDecoder, LzwStatus};
 
-use crate::traits::Parameter;
 use crate::common::{Frame, Block, Extension, DisposalMethod};
 
 /// GIF palettes are RGB
@@ -67,17 +66,6 @@ pub enum Extensions {
     /// Skips the data of unknown extensions
     /// and extracts the data from known ones
     Skip
-}
-
-impl Parameter<StreamingDecoder> for Extensions {
-    type Result = ();
-    fn set_param(self, this: &mut StreamingDecoder) {
-        this.skip_extensions = match self {
-            Extensions::Skip => true,
-            Extensions::Save => false,
-
-        }
-    }
 }
 
 /// Indicates whether a certain object has been decoded
@@ -261,6 +249,14 @@ impl StreamingDecoder {
     /// Height of the image
     pub fn height(&self) -> u16 {
         self.height
+    }
+
+    /// Configure whether extensions are saved or skipped.
+    pub fn set_extensions(&mut self, extensions: Extensions) {
+        self.skip_extensions = match extensions {
+            Extensions::Skip => true,
+            Extensions::Save => false,
+        }
     }
 
     fn next_state<'a>(&'a mut self, buf: &[u8]) -> Result<(usize, Decoded<'a>), DecodingError> {

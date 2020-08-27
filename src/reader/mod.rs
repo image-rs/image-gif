@@ -5,7 +5,6 @@ use std::mem;
 use std::iter;
 use std::io::prelude::*;
 
-use crate::traits::{Parameter, SetParameter};
 use crate::common::Frame;
 
 mod decoder;
@@ -14,15 +13,6 @@ pub use self::decoder::{
 };
 
 const N_CHANNELS: usize = 4;
-
-impl<T, R> Parameter<Decoder<R>> for T
-where T: Parameter<StreamingDecoder>, R: Read {
-    type Result = ();
-    fn set_param(self, this: &mut Decoder<R>) {
-        this.decoder.set(self);
-    }
-
-}
 
 /// Output mode for the image data
 #[derive(PartialEq, Debug)]
@@ -38,25 +28,10 @@ pub enum ColorOutput {
     Indexed = 1,
 }
 
-impl<R: Read> Parameter<Decoder<R>> for ColorOutput {
-    type Result = ();
-    fn set_param(self, this: &mut Decoder<R>) {
-        this.color_output = self
-    }
-}
-
 #[derive(Debug)]
 /// Memory limit in bytes. `MemoryLimit::Some(0)` means
 /// that there is no memory limit set.
 pub struct MemoryLimit(pub u32);
-
-impl<R: Read> Parameter<Decoder<R>> for MemoryLimit {
-    type Result = ();
-    fn set_param(self, this: &mut Decoder<R>) {
-        let MemoryLimit(limit) = self;
-        this.memory_limit = limit
-    }
-}
 
 /// GIF decoder
 pub struct Decoder<R: Read> {
@@ -75,6 +50,16 @@ impl<R: Read> Decoder<R> {
             memory_limit: 50_000_000, // 50 MB
             color_output: ColorOutput::Indexed
         }
+    }
+
+    /// Configure how color data is decoded.
+    pub fn set_color_output(&mut self, color: ColorOutput) {
+        self.color_output = color;
+    }
+
+    /// Configure a memory limit for decoding.
+    pub fn set_memory_limit(&mut self, MemoryLimit(limit): MemoryLimit) {
+        self.memory_limit = limit;
     }
     
     /// Reads the logical screen descriptor including the global color palette
