@@ -12,4 +12,5 @@ script:
       cargo build -v --features="$FEATURES";
     else
         cargo test -v --features="$FEATURES";
+        cargo build --benches -v --features="$FEATURES";
     fi
