@@ -18,10 +18,9 @@
 //! ```rust
 //! // Open the file
 //! use std::fs::File;
-//! use gif::SetParameter;
 //! let mut decoder = gif::Decoder::new(File::open("tests/samples/sample_1.gif").unwrap());
 //! // Configure the decoder such that it will expand the image to RGBA.
-//! decoder.set(gif::ColorOutput::RGBA);
+//! decoder.set_color_output(gif::ColorOutput::RGBA);
 //! // Read the file header
 //! let mut decoder = decoder.read_info().unwrap();
 //! while let Some(frame) = decoder.read_next_frame().unwrap() {
@@ -36,7 +35,7 @@
 //! The encoder can be used so save simple computer generated images:
 //! 
 //! ```rust
-//! use gif::{Frame, Encoder, Repeat, SetParameter};
+//! use gif::{Frame, Encoder, Repeat};
 //! use std::fs::File;
 //! use std::borrow::Cow;
 //! 
@@ -59,7 +58,7 @@
 //! ]];
 //! let mut image = File::create("tests/samples/beacon.gif").unwrap();;
 //! let mut encoder = Encoder::new(&mut image, width, height, color_map).unwrap();
-//! encoder.set(Repeat::Infinite).unwrap();
+//! encoder.set_repeat(Repeat::Infinite).unwrap();
 //! for state in &beacon_states {
 //!     let mut frame = Frame::default();
 //!     frame.width = width;
