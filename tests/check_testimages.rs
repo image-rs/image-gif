@@ -9,8 +9,6 @@ use std::error::Error;
 use std::io::BufReader;
 use std::io::prelude::*;
 
-use gif::SetParameter;
-
 const BASE_PATH: [&'static str; 2] = [".", "tests"];
 
 fn process_images<F>(func: F)
@@ -70,7 +68,7 @@ fn error_cast() {
 fn render_images() {
     process_images(|path| {
         let mut decoder = gif::Decoder::new(File::open(path)?);
-        decoder.set(gif::ColorOutput::RGBA);
+        decoder.set_color_output(gif::ColorOutput::RGBA);
         let mut decoder = decoder.read_info()?;
         let mut crc = Crc32::new();
         while let Some(frame) = decoder.read_next_frame()? {
