@@ -161,22 +161,22 @@ impl GifFileType {
         unsafe { Box::new(mem::zeroed()) }
     }
 
-    fn attach_decoder(&mut self, interface: Box<CInterface>) {
+    fn attach_decoder(&mut self, interface: Box<dyn CInterface>) {
         assert_eq!(self.Private, ptr::null_mut());
         let decoder = Box::into_raw(Box::new(Box::into_raw(interface)));
         self.Private = decoder as *mut c_void;
     }
 
-    fn detach_decoder(&mut self) -> Box<CInterface> {
+    fn detach_decoder(&mut self) -> Box<dyn CInterface> {
         assert_ne!(self.Private, ptr::null_mut());
-        let boxed = unsafe { Box::<Box<CInterface>>::from_raw(self.Private as *mut _) };
+        let boxed = unsafe { Box::<Box<dyn CInterface>>::from_raw(self.Private as *mut _) };
         self.Private = ptr::null_mut();
         *boxed
     }
 
-    fn decoder_mut(&mut self) -> Result<&mut CInterface, c_int> {
+    fn decoder_mut(&mut self) -> Result<&mut dyn CInterface, c_int> {
         match self.Private == ptr::null_mut() {
-            true => Ok(unsafe { &mut **(self.Private as *mut Box<CInterface>) }),
+            true => Ok(unsafe { &mut **(self.Private as *mut Box<dyn CInterface>) }),
             false => Err(GIF_ERROR),
         }
     }

@@ -436,10 +436,7 @@ mod test {
 #[cfg(feature = "c_api")]
 mod c_interface {
     use std::io::prelude::*;
-    use std::ptr;
     use std::borrow::Cow;
-
-    use libc::c_int;
     
     use crate::common::Block;
 
@@ -452,7 +449,7 @@ mod c_interface {
 
     impl<R> Reader<R> where R: Read + 'static {
         /// Converts `Reader` into `CInterface`.
-        pub fn into_c_interface(self) -> Box<CInterface> {
+        pub fn into_c_interface(self) -> Box<dyn CInterface> {
             Box::new(self)
         }
     }
