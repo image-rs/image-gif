@@ -123,7 +123,7 @@ pub struct GifFileType {
     pub Private: *mut c_void,
 }
 
-#[repr(C)]
+#[repr(u8)]
 pub enum GifRecordType {
     UNDEFINED_RECORD_TYPE,
     SCREEN_DESC_RECORD_TYPE,
@@ -188,6 +188,7 @@ impl GifFileType {
 ///
 /// Returns NULL on error, a pointer to `GifFileType` on success. If `err` is not NULL then an
 /// additional error code is written to it.
+#[allow(unused_unsafe)]
 #[no_mangle] pub unsafe extern "C"
 fn DGifOpenFileName(gif_file_name: *const c_char, err: *mut c_int) -> *mut GifFileType {
     ErrPtr::with_err(&err).catch_unwind(|| {
@@ -212,6 +213,7 @@ fn DGifOpenFileName(gif_file_name: *const c_char, err: *mut c_int) -> *mut GifFi
 ///
 /// Returns NULL on error, a pointer to `GifFileType` on success. If `err` is not NULL then an
 /// additional error code is written to it.
+#[allow(unused_unsafe)]
 #[no_mangle] pub unsafe extern "C"
 fn DGifOpenFileHandle(fp: c_int, err: *mut c_int) -> *mut GifFileType {
     ErrPtr::with_err(&err).catch_unwind(|| {
@@ -309,6 +311,7 @@ fn DGifSlurp(this: *mut GifFileType) -> c_int {
 ///
 /// Returns NULL on error, a pointer to `GifFileType` on success. If `err` is not NULL then an
 /// additional error code is written to it.
+#[allow(unused_unsafe)]
 #[no_mangle] pub unsafe extern "C"
 fn DGifOpen(user_data: *mut c_void, read_fn: InputFunc, err: *mut c_int) -> *mut GifFileType {
     ErrPtr::with_err(&err).catch_unwind(|| {
@@ -339,6 +342,7 @@ fn DGifOpen(user_data: *mut c_void, read_fn: InputFunc, err: *mut c_int) -> *mut
 }
 
 /// Closes the file and also frees all data structures.
+#[allow(unused_unsafe)]
 #[no_mangle] pub unsafe extern "C"
 fn DGifCloseFile(this: *mut GifFileType, err: *mut c_int) -> c_int {
     if this == ptr::null_mut() {
@@ -374,19 +378,30 @@ fn DGifCloseFile(this: *mut GifFileType, err: *mut c_int) -> c_int {
 fn DGifGetScreenDesc(_: *mut GifFileType) -> c_int {
     GIF_OK
 }
-/*
+
+#[allow(unused_unsafe)]
 #[no_mangle] pub unsafe extern "C"
 fn DGifGetRecordType(this: *mut GifFileType, record_type: *mut GifRecordType) -> c_int {
-    use common::Block::*;
-    use self::GifRecordType::*;
-    *record_type = match try_capi!(try_get_decoder!(this).next_record_type()) {
-        Image => IMAGE_DESC_RECORD_TYPE,
-        Extension => EXTENSION_RECORD_TYPE,
-        Trailer => TERMINATE_RECORD_TYPE
-    };
-    GIF_OK
+    let mut status = GIF_OK;
+    ErrPtr::new(&mut status).catch_unwind(|| {
+        use self::GifRecordType::*;
+        let decoder = unsafe { &mut *this };
+        let next_type = decoder
+            .decoder_mut()?
+            .next_record_type()
+            .map_err(|_| D_GIF_ERR_NOT_READABLE)?;
+        use common::Block;
+        *record_type = match next_type {
+            Block::Image => IMAGE_DESC_RECORD_TYPE,
+            Block::Extension => EXTENSION_RECORD_TYPE,
+            Block::Trailer => TERMINATE_RECORD_TYPE
+        };
+        Ok(())
+    });
+    status
 }
-*/
+
+#[allow(unused_unsafe)]
 #[no_mangle] pub unsafe extern "C"
 fn DGifGetImageDesc(this: *mut GifFileType) -> c_int {
     unsafe { &mut *this }
@@ -395,6 +410,7 @@ fn DGifGetImageDesc(this: *mut GifFileType) -> c_int {
         .unwrap_or_else(|x| x)
 }
 
+#[allow(unused_unsafe)]
 #[no_mangle] pub unsafe extern "C"
 fn DGifGetLine(this: *mut GifFileType, line: *mut GifPixelType, len: c_int) -> c_int {
     let mut err: c_int = GIF_OK;
@@ -417,6 +433,7 @@ fn DGifGetLine(this: *mut GifFileType, line: *mut GifPixelType, len: c_int) -> c
 //int DGifGetComment(GifFi leType *GifFile, char *GifComment);
 
 /// Returns the type of the extension and the first extension sub-block `(size, data...)`
+#[allow(unused_unsafe)]
 #[no_mangle] pub unsafe extern "C"
 fn DGifGetExtension(this: *mut GifFileType, ext_type: *mut c_int, ext_block: *mut *const GifByteType) -> c_int {
     let mut err: c_int = GIF_OK;
@@ -455,6 +472,7 @@ fn DGifGetExtension(this: *mut GifFileType, ext_type: *mut c_int, ext_block: *mu
 }
 
 /// Returns the next extension sub-block `(size, data...)`
+#[allow(unused_unsafe)]
 #[no_mangle] pub unsafe extern "C"
 fn DGifGetExtensionNext(this: *mut GifFileType, ext_block: *mut *const GifByteType) -> c_int {
     let mut err: c_int = GIF_OK;
@@ -491,6 +509,7 @@ fn GifAddExtensionBlock(block_count: *mut c_int, ext_blocks: *mut *const Extensi
     GIF_OK
 }
 */
+#[allow(unused_unsafe)]
 #[no_mangle] pub unsafe extern "C"
 fn GifFreeExtensions(block_count: *mut c_int, ext_blocks: *mut *mut ExtensionBlock) {
     if ext_blocks == ptr::null_mut() || block_count ==  ptr::null_mut() {
