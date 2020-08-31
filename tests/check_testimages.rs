@@ -60,11 +60,6 @@ where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
 }
 
 #[test]
-fn error_cast() {
-    let _ : Box<dyn Error> = gif::DecodingError::Internal("testing").into();
-}
-
-#[test]
 fn render_images() {
     process_images(|path| {
         let mut decoder = gif::Decoder::new(File::open(path)?);

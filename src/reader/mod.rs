@@ -9,7 +9,7 @@ use crate::common::Frame;
 
 mod decoder;
 pub use self::decoder::{
-    PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, Extensions
+    PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, Extensions, DecodingFormatError
 };
 
 const N_CHANNELS: usize = 4;
@@ -82,7 +82,7 @@ impl<R: Read> ReadDecoder<R> {
             let (consumed, result) = {
                 let buf = self.reader.fill_buf()?;
                 if buf.len() == 0 {
-                    return Err(DecodingError::Format(
+                    return Err(DecodingError::format(
                         "unexpected EOF"
                     ))
                 }
@@ -158,8 +158,8 @@ impl<R> Reader<R> where R: Read {
                     // palette has been read.
                     unreachable!()
                 },
-                None => return Err(DecodingError::Format(
-                    "File does not contain any image data"
+                None => return Err(DecodingError::format(
+                    "file does not contain any image data"
                 ))
             }
         }
@@ -179,16 +179,16 @@ impl<R> Reader<R> where R: Read {
                 Some(Decoded::Frame(frame)) => {
                     self.current_frame = frame.clone();
                     if frame.palette.is_none() && self.global_palette.is_none() {
-                        return Err(DecodingError::Format(
-                            "No color table available for current frame."
+                        return Err(DecodingError::format(
+                            "no color table available for current frame"
                         ))
                     }
                     if self.memory_limit > 0  && (
                         (frame.width as u32 * frame.height as u32)
                         > self.memory_limit
                     ) {
-                        return Err(DecodingError::Format(
-                            "Image is too large to decode."
+                        return Err(DecodingError::format(
+                            "image is too large to decode"
                         ))
                     }
                     break
@@ -228,13 +228,13 @@ impl<R> Reader<R> where R: Read {
             let height = self.current_frame.height as usize;
             for row in (InterlaceIterator { len: height, next: 0, pass: 0 }) {
                 if !self.fill_buffer(&mut buf[row*width..][..width])? {
-                    return Err(DecodingError::Format("Image truncated"))
+                    return Err(DecodingError::format("image truncated"))
                 }
             }
         } else {
             let buf = &mut buf[..self.buffer_size()];
             if !self.fill_buffer(buf)? {
-                return Err(DecodingError::Format("Image truncated"))
+                return Err(DecodingError::format("image truncated"))
             }
         };
         Ok(())
@@ -329,8 +329,8 @@ impl<R> Reader<R> where R: Read {
         // TODO prevent planic
         Ok(match self.current_frame.palette {
             Some(ref table) => &*table,
-            None => &*self.global_palette.as_ref().ok_or(DecodingError::Format(
-                "No color table available for current frame."
+            None => &*self.global_palette.as_ref().ok_or(DecodingError::format(
+                "no color table available for current frame"
             ))?,
         })
     }

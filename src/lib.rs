@@ -129,12 +129,12 @@ pub mod c_api;
 
 pub use crate::common::{Block, Extension, DisposalMethod, Frame};
 
-pub use crate::reader::{StreamingDecoder, Decoded, DecodingError};
+pub use crate::reader::{StreamingDecoder, Decoded, DecodingError, DecodingFormatError};
 /// StreamingDecoder configuration parameters
 pub use crate::reader::{ColorOutput, MemoryLimit, Extensions};
 pub use crate::reader::{Reader, Decoder};
 
-pub use crate::encoder::{Encoder, ExtensionData, Repeat};
+pub use crate::encoder::{Encoder, ExtensionData, Repeat, EncodingError};
 
 #[cfg(test)]
 #[test]

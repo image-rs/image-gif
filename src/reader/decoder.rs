@@ -14,40 +14,66 @@ use crate::common::{Frame, Block, Extension, DisposalMethod};
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
 
+/// An error returned in the case of the image not being formatted properly.
+#[derive(Debug)]
+pub struct DecodingFormatError {
+    underlying: Box<dyn error::Error + Send + Sync + 'static>
+}
+
+impl fmt::Display for DecodingFormatError {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&*self.underlying, fmt)
+    }
+}
+
+impl error::Error for DecodingFormatError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        Some(&*self.underlying as _)
+    }
+}
+
+impl DecodingFormatError {
+    fn new(
+        err: impl Into<Box<dyn error::Error + Send + Sync>>,
+    ) -> Self {
+        DecodingFormatError {
+            underlying: err.into(),
+        }
+    }
+}
+
 #[derive(Debug)]
 /// Decoding error.
 pub enum DecodingError {
     /// Returned if the image is found to be malformed.
-    Format(&'static str),
-    /// Internal (logic) error.
-    Internal(&'static str),
+    Format(DecodingFormatError),
     /// Wraps `std::io::Error`.
     Io(io::Error),
+}
+
+impl DecodingError {
+    #[inline]
+    pub(crate) fn format(
+        err: impl Into<Box<dyn error::Error + Send + Sync>>,
+    ) -> Self {
+        DecodingError::Format(DecodingFormatError::new(err))
+    }
 }
 
 impl fmt::Display for DecodingError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             DecodingError::Format(ref d) => d.fmt(fmt),
-            DecodingError::Internal(ref d) => d.fmt(fmt),
             DecodingError::Io(ref err) => err.fmt(fmt),
         }
     }
 }
 
 impl error::Error for DecodingError {
-    fn description(&self) -> &str {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
-            DecodingError::Format(ref d) => d,
-            DecodingError::Internal(ref d) => d,
-            DecodingError::Io(ref err) => err.description(),
-        }
-    }
-
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match *self {
+            DecodingError::Format(ref err) => Some(err),
             DecodingError::Io(ref err) => Some(err),
-            _ => None,
         }
     }
 }
@@ -55,6 +81,12 @@ impl error::Error for DecodingError {
 impl From<io::Error> for DecodingError {
     fn from(err: io::Error) -> Self {
         DecodingError::Io(err)
+    }
+}
+
+impl From<DecodingFormatError> for DecodingError {
+    fn from(err: DecodingFormatError) -> Self {
+        DecodingError::Format(err)
     }
 }
 
@@ -293,11 +325,11 @@ impl StreamingDecoder {
                 self.version = match &version[3..] {
                     b"87a" => "87a",
                     b"89a" => "89a",
-                    _ => return Err(DecodingError::Format("unsupported GIF version"))
+                    _ => return Err(DecodingError::format("unsupported GIF version"))
                 };
                 goto!(U16Byte1(U16Value::ScreenWidth, b))
             } else {
-                Err(DecodingError::Format("malformed GIF header"))
+                Err(DecodingError::format("malformed GIF header"))
             },
             U16(next) => goto!(U16Byte1(next, b)),
             U16Byte1(next, value) => {
@@ -398,7 +430,7 @@ impl StreamingDecoder {
                             if width.checked_sub(frame.width) < Some(frame.left)
                                 || height.checked_sub(frame.height) < Some(frame.top)
                             {
-                                return Err(DecodingError::Format("frame descriptor is out-of-bounds"))
+                                return Err(DecodingError::format("frame descriptor is out-of-bounds"))
                             }
                         }
 
@@ -443,7 +475,7 @@ impl StreamingDecoder {
                     Some(Extension) => goto!(ExtensionBlock(b), emit Decoded::BlockStart(Extension)),
                     Some(Trailer) => goto!(0, State::Trailer, emit Decoded::BlockStart(Trailer)),
                     None => {
-                        return Err(DecodingError::Format(
+                        return Err(DecodingError::format(
                         "unknown block type encountered"
                     ))}
                 }
@@ -456,7 +488,7 @@ impl StreamingDecoder {
                         goto!(BlockStart(Block::from_u8(b)))
                     }
                 } else {
-                    return Err(DecodingError::Format(
+                    return Err(DecodingError::format(
                         "expected block terminator not found"
                     ))
                 }
@@ -476,7 +508,7 @@ impl StreamingDecoder {
                         }
                     }
                 } else {
-                    return Err(DecodingError::Format(
+                    return Err(DecodingError::format(
                         "unknown extention block encountered"
                     ))
                 }
@@ -511,7 +543,7 @@ impl StreamingDecoder {
             LzwInit(code_size) => {
                 // LZW spec: max 12 bits per code
                 if code_size > 11 {
-                    return Err(DecodingError::Format(
+                    return Err(DecodingError::format(
                         "invalid minimal code size"
                     ))
                 }
@@ -585,7 +617,7 @@ impl StreamingDecoder {
         self.add_frame();
         self.ext.1.push(b);
         if b != 4 {
-            return Err(DecodingError::Format(
+            return Err(DecodingError::format(
                 "control extension has wrong length"
             ))
         }
@@ -597,4 +629,9 @@ impl StreamingDecoder {
             self.current = Some(Frame::default())
         }
     }
+}
+
+#[test]
+fn error_cast() {
+    let _ : Box<dyn error::Error> = DecodingError::Format(DecodingFormatError::new("testing")).into();
 }
