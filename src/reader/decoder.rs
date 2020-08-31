@@ -70,14 +70,7 @@ impl fmt::Display for DecodingError {
 }
 
 impl error::Error for DecodingError {
-    fn description(&self) -> &str {
-        match *self {
-            DecodingError::Format(ref err) => err.description(),
-            DecodingError::Io(ref err) => err.description(),
-        }
-    }
-
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             DecodingError::Format(ref err) => Some(err),
             DecodingError::Io(ref err) => Some(err),
