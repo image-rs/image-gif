@@ -114,18 +114,10 @@
 #![deny(missing_docs)]
 #![cfg(feature = "std")]
 
-#[cfg(feature = "c_api")]
-extern crate libc;
-
 mod traits;
 mod common;
 mod reader;
 mod encoder;
-
-#[cfg(feature = "c_api")]
-mod c_api_utils;
-#[cfg(feature = "c_api")]
-pub mod c_api;
 
 pub use crate::common::{Block, Extension, DisposalMethod, Frame};
 

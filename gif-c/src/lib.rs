@@ -5,6 +5,7 @@
 #![allow(dead_code)]
 #![allow(missing_docs)]
 mod c_api_utils;
+mod reader;
 
 use std::cmp;
 use std::mem;
@@ -391,7 +392,7 @@ fn DGifGetRecordType(this: *mut GifFileType, record_type: *mut GifRecordType) ->
             .decoder_mut()?
             .next_record_type()
             .map_err(|_| D_GIF_ERR_NOT_READABLE)?;
-        use common::Block;
+        use gif::Block;
         *record_type = match next_type {
             Block::Image => IMAGE_DESC_RECORD_TYPE,
             Block::Extension => EXTENSION_RECORD_TYPE,
@@ -439,7 +440,7 @@ fn DGifGetLine(this: *mut GifFileType, line: *mut GifPixelType, len: c_int) -> c
 fn DGifGetExtension(this: *mut GifFileType, ext_type: *mut c_int, ext_block: *mut *const GifByteType) -> c_int {
     let mut err: c_int = GIF_OK;
     ErrPtr::new(&mut err).catch_unwind(|| {
-        use common::Block::*;
+        use gif::Block::*;
         let decoder = unsafe { &mut *this };
         let decoder = decoder.decoder_mut()?;
 
