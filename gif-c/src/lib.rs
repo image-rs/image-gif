@@ -10,7 +10,6 @@ mod reader;
 use std::cmp;
 use std::mem;
 use std::ptr;
-use std::boxed;
 use std::fs::File;
 use std::ffi::CStr;
 use std::str;
@@ -20,7 +19,7 @@ use std::panic;
 use libc::{free, c_int, c_uint, c_char, c_uchar, c_void};
 
 use crate::c_api_utils::{CInterface, CFile, FnInputFile};
-use gif::{Decoder, Reader, Decoded};
+use gif::{Decoder, Decoded};
 
 /// NOTE As of rust issue #954 `bool` is compatible with c_bool.
 pub type c_bool = bool;
@@ -156,6 +155,10 @@ pub const D_GIF_ERR_EOF_TOO_SOON  : c_int = 113;
 
 const GIF_ERROR: c_int = 0;
 const GIF_OK   : c_int = 1;
+
+trait IntoCInterface {
+    fn into_c_interface(self) -> Box<dyn CInterface>;
+}
 
 impl GifFileType {
     fn zeroed_box() -> Box<Self> {
