@@ -4,6 +4,7 @@
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
 #![allow(missing_docs)]
+mod c_api_utils;
 
 use std::cmp;
 use std::mem;
@@ -17,8 +18,8 @@ use std::panic;
 
 use libc::{free, c_int, c_uint, c_char, c_uchar, c_void};
 
-use crate::reader::{Decoder, Reader, Decoded};
 use crate::c_api_utils::{CInterface, CFile, FnInputFile};
+use gif::{Decoder, Reader, Decoded};
 
 /// NOTE As of rust issue #954 `bool` is compatible with c_bool.
 pub type c_bool = bool;

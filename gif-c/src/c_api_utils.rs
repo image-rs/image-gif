@@ -5,9 +5,9 @@ use std::slice;
 
 use libc::{malloc, size_t, c_int, read, close};
 
-use crate::common::Block;
-use crate::reader::{Decoded, DecodingError, PLTE_CHANNELS};
-use crate::c_api::{GifFileType, SavedImage, ColorMapObject, GifColorType, c_bool, InputFunc};
+use gif::common::Block;
+use gif::{Decoded, DecodingError, PLTE_CHANNELS};
+use crate::{GifFileType, SavedImage, ColorMapObject, GifColorType, c_bool, InputFunc};
 
 pub trait CInterface {
     fn read_screen_desc(&mut self, _: &mut GifFileType);
