@@ -61,9 +61,10 @@ where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
 #[test]
 fn render_images() {
     process_images(|path| {
-        let mut decoder = gif::DecodeOptions::new(File::open(path)?);
+        let mut decoder = gif::DecodeOptions::new();
         decoder.set_color_output(gif::ColorOutput::RGBA);
-        let mut decoder = decoder.read_info()?;
+        let file = File::open(path)?;
+        let mut decoder = decoder.read_info(file)?;
         let mut crc = Crc32::new();
         while let Some(frame) = decoder.read_next_frame()? {
             // First sanity check:

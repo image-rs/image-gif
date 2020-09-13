@@ -15,7 +15,7 @@ pub use self::decoder::{
 const N_CHANNELS: usize = 4;
 
 /// Output mode for the image data
-#[derive(PartialEq, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]
 pub enum ColorOutput {
     /// The decoder expands the image data to 32bit RGBA.
@@ -34,21 +34,18 @@ pub enum ColorOutput {
 pub struct MemoryLimit(pub u32);
 
 /// GIF decoder
-pub struct DecodeOptions<R: Read> {
-    r: R,
-    decoder: StreamingDecoder,
+#[derive(Clone, Debug)]
+pub struct DecodeOptions {
     memory_limit: u32,
     color_output: ColorOutput,
 }
 
-impl<R: Read> DecodeOptions<R> {
+impl DecodeOptions {
     /// Creates a new decoder builder
-    pub fn new(r: R) -> DecodeOptions<R> {
+    pub fn new() -> DecodeOptions {
         DecodeOptions {
-            r: r,
-            decoder: StreamingDecoder::new(),
             memory_limit: 50_000_000, // 50 MB
-            color_output: ColorOutput::Indexed
+            color_output: ColorOutput::Indexed,
         }
     }
 
@@ -65,8 +62,8 @@ impl<R: Read> DecodeOptions<R> {
     /// Reads the logical screen descriptor including the global color palette
     ///
     /// Returns a `Decoder`. All decoder configuration has to be done beforehand.
-    pub fn read_info(self) -> Result<Decoder<R>, DecodingError> {
-        Decoder::new(self.r, self.decoder, self.color_output, self.memory_limit).init()
+    pub fn read_info<R: Read>(self, r: R) -> Result<Decoder<R>, DecodingError> {
+        Decoder::with_no_init(r, StreamingDecoder::new(), self.color_output, self.memory_limit).init()
     }
 }
 
@@ -117,7 +114,17 @@ pub struct Decoder<R: Read> {
 }
 
 impl<R> Decoder<R> where R: Read {
-    fn new(reader: R, decoder: StreamingDecoder,
+    /// Create a new decoder with default options.
+    pub fn new(reader: R) -> Result<Self, DecodingError> {
+        DecodeOptions::new().read_info(reader)
+    }
+
+    /// Return a builder that allows configuring limits etc.
+    pub fn build() -> DecodeOptions {
+        DecodeOptions::new()
+    }
+
+    fn with_no_init(reader: R, decoder: StreamingDecoder,
            color_output: ColorOutput, memory_limit: u32
     ) -> Decoder<R> {
         Decoder {
@@ -379,11 +386,11 @@ impl iter::Iterator for InterlaceIterator {
 mod test {
     use std::fs::File;
 
-    use super::{DecodeOptions, InterlaceIterator};
+    use super::{Decoder, InterlaceIterator};
     
     #[test]
     fn test_simple_indexed() {
-        let mut decoder = DecodeOptions::new(File::open("tests/samples/sample_1.gif").unwrap()).read_info().unwrap();
+        let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap()).unwrap();
         let frame = decoder.read_next_frame().unwrap().unwrap();
         assert_eq!(&*frame.buffer, &[
             1, 1, 1, 1, 1, 2, 2, 2, 2, 2,

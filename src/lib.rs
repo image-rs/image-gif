@@ -18,11 +18,12 @@
 //! ```rust
 //! // Open the file
 //! use std::fs::File;
-//! let mut decoder = gif::DecodeOptions::new(File::open("tests/samples/sample_1.gif").unwrap());
+//! let mut decoder = gif::DecodeOptions::new();
 //! // Configure the decoder such that it will expand the image to RGBA.
 //! decoder.set_color_output(gif::ColorOutput::RGBA);
 //! // Read the file header
-//! let mut decoder = decoder.read_info().unwrap();
+//! let file = File::open("tests/samples/sample_1.gif").unwrap();
+//! let mut decoder = decoder.read_info(file).unwrap();
 //! while let Some(frame) = decoder.read_next_frame().unwrap() {
 //!     // Process every frame
 //! }
@@ -131,7 +132,7 @@ fn round_trip() {
     use std::fs::File;
     let mut data = vec![];
     File::open("tests/samples/sample_1.gif").unwrap().read_to_end(&mut data).unwrap();
-    let mut decoder = DecodeOptions::new(&*data).read_info().unwrap();
+    let mut decoder = Decoder::new(&*data).unwrap();
     let palette: Vec<u8> = decoder.palette().unwrap().into();
     let frame = decoder.read_next_frame().unwrap().unwrap();
     let mut data2 = vec![];

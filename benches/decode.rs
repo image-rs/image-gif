@@ -4,7 +4,7 @@ use gif::Decoder;
 fn read_image(image: &[u8]) -> Option<Vec<u8>> {
     let decoder = Decoder::new(black_box(image));
     //decoder.set_param(gif::ColorOutput::RGBA);
-    let mut reader = decoder.read_info().unwrap();
+    let mut reader = decoder.unwrap();
 
     while let Some(_) = reader.next_frame_info().unwrap() {
         let mut v = vec![0; reader.buffer_size()];
@@ -16,7 +16,7 @@ fn read_image(image: &[u8]) -> Option<Vec<u8>> {
 
 fn read_metadata(image: &[u8]) {
     let decoder = Decoder::new(black_box(image));
-    decoder.read_info().unwrap();
+    decoder.unwrap();
 }
 
 fn main() {
