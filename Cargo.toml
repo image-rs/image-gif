@@ -25,15 +25,9 @@ criterion = "0.3.1"
 
 [features]
 default = ["raii_no_panic", "std"]
-
 raii_no_panic = []
-c_api = ["libc"]
 # Reservation for a feature turning off std
 std = []
-
-[dependencies.libc]
-version = "0.2.1"
-optional = true
 
 [[bench]]
 name = "decode"
