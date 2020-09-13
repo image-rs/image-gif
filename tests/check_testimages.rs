@@ -4,7 +4,6 @@ extern crate glob;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
-use std::error::Error;
 
 use std::io::BufReader;
 use std::io::prelude::*;
@@ -62,7 +61,7 @@ where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
 #[test]
 fn render_images() {
     process_images(|path| {
-        let mut decoder = gif::Decoder::new(File::open(path)?);
+        let mut decoder = gif::DecodeOptions::new(File::open(path)?);
         decoder.set_color_output(gif::ColorOutput::RGBA);
         let mut decoder = decoder.read_info()?;
         let mut crc = Crc32::new();

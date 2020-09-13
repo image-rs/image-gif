@@ -1,4 +1,4 @@
-use gif::{Decoder, Encoder, Frame};
+use gif::{DecodeOptions, Encoder, Frame};
 
 #[test]
 fn encode_roundtrip() {
@@ -9,7 +9,7 @@ fn encode_roundtrip() {
 fn round_trip_from_image(original: &[u8]) {
     let (width, height, global_palette);
     let frames: Vec<Frame> = {
-        let mut decoder = Decoder::new(original).read_info().unwrap();
+        let mut decoder = DecodeOptions::new(original).read_info().unwrap();
         width = decoder.width();
         height = decoder.height();
         global_palette = decoder
@@ -30,7 +30,7 @@ fn round_trip_from_image(original: &[u8]) {
     }
 
     {
-        let mut decoder = Decoder::new(&buffer[..]).read_info().expect("Invalid info encoded");
+        let mut decoder = DecodeOptions::new(&buffer[..]).read_info().expect("Invalid info encoded");
         assert_eq!(decoder.width(), width);
         assert_eq!(decoder.height(), height);
         assert_eq!(global_palette, decoder.global_palette().unwrap_or_default());
