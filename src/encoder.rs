@@ -8,7 +8,7 @@ use std::error;
 use weezl::{BitOrder, encode::Encoder as LzwEncoder};
 
 use crate::traits::{WriteBytesExt};
-use crate::common::{Block, Frame, Extension, DisposalMethod};
+use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 
 #[derive(Debug)]
 enum FormatErrorKind {
@@ -97,7 +97,7 @@ pub enum Repeat {
 /// Extension data.
 pub enum ExtensionData {
     /// Control extension. Use `ExtensionData::new_control_ext` to construct.
-    Control { 
+    Control {
         /// Flags.
         flags: u8,
         /// Frame delay.
@@ -113,7 +113,7 @@ impl ExtensionData {
     /// Constructor for control extension data.
     ///
     /// `delay` is given in units of 10 ms.
-    pub fn new_control_ext(delay: u16, dispose: DisposalMethod, 
+    pub fn new_control_ext(delay: u16, dispose: DisposalMethod,
                            needs_user_input: bool, trns: Option<u8>) -> ExtensionData {
         let mut flags = 0;
         let trns = match trns {
@@ -180,7 +180,7 @@ impl<'a, W: Write + 'a> Drop for BlockWriter<'a, W> {
     fn drop(&mut self) {
         if self.bytes > 0 {
             let _ = self.w.write_le(self.bytes as u8);
-            let _ = self.w.write_all(&self.buf[..self.bytes]);    
+            let _ = self.w.write_all(&self.buf[..self.bytes]);
         }
     }
 
@@ -188,7 +188,7 @@ impl<'a, W: Write + 'a> Drop for BlockWriter<'a, W> {
     fn drop(&mut self) {
         if self.bytes > 0 {
             self.w.write_le(self.bytes as u8).unwrap();
-            self.w.write_all(&self.buf[..self.bytes]).unwrap();    
+            self.w.write_all(&self.buf[..self.bytes]).unwrap();
         }
     }
 }
@@ -343,12 +343,12 @@ impl<W: Write> Encoder<W> {
 
     /// Writes a raw extension to the image.
     ///
-    /// This method can be used to write an unsupported extesion to the file. `func` is the extension 
+    /// This method can be used to write an unsupported extension to the file. `func` is the extension
     /// identifier (e.g. `Extension::Application as u8`). `data` are the extension payload blocks. If any
     /// contained slice has a lenght > 255 it is automatically divided into sub-blocks.
-    pub fn write_raw_extension(&mut self, func: u8, data: &[&[u8]]) -> io::Result<()> {
+    pub fn write_raw_extension(&mut self, func: AnyExtension, data: &[&[u8]]) -> io::Result<()> {
         self.w.write_le(Block::Extension as u8)?;
-        self.w.write_le(func as u8)?;
+        self.w.write_le(func.0)?;
         for block in data {
             for chunk in block.chunks(0xFF) {
                 self.w.write_le(chunk.len() as u8)?;
