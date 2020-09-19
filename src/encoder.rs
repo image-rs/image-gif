@@ -229,7 +229,10 @@ impl<W: Write> Encoder<W> {
         if num_colors > 256 {
             return Err(EncodingError::from(FormatErrorKind::TooManyColors));
         }
+        // Size of global color table.
         flags |= flag_size(num_colors);
+        // Color resolution .. FIXME. This is mostly ignored (by ImageMagick at least) but hey, we
+        // should use some sensible value here or even allow configuring it?
         flags |= flag_size(num_colors) << 4; // wtf flag
         self.write_screen_desc(flags)?;
         self.write_color_table(palette)?;

@@ -115,7 +115,7 @@ impl From<Extension> for AnyExtension {
 }
 
 impl Extension {
-    /// Converts `u8` to a `KnownExtension` if it is known.
+    /// Converts `u8` to a `Extension` if it is known.
     pub fn from_u8(n: u8) -> Option<Extension> {
         match n {
             0x01 => Some(Extension::Text),
