@@ -15,14 +15,14 @@ pub use self::decoder::{
 const N_CHANNELS: usize = 4;
 
 /// Output mode for the image data
-#[derive(PartialEq, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]
 pub enum ColorOutput {
     /// The decoder expands the image data to 32bit RGBA.
     /// This affects:
     ///
-    ///  - The buffer buffer of the `Frame` returned by `Reader::read_next_frame`.
-    ///  - `Reader::fill_buffer`, `Reader::buffer_size` and `Reader::line_length`.
+    ///  - The buffer buffer of the `Frame` returned by `Decoder::read_next_frame`.
+    ///  - `Decoder::fill_buffer`, `Decoder::buffer_size` and `Decoder::line_length`.
     RGBA = 0,
     /// The decoder returns the raw indexed data.
     Indexed = 1,
@@ -34,21 +34,18 @@ pub enum ColorOutput {
 pub struct MemoryLimit(pub u32);
 
 /// GIF decoder
-pub struct Decoder<R: Read> {
-    r: R,
-    decoder: StreamingDecoder,
+#[derive(Clone, Debug)]
+pub struct DecodeOptions {
     memory_limit: u32,
     color_output: ColorOutput,
 }
 
-impl<R: Read> Decoder<R> {
+impl DecodeOptions {
     /// Creates a new decoder builder
-    pub fn new(r: R) -> Decoder<R> {
-        Decoder {
-            r: r,
-            decoder: StreamingDecoder::new(),
+    pub fn new() -> DecodeOptions {
+        DecodeOptions {
             memory_limit: 50_000_000, // 50 MB
-            color_output: ColorOutput::Indexed
+            color_output: ColorOutput::Indexed,
         }
     }
 
@@ -64,9 +61,9 @@ impl<R: Read> Decoder<R> {
     
     /// Reads the logical screen descriptor including the global color palette
     ///
-    /// Returns a `Reader`. All decoder configuration has to be done beforehand.
-    pub fn read_info(self) -> Result<Reader<R>, DecodingError> {
-        Reader::new(self.r, self.decoder, self.color_output, self.memory_limit).init()
+    /// Returns a `Decoder`. All decoder configuration has to be done beforehand.
+    pub fn read_info<R: Read>(self, r: R) -> Result<Decoder<R>, DecodingError> {
+        Decoder::with_no_init(r, StreamingDecoder::new(), self.color_output, self.memory_limit).init()
     }
 }
 
@@ -106,7 +103,7 @@ impl<R: Read> ReadDecoder<R> {
 
 #[allow(dead_code)]
 /// GIF decoder
-pub struct Reader<R: Read> {
+pub struct Decoder<R: Read> {
     decoder: ReadDecoder<R>,
     color_output: ColorOutput,
     memory_limit: u32,
@@ -116,11 +113,21 @@ pub struct Reader<R: Read> {
     buffer: Vec<u8>,
 }
 
-impl<R> Reader<R> where R: Read {
-    fn new(reader: R, decoder: StreamingDecoder,
+impl<R> Decoder<R> where R: Read {
+    /// Create a new decoder with default options.
+    pub fn new(reader: R) -> Result<Self, DecodingError> {
+        DecodeOptions::new().read_info(reader)
+    }
+
+    /// Return a builder that allows configuring limits etc.
+    pub fn build() -> DecodeOptions {
+        DecodeOptions::new()
+    }
+
+    fn with_no_init(reader: R, decoder: StreamingDecoder,
            color_output: ColorOutput, memory_limit: u32
-    ) -> Reader<R> {
-        Reader {
+    ) -> Decoder<R> {
+        Decoder {
             decoder: ReadDecoder {
                 reader: io::BufReader::new(reader),
                 decoder: decoder,
@@ -383,7 +390,7 @@ mod test {
     
     #[test]
     fn test_simple_indexed() {
-        let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap()).read_info().unwrap();
+        let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap()).unwrap();
         let frame = decoder.read_next_frame().unwrap().unwrap();
         assert_eq!(&*frame.buffer, &[
             1, 1, 1, 1, 1, 2, 2, 2, 2, 2,
