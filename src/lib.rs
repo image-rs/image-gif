@@ -10,8 +10,6 @@
 //! 
 //! The high level interface consists of the two types
 //! [`Encoder`](struct.Encoder.html) and [`Decoder`](struct.Decoder.html).
-//! They as builders for the actual en- and decoders and can be used to set various
-//! options beforehand.
 //! 
 //! ### Decoding GIF files
 //! 
@@ -142,3 +140,12 @@ fn round_trip() {
     }
     assert_eq!(&data[..], &data2[..])
 }
+
+macro_rules! insert_as_doc {
+    { $content:expr } => {
+        #[doc = $content] extern { }
+    }
+}
+
+// Provides the README.md as doc, to ensure the example works!
+insert_as_doc!(include_str!("../README.md"));
