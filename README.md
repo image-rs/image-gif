@@ -10,20 +10,18 @@ This library provides all functions necessary to de- and encode GIF files.
 
 The high level interface consists of the two types
 [`Encoder`](https://docs.rs/gif/0.10.1/gif/struct.Encoder.html) and [`Decoder`](https://docs.rs/gif/0.10.1/gif/struct.Decoder.html).
-They as builders for the actual en- and decoders and can be used to set various
-options beforehand.
 
 ### Decoding GIF files
 
 ```rust
 // Open the file
 use std::fs::File;
-use gif::SetParameter;
-let mut decoder = gif::Decoder::new(File::open("tests/samples/sample_1.gif").unwrap());
+let input = File::open("tests/samples/sample_1.gif").unwrap();
 // Configure the decoder such that it will expand the image to RGBA.
-decoder.set(gif::ColorOutput::RGBA);
+let mut options = gif::DecodeOptions::new();
+options.set_color_output(gif::ColorOutput::RGBA);
 // Read the file header
-let mut decoder = decoder.read_info().unwrap();
+let mut decoder = options.read_info(input).unwrap();
 while let Some(frame) = decoder.read_next_frame().unwrap() {
     // Process every frame
 }
@@ -34,7 +32,7 @@ while let Some(frame) = decoder.read_next_frame().unwrap() {
 The encoder can be used to save simple computer generated images:
 
 ```rust
-use gif::{Frame, Encoder, Repeat, SetParameter};
+use gif::{Frame, Encoder, Repeat};
 use std::fs::File;
 use std::borrow::Cow;
 
@@ -57,7 +55,7 @@ let beacon_states = [[
 ]];
 let mut image = File::create("target/beacon.gif").unwrap();
 let mut encoder = Encoder::new(&mut image, width, height, color_map).unwrap();
-encoder.set(Repeat::Infinite).unwrap();
+encoder.set_repeat(Repeat::Infinite).unwrap();
 for state in &beacon_states {
     let mut frame = Frame::default();
     frame.width = width;
