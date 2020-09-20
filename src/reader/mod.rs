@@ -5,7 +5,7 @@ use std::mem;
 use std::iter;
 use std::io::prelude::*;
 
-use crate::common::Frame;
+use crate::common::{Block, Frame};
 
 mod decoder;
 pub use self::decoder::{
@@ -33,7 +33,7 @@ pub enum ColorOutput {
 /// that there is no memory limit set.
 pub struct MemoryLimit(pub u32);
 
-/// GIF decoder
+/// Options for opening a GIF decoder.
 #[derive(Clone, Debug)]
 pub struct DecodeOptions {
     memory_limit: u32,
@@ -88,7 +88,7 @@ impl<R: Read> ReadDecoder<R> {
             self.reader.consume(consumed);
             match result {
                 Decoded::Nothing => (),
-                Decoded::BlockStart(crate::common::Block::Trailer) => {
+                Decoded::BlockStart(Block::Trailer) => {
                     self.at_eof = true
                 },
                 result => return Ok(unsafe{

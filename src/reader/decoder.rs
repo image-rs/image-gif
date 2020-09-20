@@ -9,7 +9,7 @@ use std::error;
 
 use weezl::{BitOrder, decode::Decoder as LzwDecoder, LzwStatus};
 
-use crate::common::{Frame, Block, Extension, DisposalMethod};
+use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
@@ -114,11 +114,18 @@ pub enum Decoded<'a> {
     /// The start of a block.
     BlockStart(Block),
     /// Decoded a sub-block. More sub-block are available.
-    SubBlockFinished(u8, &'a [u8]),
+    ///
+    /// Indicates the label of the extension which might be unknown. A label of `0` is used when
+    /// the sub block does not belong to an extension.
+    SubBlockFinished(AnyExtension, &'a [u8]),
     /// Decoded the last (or only) sub-block of a block.
-    BlockFinished(u8, &'a [u8]),
+    ///
+    /// Indicates the label of the extension which might be unknown. A label of `0` is used when
+    /// the sub block does not belong to an extension.
+    BlockFinished(AnyExtension, &'a [u8]),
     /// Decoded all information of the next frame.
-    /// The returned frame does **not** any image data.
+    ///
+    /// The returned frame does **not** contain any owned image data.
     Frame(&'a Frame<'static>),
     /// Decoded some data of the current frame.
     Data(&'a [u8]),
@@ -136,8 +143,9 @@ enum State {
     Byte(ByteValue),
     GlobalPalette(usize),
     BlockStart(Option<Block>),
+    /// Block end, with remaining expected data. NonZero for invalid EOF.
     BlockEnd(u8),
-    ExtensionBlock(u8),
+    ExtensionBlock(AnyExtension),
     SkipBlock(usize),
     LocalPalette(usize),
     LzwInit(u8),
@@ -190,7 +198,7 @@ pub struct StreamingDecoder {
     global_color_table: Vec<u8>,
     background_color: [u8; 4],
     /// ext buffer
-    ext: (u8, Vec<u8>, bool),
+    ext: (AnyExtension, Vec<u8>, bool),
     /// Frame data
     current: Option<Frame<'static>>,
 }
@@ -208,7 +216,7 @@ impl StreamingDecoder {
             height: 0,
             global_color_table: Vec::new(),
             background_color: [0, 0, 0, 0xFF],
-            ext: (0, Vec::with_capacity(256), true), // 0xFF + 1 byte length
+            ext: (AnyExtension(0), Vec::with_capacity(256), true), // 0xFF + 1 byte length
             current: None
         }
     }
@@ -257,7 +265,7 @@ impl StreamingDecoder {
     }
     
     /// Returns the data of the last extension that has been decoded.
-    pub fn last_ext(&self) -> (u8, &[u8], bool) {
+    pub fn last_ext(&self) -> (AnyExtension, &[u8], bool) {
         (self.ext.0, &*self.ext.1, self.ext.2)
     }
     
@@ -466,14 +474,18 @@ impl StreamingDecoder {
                 }
             }
             BlockStart(type_) => {
-                use crate::common::Block::*;
                 match type_ {
-                    Some(Image) => {
+                    Some(Block::Image) => {
                         self.add_frame();
-                        goto!(U16Byte1(U16Value::ImageLeft, b), emit Decoded::BlockStart(Image))
+                        goto!(U16Byte1(U16Value::ImageLeft, b), emit Decoded::BlockStart(Block::Image))
                     }
-                    Some(Extension) => goto!(ExtensionBlock(b), emit Decoded::BlockStart(Extension)),
-                    Some(Trailer) => goto!(0, State::Trailer, emit Decoded::BlockStart(Trailer)),
+                    Some(Block::Extension) => {
+                        goto!(ExtensionBlock(AnyExtension(b)), emit Decoded::BlockStart(Block::Extension))
+                    }
+                    Some(Block::Trailer) => {
+                        goto!(0, State::Trailer, emit Decoded::BlockStart(Block::Trailer))
+                    }
+                    // TODO: permit option to enable handling/ignoring of unknown chunks?
                     None => {
                         return Err(DecodingError::format(
                         "unknown block type encountered"
@@ -494,11 +506,11 @@ impl StreamingDecoder {
                 }
             }
             ExtensionBlock(type_) => {
-                use crate::common::Extension::*;
+                use Extension::*;
                 self.ext.0 = type_;
                 self.ext.1.clear();
                 self.ext.1.push(b);
-                if let Some(ext) = Extension::from_u8(type_) {
+                if let Some(ext) = Extension::from_u8(type_.0) {
                     match ext {
                         Control => {
                             goto!(self.read_control_extension(b)?)
@@ -524,7 +536,7 @@ impl StreamingDecoder {
                         goto!(BlockEnd(b), emit Decoded::BlockFinished(self.ext.0, &self.ext.1))
                     } else {
                         self.ext.2 = false;
-                        goto!(SkipBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.0,&self.ext.1))
+                        goto!(SkipBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.0, &self.ext.1))
                     }
                     
                 }

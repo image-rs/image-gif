@@ -116,7 +116,7 @@ mod common;
 mod reader;
 mod encoder;
 
-pub use crate::common::{Block, Extension, DisposalMethod, Frame};
+pub use crate::common::{AnyExtension, Block, Extension, DisposalMethod, Frame};
 
 pub use crate::reader::{StreamingDecoder, Decoded, DecodingError, DecodingFormatError};
 /// StreamingDecoder configuration parameters

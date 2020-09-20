@@ -30,7 +30,16 @@ impl DisposalMethod {
     }
 }
 
-/// Known GIF block types
+/// Known GIF block labels.
+///
+/// Note that the block uniquely specifies the layout of bytes that follow and how they are
+/// framed. For example, the header always has a fixed length but is followed by a variable amount
+/// of additional data. An image descriptor may be followed by a local color table depending on
+/// information read in it. Therefore, it doesn't make sense to continue parsing after encountering
+/// an unknown block as the semantics of following bytes are unclear.
+///
+/// The extension block provides a common framing for an arbitrary amount of application specific
+/// data which may be ignored.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Block {
@@ -39,7 +48,7 @@ pub enum Block {
     /// Extension block.
     Extension = 0x21,
     /// Image trailer.
-    Trailer = 0x3B
+    Trailer = 0x3B,
 }
 
 impl Block {
@@ -54,23 +63,59 @@ impl Block {
     }
 }
 
+/// A newtype wrapper around an arbitrary extension ID.
+///
+/// An extension is some amount of byte data organized in sub-blocks so that one can skip over it
+/// without knowing the semantics. Though technically you likely want to use a `Application`
+/// extension, the library tries to stay flexible here.
+///
+/// This allows us to customize the set of impls compared to a raw `u8`. It also clarifies the
+/// intent and gives some inherent methods for interoperability with known extension types.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AnyExtension(pub u8);
 
-/// Known GIF extensions
+/// Known GIF extension labels.
+///
+/// These are extensions which may be interpreted by the library and to which a specification with
+/// the internal data layout is known.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Extension {
-    /// Text extension.
+    /// Plain Text extension.
+    ///
+    /// This instructs the decoder to render a text as characters in a grid of cells, in a
+    /// mono-spaced font of its choosing. This is seldom actually implemented and ignored by
+    /// ImageMagick. The color is always taken from the global table which further complicates any
+    /// use. No real information on the frame sequencing of this block is available in the
+    /// standard.
     Text = 0x01,
     /// Control extension.
     Control = 0xF9,
     /// Comment extension.
     Comment = 0xFE,
     /// Application extension.
-    Application = 0xFF
+    ///
+    /// See [ImageMagick] for an idea of commonly recognized extensions.
+    ///
+    /// [ImageMagick]: https://github.com/ImageMagick/ImageMagick/blob/b0b58c6303195928060f55f9c3ca8233ab7f7733/coders/gif.c#L1128
+    Application = 0xFF,
+}
+
+impl AnyExtension {
+    /// Decode the label as a known extension.
+    pub fn into_known(self) -> Option<Extension> {
+        Extension::from_u8(self.0)
+    }
+}
+
+impl From<Extension> for AnyExtension {
+    fn from(ext: Extension) -> Self {
+        AnyExtension(ext as u8)
+    }
 }
 
 impl Extension {
-    /// Converts `u8` to `Option<Self>`
+    /// Converts `u8` to a `Extension` if it is known.
     pub fn from_u8(n: u8) -> Option<Extension> {
         match n {
             0x01 => Some(Extension::Text),
