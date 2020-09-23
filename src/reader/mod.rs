@@ -28,15 +28,32 @@ pub enum ColorOutput {
     Indexed = 1,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 /// Memory limit in bytes. `MemoryLimit::Some(0)` means
 /// that there is no memory limit set.
 pub struct MemoryLimit(pub u32);
 
+impl MemoryLimit {
+    fn buffer_size(&self, color: ColorOutput, width: u16, height: u16) -> Option<usize> {
+        let pixels = u32::from(width) * u32::from(height);
+
+        let bytes_per_pixel = match color {
+            ColorOutput::Indexed => 1,
+            ColorOutput::RGBA => 4,
+        };
+
+        if self.0 > 0 && pixels > self.0 / bytes_per_pixel {
+            None
+        } else {
+            Some(pixels as usize * bytes_per_pixel as usize)
+        }
+    }
+}
+
 /// Options for opening a GIF decoder.
 #[derive(Clone, Debug)]
 pub struct DecodeOptions {
-    memory_limit: u32,
+    memory_limit: MemoryLimit,
     color_output: ColorOutput,
 }
 
@@ -44,7 +61,7 @@ impl DecodeOptions {
     /// Creates a new decoder builder
     pub fn new() -> DecodeOptions {
         DecodeOptions {
-            memory_limit: 50_000_000, // 50 MB
+            memory_limit: MemoryLimit(50_000_000), // 50 MB
             color_output: ColorOutput::Indexed,
         }
     }
@@ -55,10 +72,10 @@ impl DecodeOptions {
     }
 
     /// Configure a memory limit for decoding.
-    pub fn set_memory_limit(&mut self, MemoryLimit(limit): MemoryLimit) {
+    pub fn set_memory_limit(&mut self, limit: MemoryLimit) {
         self.memory_limit = limit;
     }
-    
+
     /// Reads the logical screen descriptor including the global color palette
     ///
     /// Returns a `Decoder`. All decoder configuration has to be done beforehand.
@@ -106,7 +123,7 @@ impl<R: Read> ReadDecoder<R> {
 pub struct Decoder<R: Read> {
     decoder: ReadDecoder<R>,
     color_output: ColorOutput,
-    memory_limit: u32,
+    memory_limit: MemoryLimit,
     bg_color: Option<u8>,
     global_palette: Option<Vec<u8>>,
     current_frame: Frame<'static>,
@@ -125,7 +142,7 @@ impl<R> Decoder<R> where R: Read {
     }
 
     fn with_no_init(reader: R, decoder: StreamingDecoder,
-           color_output: ColorOutput, memory_limit: u32
+           color_output: ColorOutput, memory_limit: MemoryLimit
     ) -> Decoder<R> {
         Decoder {
             decoder: ReadDecoder {
@@ -186,14 +203,6 @@ impl<R> Decoder<R> where R: Read {
                             "no color table available for current frame"
                         ))
                     }
-                    if self.memory_limit > 0  && (
-                        (frame.width as u32 * frame.height as u32)
-                        > self.memory_limit
-                    ) {
-                        return Err(DecodingError::format(
-                            "image is too large to decode"
-                        ))
-                    }
                     break
                 },
                 Some(_) => (),
@@ -209,8 +218,20 @@ impl<R> Decoder<R> where R: Read {
     /// Do not call `Self::next_frame_info` beforehand.
     /// Deinterlaces the result.
     pub fn read_next_frame(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
-        if self.next_frame_info()?.is_some() {
-            let mut vec = vec![0; self.buffer_size()];
+        if let Some(frame) = self.next_frame_info()? {
+            let (width, height) = (frame.width, frame.height);
+            let pixel_bytes = self.memory_limit
+                .buffer_size(self.color_output, width, height)
+                .ok_or_else(|| {
+                    DecodingError::format("image is too large to decode")
+                })?;
+
+            debug_assert_eq!(
+                pixel_bytes, self.buffer_size(),
+                "Checked computation diverges from required buffer size"
+            );
+
+            let mut vec = vec![0; pixel_bytes];
             self.read_into_buffer(&mut vec)?;
             self.current_frame.buffer = Cow::Owned(vec);
             self.current_frame.interlaced = false;
