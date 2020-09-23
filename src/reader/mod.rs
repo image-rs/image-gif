@@ -55,6 +55,7 @@ impl MemoryLimit {
 pub struct DecodeOptions {
     memory_limit: MemoryLimit,
     color_output: ColorOutput,
+    check_frame_consistency: bool,
 }
 
 impl DecodeOptions {
@@ -63,6 +64,7 @@ impl DecodeOptions {
         DecodeOptions {
             memory_limit: MemoryLimit(50_000_000), // 50 MB
             color_output: ColorOutput::Indexed,
+            check_frame_consistency: true,
         }
     }
 
@@ -76,11 +78,23 @@ impl DecodeOptions {
         self.memory_limit = limit;
     }
 
+    /// Configure if frames must be within the screen descriptor.
+    ///
+    /// The default is `true`.
+    ///
+    /// When turned on, all frame descriptors being read must fit within the screen descriptor or
+    /// otherwise an error is returned and the stream left in an unspecified state.
+    ///
+    /// When turned off, frames may be arbitrarily larger or offset in relation to the screen.
+    pub fn check_frame_consistency(&mut self, check: bool) {
+        self.check_frame_consistency = check;
+    }
+
     /// Reads the logical screen descriptor including the global color palette
     ///
     /// Returns a `Decoder`. All decoder configuration has to be done beforehand.
     pub fn read_info<R: Read>(self, r: R) -> Result<Decoder<R>, DecodingError> {
-        Decoder::with_no_init(r, StreamingDecoder::new(), self.color_output, self.memory_limit).init()
+        Decoder::with_no_init(r, StreamingDecoder::with_options(&self), self).init()
     }
 }
 
@@ -141,20 +155,18 @@ impl<R> Decoder<R> where R: Read {
         DecodeOptions::new()
     }
 
-    fn with_no_init(reader: R, decoder: StreamingDecoder,
-           color_output: ColorOutput, memory_limit: MemoryLimit
-    ) -> Decoder<R> {
+    fn with_no_init(reader: R, decoder: StreamingDecoder, options: DecodeOptions) -> Decoder<R> {
         Decoder {
             decoder: ReadDecoder {
                 reader: io::BufReader::new(reader),
-                decoder: decoder,
+                decoder,
                 at_eof: false
             },
             bg_color: None,
             global_palette: None,
             buffer: Vec::with_capacity(32),
-            color_output: color_output,
-            memory_limit: memory_limit,
+            color_output: options.color_output,
+            memory_limit: options.memory_limit,
             current_frame: Frame::default(),
         }
     }

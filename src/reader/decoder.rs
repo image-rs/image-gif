@@ -1,15 +1,14 @@
 use std::cmp;
+use std::error;
+use std::fmt;
+use std::io;
 use std::mem;
 use std::default::Default;
 
-use std::io;
-
-use std::fmt;
-use std::error;
+use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
+use crate::reader::DecodeOptions;
 
 use weezl::{BitOrder, decode::Decoder as LzwDecoder, LzwStatus};
-
-use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
@@ -192,6 +191,7 @@ pub struct StreamingDecoder {
     lzw_reader: Option<LzwDecoder>,
     decode_buffer: Vec<u8>,
     skip_extensions: bool,
+    check_frame_consistency: bool,
     version: &'static str,
     width: u16,
     height: u16,
@@ -206,11 +206,17 @@ pub struct StreamingDecoder {
 impl StreamingDecoder {
     /// Creates a new streaming decoder
     pub fn new() -> StreamingDecoder {
+        let options = DecodeOptions::new();
+        Self::with_options(&options)
+    }
+
+    pub(crate) fn with_options(options: &DecodeOptions) -> Self {
         StreamingDecoder {
             state: Some(Magic(0, [0; 6])),
             lzw_reader: None,
             decode_buffer: vec![],
             skip_extensions: true,
+            check_frame_consistency: options.check_frame_consistency,
             version: "",
             width: 0,
             height: 0,
@@ -431,7 +437,7 @@ impl StreamingDecoder {
 
                         self.current_frame_mut().interlaced = interlaced;
 
-                        {
+                        if self.check_frame_consistency {
                             // Consistency checks.
                             let (width, height) = (self.width, self.height);
                             let frame = self.current_frame_mut();
