@@ -6,6 +6,7 @@ rust:
 env:
   matrix:
     - FEATURES=''
+    - FEATURES='std'
 script:
   - if [ "${TRAVIS_RUST_VERSION}" == "1.34.2" ]; then
       cargo build -v --features="$FEATURES";
