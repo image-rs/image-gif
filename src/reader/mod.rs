@@ -64,7 +64,7 @@ impl DecodeOptions {
         DecodeOptions {
             memory_limit: MemoryLimit(50_000_000), // 50 MB
             color_output: ColorOutput::Indexed,
-            check_frame_consistency: true,
+            check_frame_consistency: false,
         }
     }
 
@@ -80,12 +80,14 @@ impl DecodeOptions {
 
     /// Configure if frames must be within the screen descriptor.
     ///
-    /// The default is `true`.
+    /// The default is `false`.
     ///
     /// When turned on, all frame descriptors being read must fit within the screen descriptor or
     /// otherwise an error is returned and the stream left in an unspecified state.
     ///
-    /// When turned off, frames may be arbitrarily larger or offset in relation to the screen.
+    /// When turned off, frames may be arbitrarily larger or offset in relation to the screen. Many
+    /// other decoder libraries handle this in highly divergent ways. This moves all checks to the
+    /// caller, for example to emulate a specific style.
     pub fn check_frame_consistency(&mut self, check: bool) {
         self.check_frame_consistency = check;
     }
