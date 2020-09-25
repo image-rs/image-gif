@@ -1,3 +1,8 @@
+# v0.11.1
+
+- Frames out-of-bounds of the screen descriptor are again accepted by default.
+- Added `DecodeOptions::check_frame_consistency` to turn this validation on.
+
 # v0.11
 
 - Rename `Reader` to `Decoder`.
