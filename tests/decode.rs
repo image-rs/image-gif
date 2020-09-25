@@ -3,9 +3,18 @@ use gif::{DecodeOptions, DisposalMethod, Encoder, Frame};
 #[test]
 fn frame_consistency_is_configurable() {
     let image = create_image_with_oob_frames();
-    let mut options = DecodeOptions::new();
 
     {
+        let options = DecodeOptions::new();
+        let mut data = image.as_slice();
+        let mut decoder = options.clone().read_info(&mut data).unwrap();
+        assert!(decoder.read_next_frame().is_ok());
+        assert!(decoder.read_next_frame().is_ok());
+    }
+
+    {
+        let mut options = DecodeOptions::new();
+        options.check_frame_consistency(true);
         let mut data = image.as_slice();
         let mut decoder = options.clone().read_info(&mut data).unwrap();
         assert!(decoder.read_next_frame().is_ok());
@@ -13,6 +22,7 @@ fn frame_consistency_is_configurable() {
     }
 
     {
+        let mut options = DecodeOptions::new();
         options.check_frame_consistency(false);
         let mut data = image.as_slice();
         let mut decoder = options.clone().read_info(&mut data).unwrap();
