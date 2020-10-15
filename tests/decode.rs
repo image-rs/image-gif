@@ -57,3 +57,28 @@ fn create_image_with_oob_frames() -> Vec<u8> {
     drop(encoder);
     data
 }
+
+#[test]
+fn check_for_end_code_is_configurable() {
+    // In this particular image, the image data of the 62nd frame has no end code.
+    let image: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/samples/gifplayer-muybridge.gif"));
+
+    {
+        let options = DecodeOptions::new();
+        let mut decoder = options.clone().read_info(&image[..]).unwrap();
+        for _ in 0..61 {
+            assert!(decoder.read_next_frame().is_ok());
+        }
+        assert!(decoder.read_next_frame().is_ok());
+    }
+
+    {
+        let mut options = DecodeOptions::new();
+        options.check_lzw_end_code(true);
+        let mut decoder = options.clone().read_info(&image[..]).unwrap();
+        for _ in 0..61 {
+            assert!(decoder.read_next_frame().is_ok());
+        }
+        assert!(decoder.read_next_frame().is_err());
+    }
+}
