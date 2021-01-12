@@ -107,6 +107,7 @@
 // # })().unwrap();
 // ```
 #![deny(missing_docs)]
+#![forbid(unsafe_code)]
 #![cfg(feature = "std")]
 
 mod traits;
