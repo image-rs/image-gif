@@ -8,6 +8,8 @@ use std::io::prelude::*;
 use crate::common::{Block, Frame};
 
 mod decoder;
+
+use self::decoder::DecodedKind;
 pub use self::decoder::{
     PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, Extensions, DecodingFormatError
 };
@@ -133,18 +135,15 @@ impl<R: Read> ReadDecoder<R> {
                         "unexpected EOF"
                     ))
                 }
-                self.decoder.update(buf)?
+                self.decoder.update_kind(buf)?
             };
             self.reader.consume(consumed);
             match result {
-                Decoded::Nothing => (),
-                Decoded::BlockStart(Block::Trailer) => {
+                DecodedKind::Nothing => (),
+                DecodedKind::BlockStart(Block::Trailer) => {
                     self.at_eof = true
                 },
-                result => return Ok(unsafe{
-                    // FIXME: #6393
-                    Some(mem::transmute::<Decoded, Decoded>(result))
-                }),
+                result => return Ok(Some(self.decoder.decoded(result))),
             }
         }
         Ok(None)
