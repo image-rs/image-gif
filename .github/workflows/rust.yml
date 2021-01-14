@@ -26,6 +26,7 @@ jobs:
   rustfmt:
     runs-on: ubuntu-latest
     continue-on-error: false
+    if: false
     steps:
     - uses: actions/checkout@v2
     - uses: actions-rs/toolchain@v1
