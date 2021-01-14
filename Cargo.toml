@@ -30,6 +30,19 @@ raii_no_panic = []
 # Reservation for a feature turning off std
 std = []
 
+[[test]]
+name = "check_testimages"
+required-features = ["std"]
+
+[[test]]
+name = "decode"
+required-features = ["std"]
+
+[[test]]
+name = "roundtrip"
+required-features = ["std"]
+
 [[bench]]
 name = "decode"
 harness = false
+required-features = ["std"]
