@@ -10,10 +10,13 @@ jobs:
     strategy:
       matrix:
         rust: ["1.34.2", stable, beta, nightly]
-        features: [ "", "std" ]
+        features: ["", "std"]
     steps:
     - uses: actions/checkout@v2
-    - run: rustup default ${{ matrix.rust }}
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ matrix.rust }}
+        override: true
     - name: build
       run: >
         cargo build --verbose --no-default-features --features "$FEATURES"
