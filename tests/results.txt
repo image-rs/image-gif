@@ -7,3 +7,4 @@
 "tests/samples/2x2.gif": 3802149240
 "tests/samples/sample_big.gif": 4184562096
 "tests/samples/gifplayer-muybridge.gif": 4267078865
+"tests/samples/x-issue-96-bad-codesize.gif": Expected failure
