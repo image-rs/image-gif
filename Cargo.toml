@@ -35,6 +35,10 @@ name = "check_testimages"
 required-features = ["std"]
 
 [[test]]
+name = "crashtest"
+required-features = ["std"]
+
+[[test]]
 name = "decode"
 required-features = ["std"]
 
