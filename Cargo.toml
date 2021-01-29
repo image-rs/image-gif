@@ -17,7 +17,7 @@ exclude = [
 ]
 
 [dependencies]
-weezl = "0.1.0"
+weezl = "0.1.4"
 color_quant = "1.0"
 
 [dev-dependencies]

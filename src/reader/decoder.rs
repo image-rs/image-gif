@@ -562,7 +562,7 @@ impl StreamingDecoder {
             }
             LzwInit(code_size) => {
                 // LZW spec: max 12 bits per code
-                if 2 > code_size || code_size > 11 {
+                if code_size > 11 {
                     return Err(DecodingError::format(
                         "invalid minimal code size"
                     ))
