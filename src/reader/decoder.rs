@@ -567,7 +567,6 @@ impl StreamingDecoder {
                         "invalid minimal code size"
                     ))
                 }
-                // dbg!(code_size);
                 self.lzw_reader = Some(LzwDecoder::new(BitOrder::Lsb, code_size));
                 goto!(DecodeSubBlock(b as usize), emit Decoded::Frame(self.current_frame_mut()))
             }
