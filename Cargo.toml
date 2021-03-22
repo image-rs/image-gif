@@ -11,7 +11,8 @@ documentation = "https://docs.rs/gif"
 edition = "2018"
 
 exclude = [
-    "tests/*",
+    "tests/crashtest/*",
+    "tests/samples/*",
     "benches/*.gif",
     "gif-afl/*",
 ]
