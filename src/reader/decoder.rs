@@ -536,7 +536,7 @@ impl StreamingDecoder {
             SkipBlock(left) => {
                 let n = cmp::min(left, buf.len());
                 if left > 0 {
-                    self.ext.1.push(b);
+                    self.ext.1.extend_from_slice(&buf[..n]);
                     goto!(n, SkipBlock(left - n))
                 } else {
                     if b == 0 {
