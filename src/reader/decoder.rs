@@ -466,7 +466,7 @@ impl StreamingDecoder {
             GlobalPalette(left) => {
                 let n = cmp::min(left, buf.len());
                 if left > 0 {
-                    self.global_color_table.extend(buf[..n].iter().cloned());
+                    self.global_color_table.extend_from_slice(&buf[..n]);
                     goto!(n, GlobalPalette(left - n))
                 } else {
                     let idx = self.background_color[0];
