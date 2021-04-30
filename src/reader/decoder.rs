@@ -199,9 +199,15 @@ pub struct StreamingDecoder {
     global_color_table: Vec<u8>,
     background_color: [u8; 4],
     /// ext buffer
-    ext: (AnyExtension, Vec<u8>, bool),
+    ext: ExtensionData,
     /// Frame data
     current: Option<Frame<'static>>,
+}
+
+struct ExtensionData {
+    id: AnyExtension,
+    data: Vec<u8>,
+    is_block_end: bool,
 }
 
 impl StreamingDecoder {
@@ -224,7 +230,11 @@ impl StreamingDecoder {
             height: 0,
             global_color_table: Vec::new(),
             background_color: [0, 0, 0, 0xFF],
-            ext: (AnyExtension(0), Vec::with_capacity(256), true), // 0xFF + 1 byte length
+            ext: ExtensionData {
+                id: AnyExtension(0),
+                data: Vec::with_capacity(256), // 0xFF + 1 byte length
+                is_block_end: true,
+            },
             current: None
         }
     }
@@ -274,7 +284,7 @@ impl StreamingDecoder {
     
     /// Returns the data of the last extension that has been decoded.
     pub fn last_ext(&self) -> (AnyExtension, &[u8], bool) {
-        (self.ext.0, &*self.ext.1, self.ext.2)
+        (self.ext.id, &self.ext.data, self.ext.is_block_end)
     }
     
     #[inline(always)]
@@ -361,8 +371,8 @@ impl StreamingDecoder {
                         goto!(Byte(ByteValue::GlobalFlags))
                     },
                     (Delay, delay) => {
-                        self.ext.1.push(value as u8);
-                        self.ext.1.push(b);
+                        self.ext.data.push(value as u8);
+                        self.ext.data.push(b);
                         self.current_frame_mut().delay = delay;
                         goto!(Byte(ByteValue::TransparentIdx))
                     },
@@ -408,7 +418,7 @@ impl StreamingDecoder {
                         goto!(GlobalPalette(table_size))
                     },
                     ControlFlags => {
-                        self.ext.1.push(b);
+                        self.ext.data.push(b);
                         let control_flags = b;
                         if control_flags & 1 != 0 {
                             // Set to Some(...), gets overwritten later
@@ -425,7 +435,7 @@ impl StreamingDecoder {
                         goto!(U16(U16Value::Delay))
                     }
                     TransparentIdx => {
-                        self.ext.1.push(b);
+                        self.ext.data.push(b);
                         if let Some(ref mut idx) = self.current_frame_mut().transparent {
                              *idx = b
                         }
@@ -466,7 +476,7 @@ impl StreamingDecoder {
             GlobalPalette(left) => {
                 let n = cmp::min(left, buf.len());
                 if left > 0 {
-                    self.global_color_table.extend(buf[..n].iter().cloned());
+                    self.global_color_table.extend_from_slice(&buf[..n]);
                     goto!(n, GlobalPalette(left - n))
                 } else {
                     let idx = self.background_color[0];
@@ -513,12 +523,12 @@ impl StreamingDecoder {
                     ))
                 }
             }
-            ExtensionBlock(type_) => {
+            ExtensionBlock(id) => {
                 use Extension::*;
-                self.ext.0 = type_;
-                self.ext.1.clear();
-                self.ext.1.push(b);
-                if let Some(ext) = Extension::from_u8(type_.0) {
+                self.ext.id = id;
+                self.ext.data.clear();
+                self.ext.data.push(b);
+                if let Some(ext) = Extension::from_u8(id.0) {
                     match ext {
                         Control => {
                             goto!(self.read_control_extension(b)?)
@@ -536,17 +546,16 @@ impl StreamingDecoder {
             SkipBlock(left) => {
                 let n = cmp::min(left, buf.len());
                 if left > 0 {
-                    self.ext.1.push(b);
+                    self.ext.data.extend_from_slice(&buf[..n]);
                     goto!(n, SkipBlock(left - n))
                 } else {
                     if b == 0 {
-                        self.ext.2 = true;
-                        goto!(BlockEnd(b), emit Decoded::BlockFinished(self.ext.0, &self.ext.1))
+                        self.ext.is_block_end = true;
+                        goto!(BlockEnd(b), emit Decoded::BlockFinished(self.ext.id, &self.ext.data))
                     } else {
-                        self.ext.2 = false;
-                        goto!(SkipBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.0, &self.ext.1))
+                        self.ext.is_block_end = false;
+                        goto!(SkipBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.id, &self.ext.data))
                     }
-                    
                 }
             }
             LocalPalette(left) => {
@@ -639,7 +648,7 @@ impl StreamingDecoder {
     
     fn read_control_extension(&mut self, b: u8) -> Result<State, DecodingError> {
         self.add_frame();
-        self.ext.1.push(b);
+        self.ext.data.push(b);
         if b != 4 {
             return Err(DecodingError::format(
                 "control extension has wrong length"
