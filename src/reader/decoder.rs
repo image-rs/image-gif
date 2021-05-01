@@ -481,9 +481,8 @@ impl StreamingDecoder {
                 } else {
                     let idx = self.background_color[0];
                     match self.global_color_table.chunks(PLTE_CHANNELS).nth(idx as usize) {
-                        Some(chunk) => for i in 0..PLTE_CHANNELS {
-                            self.background_color[i] = chunk[i]
-                        },
+                        Some(chunk) => self.background_color[..PLTE_CHANNELS]
+                            .copy_from_slice(&chunk[..PLTE_CHANNELS]),
                         None => self.background_color[0] = 0
                     }
                     goto!(BlockStart(Block::from_u8(b)), emit Decoded::GlobalPalette(

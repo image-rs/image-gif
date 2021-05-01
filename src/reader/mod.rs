@@ -215,7 +215,7 @@ impl<R> Decoder<R> where R: Read {
             }
         }
         // If the background color is invalid, ignore it
-        if let &Some(ref palette) = &self.global_palette {
+        if let Some(ref palette) = self.global_palette {
             if self.bg_color.unwrap_or(0) as usize >= (palette.len() / PLTE_CHANNELS) {
                 self.bg_color = None;
             }
@@ -341,7 +341,7 @@ impl<R> Decoder<R> where R: Read {
         if buf_len > 0 {
             let (len, channels) = handle_data!(&self.buffer);
             let _ = self.buffer.drain(..len);
-            let buf_ = buf; buf = &mut buf_[len*channels..];
+            buf = &mut buf[len*channels..];
             if buf.len() == 0 {
                 return Ok(true)
             }
@@ -350,11 +350,11 @@ impl<R> Decoder<R> where R: Read {
             match self.decoder.decode_next()? {
                 Some(Decoded::Data(data)) => {
                     let (len, channels) = handle_data!(data);
-                    let buf_ = buf; buf = &mut buf_[len*channels..]; // shorten buf
+                    buf = &mut buf[len*channels..]; // shorten buf
                     if buf.len() > 0 {
                         continue
                     } else if len < data.len() {
-                        self.buffer.extend(data[len..].iter().map(|&v| v));
+                        self.buffer.extend_from_slice(&data[len..]);
                     }
                     return Ok(true)
                 },
