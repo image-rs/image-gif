@@ -206,27 +206,25 @@ impl Frame<'static> {
     pub fn from_rgba_speed(width: u16, height: u16, pixels: &mut [u8], speed: i32) -> Frame<'static> {
         assert_eq!(width as usize * height as usize * 4, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
         assert!(speed >= 1 && speed <= 30, "speed needs to be in the range [1, 30]");
-        let mut frame = Frame::default();
         let mut transparent = None;
-        for pix in pixels.chunks_mut(4) {
+        for pix in pixels.chunks_exact_mut(4) {
             if pix[3] != 0 {
                 pix[3] = 0xFF;
             } else {
                 transparent = Some([pix[0], pix[1], pix[2], pix[3]])
             }
         }
-        frame.width = width;
-        frame.height = height;
-        let nq = color_quant::NeuQuant::new(speed, 256, pixels);
-        frame.buffer = Cow::Owned(pixels.chunks(4).map(|pix| nq.index_of(pix) as u8).collect());
-        frame.palette = Some(nq.color_map_rgb());
-        frame.transparent = if let Some(t) = transparent {
-            Some(nq.index_of(&t) as u8)
-        } else {
-            None
-        };
 
-        frame
+        let nq = color_quant::NeuQuant::new(speed, 256, pixels);
+
+        Frame {
+            width,
+            height,
+            buffer: Cow::Owned(pixels.chunks_exact(4).map(|pix| nq.index_of(pix) as u8).collect()),
+            palette: Some(nq.color_map_rgb()),
+            transparent: transparent.map(|t| nq.index_of(&t) as u8),
+            ..Frame::default()
+        }
     }
 
     /// Creates a frame from a palette and indexed pixels.
@@ -237,17 +235,15 @@ impl Frame<'static> {
     pub fn from_palette_pixels(width: u16, height: u16, pixels: &[u8], palette: &[u8], transparent: Option<u8>) -> Frame<'static> {
         assert_eq!(width as usize * height as usize, pixels.len(), "Too many or too little pixels for the given width and height to create a GIF Frame");
         assert!(palette.len() <= 256*3, "Too many palette values to create a GIF Frame");
-        let mut frame = Frame::default();
 
-        frame.width = width;
-        frame.height = height;
-
-        frame.buffer = Cow::Owned(pixels.to_vec());
-        frame.palette = Some(palette.to_vec());
-
-        frame.transparent = transparent;
-
-        frame
+        Frame {
+            width,
+            height,
+            buffer: Cow::Owned(pixels.to_vec()),
+            palette: Some(palette.to_vec()),
+            transparent,
+            ..Frame::default()
+        }
     }
 
     /// Creates a frame from indexed pixels in the global palette.
@@ -256,17 +252,15 @@ impl Frame<'static> {
     /// *   If the length of pixels does not equal `width * height`.
     pub fn from_indexed_pixels(width: u16, height: u16, pixels: &[u8], transparent: Option<u8>) -> Frame<'static> {
         assert_eq!(width as usize * height as usize, pixels.len(), "Too many or too little pixels for the given width and height to create a GIF Frame");
-        let mut frame = Frame::default();
 
-        frame.width = width;
-        frame.height = height;
-
-        frame.buffer = Cow::Owned(pixels.to_vec());
-        frame.palette = None;
-
-        frame.transparent = transparent;
-
-        frame
+        Frame {
+            width,
+            height,
+            buffer: Cow::Owned(pixels.to_vec()),
+            palette: None,
+            transparent,
+            ..Frame::default()
+        }
     }
 
     /// Creates a frame from pixels in RGB format.
@@ -300,8 +294,8 @@ impl Frame<'static> {
     pub fn from_rgb_speed(width: u16, height: u16, pixels: &[u8], speed: i32) -> Frame<'static> {
         assert_eq!(width as usize * height as usize * 3, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
         let mut vec: Vec<u8> = Vec::with_capacity(pixels.len() + width as usize * height as usize);
-        for v in pixels.chunks(3) {
-            vec.extend([v[0], v[1], v[2], 0xFF].iter().cloned())
+        for v in pixels.chunks_exact(3) {
+            vec.extend_from_slice(&[v[0], v[1], v[2], 0xFF])
         }
         Frame::from_rgba_speed(width, height, &mut vec, speed)
     }

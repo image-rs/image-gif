@@ -37,7 +37,7 @@ fn main() {
                     b.iter(|| read_image(input))
                 }
             );
-    };
+    }
 
     let mut c = Criterion::default().configure_from_args();
     let mut group = c.benchmark_group("gif");
