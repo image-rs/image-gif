@@ -323,7 +323,7 @@ impl Quantizer {
     fn index_of(&self, pixel: &[u8]) -> usize {
         match self {
             Quantizer::NQ(nq) => nq.index_of(pixel),
-            Quantizer::Exact { lookup, palette: _ } =>
+            Quantizer::Exact { lookup, .. } =>
                 *lookup.get(&(pixel[0], pixel[1], pixel[2], pixel[3])).unwrap(),
         }
     }
@@ -331,7 +331,7 @@ impl Quantizer {
     fn color_map_rgb(&self) -> Vec<u8> {
         match self {
             Quantizer::NQ(nq) => nq.color_map_rgb(),
-            Quantizer::Exact { lookup: _, palette } => palette.clone(),
+            Quantizer::Exact { palette, .. } => palette.clone(),
         }
     }
 }
