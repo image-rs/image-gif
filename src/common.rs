@@ -217,14 +217,40 @@ impl Frame<'static> {
             }
         }
 
-        let q = quantize(speed, pixels);
+        // Attempt to build a palette of all colors. If we go over 256 colors,
+        // switch to the NeuQuant algorithm.
+        let mut colors: HashSet<(u8, u8, u8, u8)> = HashSet::new();
+        for pixel in pixels.chunks_exact(4) {
+            if colors.insert((pixel[0], pixel[1], pixel[2], pixel[3])) && colors.len() > 256 {
+                // > 256 colours, let's use NeuQuant.
+                let nq =  color_quant::NeuQuant::new(speed, 256, pixels);
 
-        Frame {
+                return Frame {
+                    width,
+                    height,
+                    buffer: Cow::Owned(pixels.chunks_exact(4).map(|pix| nq.index_of(pix) as u8).collect()),
+                    palette: Some(nq.color_map_rgb()),
+                    transparent: transparent.map(|t| nq.index_of(&t) as u8),
+                    ..Frame::default()
+                };
+            }
+        }
+
+        // Palette size <= 256 elements, we can build an exact palette.
+        let mut colors_vec: Vec<(u8, u8, u8, u8)> = colors.into_iter().collect();
+        colors_vec.sort();
+        let palette = colors_vec.iter().map(|&(r, g, b, _a)| vec![r, g, b]).flatten().collect();
+        let colors_lookup: HashMap<(u8, u8, u8, u8), u8> =  colors_vec.into_iter().zip(0..).collect();
+
+        let index_of = | pixel: &[u8] |
+            *colors_lookup.get(&(pixel[0], pixel[1], pixel[2], pixel[3])).unwrap();
+
+        return Frame {
             width,
             height,
-            buffer: Cow::Owned(pixels.chunks_exact(4).map(|pix| q.index_of(pix) as u8).collect()),
-            palette: Some(q.color_map_rgb()),
-            transparent: transparent.map(|t| q.index_of(&t) as u8),
+            buffer: Cow::Owned(pixels.chunks_exact(4).map(|pix| index_of(pix)).collect()),
+            palette: Some(palette),
+            transparent: transparent.map(|t| index_of(&t)),
             ..Frame::default()
         }
     }
@@ -304,54 +330,5 @@ impl Frame<'static> {
 
     pub(crate) fn required_bytes(&self) -> usize {
         usize::from(self.width) * usize::from(self.height)
-    }
-}
-
-enum Quantizer {
-    // Use NeuQuant for high-colour images...
-    NQ(color_quant::NeuQuant),
-    // And an exact look-up for <= 256 colors.
-    Exact {
-        // Palette look-up table.
-        lookup: HashMap<(u8, u8, u8, u8), usize>,
-        // A palette that can be used by Frame.
-        palette: Vec<u8>,
-    },
-}
-
-impl Quantizer {
-    fn index_of(&self, pixel: &[u8]) -> usize {
-        match self {
-            Quantizer::NQ(nq) => nq.index_of(pixel),
-            Quantizer::Exact { lookup, .. } =>
-                *lookup.get(&(pixel[0], pixel[1], pixel[2], pixel[3])).unwrap(),
-        }
-    }
-
-    fn color_map_rgb(&self) -> Vec<u8> {
-        match self {
-            Quantizer::NQ(nq) => nq.color_map_rgb(),
-            Quantizer::Exact { palette, .. } => palette.clone(),
-        }
-    }
-}
-
-// Attempt to build a palette of all colors. If we go over 256 colors,
-// switch to the NeuQuant algorithm.
-fn quantize(samplefac: i32, pixels: &[u8]) -> Quantizer {
-    let mut colors: HashSet<(u8, u8, u8, u8)> = HashSet::new();
-    for pixel in pixels.chunks_exact(4) {
-        if colors.insert((pixel[0], pixel[1], pixel[2], pixel[3])) && colors.len() > 256 {
-            return Quantizer::NQ(color_quant::NeuQuant::new(samplefac, 256, pixels));
-        }
-    }
-
-    // Palette size <= 256 elements, we can build an exact palette.
-    let mut pixel_vec: Vec<(u8, u8, u8, u8)> = colors.into_iter().collect();
-    pixel_vec.sort();
-
-    Quantizer::Exact {
-        palette: pixel_vec.iter().map(|&(r, g, b, _a)| vec![r, g, b]).flatten().collect(),
-        lookup: pixel_vec.into_iter().zip(0..).collect(),
     }
 }
