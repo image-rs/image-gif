@@ -2,6 +2,8 @@
 extern crate color_quant;
 
 use std::borrow::Cow;
+use std::collections::HashMap;
+use std::collections::HashSet;
 
 /// Disposal method
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -215,14 +217,40 @@ impl Frame<'static> {
             }
         }
 
-        let nq = color_quant::NeuQuant::new(speed, 256, pixels);
+        // Attempt to build a palette of all colors. If we go over 256 colors,
+        // switch to the NeuQuant algorithm.
+        let mut colors: HashSet<(u8, u8, u8, u8)> = HashSet::new();
+        for pixel in pixels.chunks_exact(4) {
+            if colors.insert((pixel[0], pixel[1], pixel[2], pixel[3])) && colors.len() > 256 {
+                // > 256 colours, let's use NeuQuant.
+                let nq =  color_quant::NeuQuant::new(speed, 256, pixels);
 
-        Frame {
+                return Frame {
+                    width,
+                    height,
+                    buffer: Cow::Owned(pixels.chunks_exact(4).map(|pix| nq.index_of(pix) as u8).collect()),
+                    palette: Some(nq.color_map_rgb()),
+                    transparent: transparent.map(|t| nq.index_of(&t) as u8),
+                    ..Frame::default()
+                };
+            }
+        }
+
+        // Palette size <= 256 elements, we can build an exact palette.
+        let mut colors_vec: Vec<(u8, u8, u8, u8)> = colors.into_iter().collect();
+        colors_vec.sort();
+        let palette = colors_vec.iter().map(|&(r, g, b, _a)| vec![r, g, b]).flatten().collect();
+        let colors_lookup: HashMap<(u8, u8, u8, u8), u8> =  colors_vec.into_iter().zip(0..).collect();
+
+        let index_of = | pixel: &[u8] |
+            *colors_lookup.get(&(pixel[0], pixel[1], pixel[2], pixel[3])).unwrap();
+
+        return Frame {
             width,
             height,
-            buffer: Cow::Owned(pixels.chunks_exact(4).map(|pix| nq.index_of(pix) as u8).collect()),
-            palette: Some(nq.color_map_rgb()),
-            transparent: transparent.map(|t| nq.index_of(&t) as u8),
+            buffer: Cow::Owned(pixels.chunks_exact(4).map(|pix| index_of(pix)).collect()),
+            palette: Some(palette),
+            transparent: transparent.map(|t| index_of(&t)),
             ..Frame::default()
         }
     }
