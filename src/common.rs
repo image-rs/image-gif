@@ -240,7 +240,7 @@ impl Frame<'static> {
         let mut colors_vec: Vec<(u8, u8, u8, u8)> = colors.into_iter().collect();
         colors_vec.sort();
         let palette = colors_vec.iter().map(|&(r, g, b, _a)| vec![r, g, b]).flatten().collect();
-        let colors_lookup: HashMap<(u8, u8, u8, u8), u8> =  colors_vec.into_iter().zip(0..).collect();
+        let colors_lookup: HashMap<(u8, u8, u8, u8), u8> =  colors_vec.into_iter().zip(0..=255).collect();
 
         let index_of = | pixel: &[u8] |
             *colors_lookup.get(&(pixel[0], pixel[1], pixel[2], pixel[3])).unwrap();
@@ -331,4 +331,14 @@ impl Frame<'static> {
     pub(crate) fn required_bytes(&self) -> usize {
         usize::from(self.width) * usize::from(self.height)
     }
+}
+
+#[test]
+// Creating the `colors_lookup` hashmap in Frame::from_rgba_speed panics due to
+// overflow while bypassing NeuQuant and zipping a RangeFrom with 256 colors.
+// Changing .zip(0_u8..) to .zip(0_u8..=255) fixes this issue.
+fn rgba_speed_avoid_panic_256_colors() {
+    let side = 16;
+    let pixel_data: Vec<u8> = (0..=255).map(|a| vec![a, a, a]).flatten().collect();
+    Frame::from_rgb(side, side, &pixel_data);
 }
