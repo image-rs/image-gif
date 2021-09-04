@@ -57,6 +57,7 @@ pub struct DecodeOptions {
     color_output: ColorOutput,
     check_frame_consistency: bool,
     check_for_end_code: bool,
+    allow_unknown_blocks: bool,
 }
 
 impl DecodeOptions {
@@ -67,6 +68,7 @@ impl DecodeOptions {
             color_output: ColorOutput::Indexed,
             check_frame_consistency: false,
             check_for_end_code: false,
+            allow_unknown_blocks: false,
         }
     }
 
@@ -107,6 +109,21 @@ impl DecodeOptions {
     /// some bits of the last or second to last byte.
     pub fn check_lzw_end_code(&mut self, check: bool) {
         self.check_for_end_code = check;
+    }
+
+    /// Configure if unknown blocks are allowed to be decoded.
+    ///
+    /// The default is `false`.
+    ///
+    /// When turned on, the decoder will allow unknown blocks to be in the
+    /// `BlockStart` position.
+    ///
+    /// When turned off, decoded block starts must mark an `Image`, `Extension`,
+    /// or `Trailer` block. Otherwise, the decoded image will return an error.
+    /// If an unknown block error is returned from decoding, enabling this
+    /// setting may allow for a further state of decoding on the next attempt.
+    pub fn allow_unknown_blocks(&mut self, check: bool) {
+        self.allow_unknown_blocks = check;
     }
 
     /// Reads the logical screen descriptor including the global color palette

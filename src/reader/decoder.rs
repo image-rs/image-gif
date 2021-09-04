@@ -193,6 +193,7 @@ pub struct StreamingDecoder {
     skip_extensions: bool,
     check_frame_consistency: bool,
     check_for_end_code: bool,
+    allow_unknown_blocks: bool,
     version: &'static str,
     width: u16,
     height: u16,
@@ -225,6 +226,7 @@ impl StreamingDecoder {
             skip_extensions: true,
             check_frame_consistency: options.check_frame_consistency,
             check_for_end_code: options.check_for_end_code,
+            allow_unknown_blocks: options.allow_unknown_blocks,
             version: "",
             width: 0,
             height: 0,
@@ -502,11 +504,13 @@ impl StreamingDecoder {
                     Some(Block::Trailer) => {
                         goto!(0, State::Trailer, emit Decoded::BlockStart(Block::Trailer))
                     }
-                    // TODO: permit option to enable handling/ignoring of unknown chunks?
                     None => {
-                        return Err(DecodingError::format(
-                        "unknown block type encountered"
-                    ))}
+                        if self.allow_unknown_blocks {
+                            goto!(SkipBlock(b as usize))
+                        } else {
+                            Err(DecodingError::format("unknown block type encountered"))
+                        }
+                    }
                 }
             }
             BlockEnd(terminator) => {
@@ -584,7 +588,7 @@ impl StreamingDecoder {
                     let max_bytes = self.current_frame().required_bytes();
                     let decoder = self.lzw_reader.as_mut().unwrap();
                     if decoder.has_ended() {
-                        return goto!(left, DecodeSubBlock(0), emit Decoded::Data(&[]));
+                        return goto!(n, DecodeSubBlock(0), emit Decoded::Data(&[]));
                     }
                     if self.decode_buffer.is_empty() {
                         let size = (1 << 14).min(max_bytes);
