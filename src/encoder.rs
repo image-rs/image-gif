@@ -199,7 +199,8 @@ pub struct Encoder<W: Write> {
     w: W,
     global_palette: bool,
     width: u16,
-    height: u16
+    height: u16,
+    buffer: Vec<u8>
 }
 
 impl<W: Write> Encoder<W> {
@@ -208,11 +209,13 @@ impl<W: Write> Encoder<W> {
     /// `global_palette` gives the global color palette in the format `[r, g, b, ...]`,
     /// if no global palette shall be used an empty slice may be supplied.
     pub fn new(w: W, width: u16, height: u16, global_palette: &[u8]) -> Result<Self, EncodingError> {
+        let buffer_size = (width as usize) * (height as usize);
         Encoder {
             w: w,
             global_palette: false,
             width: width,
-            height: height
+            height: height,
+            buffer: vec![0; buffer_size]
         }.write_global_palette(global_palette)
     }
 
@@ -292,7 +295,9 @@ impl<W: Write> Encoder<W> {
             self.w.write_le(min_code_size)?;
             let mut bw = BlockWriter::new(&mut self.w);
             let mut enc = LzwEncoder::new(BitOrder::Lsb, min_code_size);
-            enc.into_stream(&mut bw).encode_all(data).status?;
+            let mut stream = enc.into_stream(&mut bw);
+            stream.set_buffer(&mut self.buffer);
+            stream.encode_all(data).status?;
         }
         self.w.write_le(0u8).map_err(Into::into)
     }
