@@ -1,5 +1,4 @@
 //! # Minimal gif encoder
-use std::cmp::min;
 use std::io;
 use std::io::prelude::*;
 use std::fmt;
@@ -134,66 +133,6 @@ impl ExtensionData {
     }
 }
 
-struct BlockWriter<'a, W: Write + 'a> {
-    w: &'a mut W,
-    bytes: usize,
-    buf: [u8; 0xFF]
-}
-
-
-impl<'a, W: Write + 'a> BlockWriter<'a, W> {
-    fn new(w: &'a mut W) -> BlockWriter<'a, W> {
-        BlockWriter {
-            w: w,
-            bytes: 0,
-            buf: [0; 0xFF]
-        }
-    }
-}
-
-impl<'a, W: Write + 'a> Write for BlockWriter<'a, W> {
-
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let to_copy = min(buf.len(), 0xFF - self.bytes);
-        { // isolation to please borrow checker
-            let destination = &mut self.buf[self.bytes..];
-            destination[..to_copy].copy_from_slice(&buf[..to_copy]);
-        }
-        self.bytes += to_copy;
-        if self.bytes == 0xFF {
-            self.bytes = 0;
-            self.w.write_le(0xFFu8)?;
-            self.w.write_all(&self.buf)?;
-        }
-        Ok(to_copy)
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Cannot flush a BlockWriter, use `drop` instead."
-        ))
-    }
-}
-
-impl<'a, W: Write + 'a> Drop for BlockWriter<'a, W> {
-
-    #[cfg(feature = "raii_no_panic")]
-    fn drop(&mut self) {
-        if self.bytes > 0 {
-            let _ = self.w.write_le(self.bytes as u8);
-            let _ = self.w.write_all(&self.buf[..self.bytes]);
-        }
-    }
-
-    #[cfg(not(feature = "raii_no_panic"))]
-    fn drop(&mut self) {
-        if self.bytes > 0 {
-            self.w.write_le(self.bytes as u8).unwrap();
-            self.w.write_all(&self.buf[..self.bytes]).unwrap();
-        }
-    }
-}
-
 /// GIF encoder.
 pub struct Encoder<W: Write> {
     w: W,
@@ -215,7 +154,7 @@ impl<W: Write> Encoder<W> {
             global_palette: false,
             width: width,
             height: height,
-            buffer: vec![0; buffer_size]
+            buffer: Vec::with_capacity(buffer_size)
         }.write_global_palette(global_palette)
     }
 
@@ -293,11 +232,22 @@ impl<W: Write> Encoder<W> {
                 n => n
             };
             self.w.write_le(min_code_size)?;
-            let mut bw = BlockWriter::new(&mut self.w);
+            self.buffer.clear();
             let mut enc = LzwEncoder::new(BitOrder::Lsb, min_code_size);
-            let mut stream = enc.into_stream(&mut bw);
-            stream.set_buffer(&mut self.buffer);
-            stream.encode_all(data).status?;
+            let len = enc.into_vec(&mut self.buffer).encode_all(data).consumed_out;
+
+            // Write blocks. `chunks_exact` seems to be slightly faster
+            // than `chunks` according to both Rust docs and benchmark results.
+            let mut iter = self.buffer[..len].chunks_exact(0xFF);
+            while let Some(full_block) = iter.next() {
+                self.w.write_le(0xFFu8)?;
+                self.w.write_all(full_block)?;
+            }
+            let last_block = iter.remainder();
+            if !last_block.is_empty() {
+                self.w.write_le(last_block.len() as u8)?;
+                self.w.write_all(last_block)?;
+            }
         }
         self.w.write_le(0u8).map_err(Into::into)
     }
