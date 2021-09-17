@@ -119,7 +119,7 @@ pub use crate::common::{AnyExtension, Block, Extension, DisposalMethod, Frame};
 pub use crate::reader::{StreamingDecoder, Decoded, DecodingError, DecodingFormatError};
 /// StreamingDecoder configuration parameters
 pub use crate::reader::{ColorOutput, MemoryLimit, Extensions};
-pub use crate::reader::{DecodeOptions, Decoder};
+pub use crate::reader::{DecodeOptions, Decoder, Version};
 
 pub use crate::encoder::{Encoder, ExtensionData, Repeat, EncodingError};
 

@@ -9,7 +9,8 @@ use crate::common::{Block, Frame};
 
 mod decoder;
 pub use self::decoder::{
-    PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, Extensions, DecodingFormatError
+    PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, DecodingFormatError, Extensions,
+    Version
 };
 
 const N_CHANNELS: usize = 4;
