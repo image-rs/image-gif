@@ -5,7 +5,11 @@ fn main() {
         .unwrap_or_else(|| explain_usage());
     let file = fs::File::open(&file)
         .expect("failed to open input file");
-    let mut reader = gif::Decoder::new(file).unwrap();
+    let mut reader = {
+        let mut options = gif::DecodeOptions::new();
+        options.allow_unknown_blocks(true);
+        options.read_info(file).unwrap()
+    };
 
     loop {
         let frame = match reader.read_next_frame() {
