@@ -9,7 +9,8 @@ use crate::common::{Block, Frame};
 
 mod decoder;
 pub use self::decoder::{
-    PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, Extensions, DecodingFormatError
+    PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, DecodingFormatError, Extensions,
+    Version
 };
 
 const N_CHANNELS: usize = 4;
@@ -29,11 +30,22 @@ pub enum ColorOutput {
 }
 
 #[derive(Clone, Debug)]
-/// Memory limit in bytes. `MemoryLimit::Some(0)` means
+/// Memory limit in bytes. `MemoryLimit(0)` means
 /// that there is no memory limit set.
 pub struct MemoryLimit(pub u32);
 
 impl MemoryLimit {
+    /// Enforce no memory limit.
+    ///
+    /// If you intend to process images from unknown origins this is a potentially dangerous
+    /// constant to use, as your program could be vulnerable to decompression bombs. That is,
+    /// malicious images crafted specifically to require an enormous amount of memory to process
+    /// while having a disproportionately small file size.
+    ///
+    /// The risks for modern machines are a bit smaller as the dimensions of each frame can not
+    /// exceed `u32::MAX` (~4Gb) but this is still a significant amount of memory.
+    pub const NONE: MemoryLimit = MemoryLimit(0);
+
     fn buffer_size(&self, color: ColorOutput, width: u16, height: u16) -> Option<usize> {
         let pixels = u32::from(width) * u32::from(height);
 

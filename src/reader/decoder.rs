@@ -194,7 +194,7 @@ pub struct StreamingDecoder {
     check_frame_consistency: bool,
     check_for_end_code: bool,
     allow_unknown_blocks: bool,
-    version: &'static str,
+    version: Version,
     width: u16,
     height: u16,
     global_color_table: Vec<u8>,
@@ -203,6 +203,16 @@ pub struct StreamingDecoder {
     ext: ExtensionData,
     /// Frame data
     current: Option<Frame<'static>>,
+}
+
+/// One version number of the GIF standard.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum Version {
+    /// Version 87a, from May 1987.
+    V87a,
+    /// Version 89a, from July 1989.
+    V89a,
 }
 
 struct ExtensionData {
@@ -227,7 +237,7 @@ impl StreamingDecoder {
             check_frame_consistency: options.check_frame_consistency,
             check_for_end_code: options.check_for_end_code,
             allow_unknown_blocks: options.allow_unknown_blocks,
-            version: "",
+            version: Version::V87a,
             width: 0,
             height: 0,
             global_color_table: Vec::new(),
@@ -311,7 +321,16 @@ impl StreamingDecoder {
         self.height
     }
 
+    /// The version number of the GIF standard used in this image.
+    ///
+    /// We suppose a minimum of `V87a` compatibility. This value will be reported until we have
+    /// read the version information in the magic header bytes.
+    pub fn version(&self) -> Version {
+        self.version
+    }
+
     /// Configure whether extensions are saved or skipped.
+    #[deprecated = "Does not work as intended. In fact, doesn't do anything. This may disappear soon."]
     pub fn set_extensions(&mut self, extensions: Extensions) {
         self.skip_extensions = match extensions {
             Extensions::Skip => true,
@@ -351,8 +370,8 @@ impl StreamingDecoder {
                 goto!(Magic(i+1, version))
             } else if &version[..3] == b"GIF" {
                 self.version = match &version[3..] {
-                    b"87a" => "87a",
-                    b"89a" => "89a",
+                    b"87a" => Version::V87a,
+                    b"89a" => Version::V89a,
                     _ => return Err(DecodingError::format("unsupported GIF version"))
                 };
                 goto!(U16Byte1(U16Value::ScreenWidth, b))
