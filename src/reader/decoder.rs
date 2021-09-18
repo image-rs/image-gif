@@ -323,8 +323,8 @@ impl StreamingDecoder {
 
     /// The version number of the GIF standard used in this image.
     ///
-    /// We suppose a minimum of `V87a` compatibility. This value be reported until we have read the
-    /// version information in the magic header bytes.
+    /// We suppose a minimum of `V87a` compatibility. This value will be reported until we have
+    /// read the version information in the magic header bytes.
     pub fn version(&self) -> Version {
         self.version
     }

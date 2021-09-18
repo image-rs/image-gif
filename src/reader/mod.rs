@@ -42,7 +42,7 @@ impl MemoryLimit {
     /// malicious images crafted specifically to require an enormous amount of memory to process
     /// while having a disproportionately small file size.
     ///
-    /// The risks for modern machines area bit smaller as the dimensions of each frame can not
+    /// The risks for modern machines are a bit smaller as the dimensions of each frame can not
     /// exceed `u32::MAX` (~4Gb) but this is still a significant amount of memory.
     pub const NONE: MemoryLimit = MemoryLimit(0);
 
