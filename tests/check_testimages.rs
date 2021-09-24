@@ -1,6 +1,3 @@
-extern crate gif;
-extern crate glob;
-
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
@@ -8,24 +5,50 @@ use std::path::PathBuf;
 use std::io::BufReader;
 use std::io::prelude::*;
 
-const BASE_PATH: [&'static str; 2] = [".", "tests"];
+struct TestSuites {
+    suites: Vec<PathBuf>,
+    result: PathBuf,
+}
+
+fn suite_path(suites: impl IntoIterator<Item=&'static str>) -> TestSuites {
+    let base: PathBuf = PathBuf::from("tests");
+    let mut xsetup = xtest_data::setup!();
+    let trees: Vec<_> = suites
+        .into_iter()
+        .map(|suite| xsetup.tree(base.join(suite)))
+        .collect();
+    let results = xsetup.file("tests/results.txt");
+    let xdata = xsetup.build();
+
+    TestSuites {
+        suites: trees.iter().map(|tree| xdata.tree(&tree).to_owned()).collect(),
+        result: xdata.file(&results).to_owned(),
+    }
+}
 
 fn process_images<F>(func: F)
-where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
-    let base: PathBuf = BASE_PATH.iter().collect();
+    where F: Fn(PathBuf) -> Result<u32, gif::DecodingError>
+{
     let test_suites = &["samples"];
+    let test_suites = suite_path(test_suites.iter().copied());
     let mut results = HashMap::new();
     let mut expected_failures = 0;
-    for suite in test_suites {
-        let mut path = base.clone();
-        path.push(suite);
-        path.push("*.gif");
-        let pattern = &*format!("{}", path.display());
+
+    for path in test_suites.suites {
+        let root = path
+            .parent()
+            .unwrap();
+
+        let mut pattern = path.to_owned();
+        pattern.push("*.gif");
+
+        let pattern = &*format!("{}", pattern.display());
         for path in glob::glob(pattern).unwrap().filter_map(Result::ok) {
-            print!("{:?}: ", path.clone());
+            let name = path.strip_prefix(root).unwrap();
+            print!("{}: ", name.display());
             match func(path.clone()) {
                 Ok(crc) => {
-                    results.insert(format!("{:?}", path), format!("{}", crc));
+                    results.insert(format!("{}", name.display()), format!("{}", crc));
                     println!("{}", crc)
                 },
                 Err(_) if path.file_name().unwrap().to_str().unwrap().starts_with("x") => {
@@ -36,19 +59,20 @@ where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
             }
         }
     }
-    let mut path = base.clone();
-    path.push("results.txt");
+
     let mut ref_results = HashMap::new();
     let mut failures = 0;
-    for line in BufReader::new(File::open(path).unwrap()).lines() {
+    let resultfile = File::open(test_suites.result).expect("test results to be available");
+    for line in BufReader::new(resultfile).lines() {
         let line = line.unwrap();
         let parts: Vec<_> = line.split(": ").collect();
         if parts[1] == "Expected failure" {
             failures += 1;
         } else {
-            ref_results.insert(parts[0].to_string(), parts[1].to_string());
+            ref_results.insert(parts[0].to_owned(), parts[1].to_string());
         }
     }
+
     assert_eq!(expected_failures, failures);
     for (path, crc) in results.iter() {
         assert_eq!(

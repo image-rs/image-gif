@@ -3,7 +3,12 @@ use gif::DecodeOptions;
 
 #[test]
 fn try_decode_crash_regression() {
-    let files = fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/crashtest")).unwrap();
+    let mut xsetup = xtest_data::setup!();
+    let results = xsetup.tree("tests/crashtest");
+    let xdata = xsetup.build();
+    let files = xdata.tree(&results);
+
+    let files = fs::read_dir(files).unwrap();
     let options = DecodeOptions::new();
 
     for entry in files {

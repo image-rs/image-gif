@@ -24,6 +24,7 @@ color_quant = "1.0"
 [dev-dependencies]
 glob = "0.3"
 criterion = "0.3.1"
+xtest-data = "0.0.1"
 
 [features]
 default = ["raii_no_panic", "std"]

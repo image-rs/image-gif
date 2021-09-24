@@ -2,8 +2,13 @@ use gif::{ColorOutput, Decoder, Encoder, Frame};
 
 #[test]
 fn encode_roundtrip() {
-    const ORIGINAL: &'static [u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/samples/2x2.gif"));
-    round_trip_from_image(ORIGINAL);
+    let mut xsetup = xtest_data::setup!();
+    let original = xsetup.file("tests/samples/2x2.gif");
+    let xdata = xsetup.build();
+
+    let original = std::fs::read(xdata.file(&original))
+        .expect("original file not found");
+    round_trip_from_image(&original);
 }
 
 fn round_trip_from_image(original: &[u8]) {
