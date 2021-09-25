@@ -76,7 +76,7 @@
 //! [`Frame::from_*`](struct.Frame.html) can be used to convert a true color image to a paletted
 //! image with a maximum of 256 colors:
 //!
-//! ```rust
+//! ```rust,no_run
 //! use std::fs::File;
 //! 
 //! // Get pixel data from some source
