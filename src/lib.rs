@@ -14,13 +14,16 @@
 //! ### Decoding GIF files
 //! 
 //! ```rust
-//! // Open the file
 //! use std::fs::File;
+//! # use std::path::PathBuf;
+//! # let mut path = PathBuf::from("tests/samples/sample_1.gif");
+//! # xtest_data::setup!().filter([xtest_data::FsItem::File(&mut path)]).build();
+//! // Open the file
 //! let mut decoder = gif::DecodeOptions::new();
 //! // Configure the decoder such that it will expand the image to RGBA.
 //! decoder.set_color_output(gif::ColorOutput::RGBA);
 //! // Read the file header
-//! let file = File::open("tests/samples/sample_1.gif").unwrap();
+//! let file = File::open(path).unwrap();
 //! let mut decoder = decoder.read_info(file).unwrap();
 //! while let Some(frame) = decoder.read_next_frame().unwrap() {
 //!     // Process every frame
@@ -36,6 +39,9 @@
 //! ```rust
 //! use gif::{Frame, Encoder, Repeat};
 //! use std::fs::File;
+//! # use std::path::PathBuf;
+//! # let mut path = PathBuf::from("tests/samples/beacon.gif");
+//! # xtest_data::setup!().filter([xtest_data::FsItem::File(&mut path)]).build();
 //! use std::borrow::Cow;
 //! 
 //! let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];
@@ -55,7 +61,7 @@
 //!     0, 0, 0, 1, 1, 0,
 //!     0, 0, 0, 0, 0, 0,
 //! ]];
-//! let mut image = File::create("tests/samples/beacon.gif").unwrap();;
+//! let mut image = File::create(path).unwrap();;
 //! let mut encoder = Encoder::new(&mut image, width, height, color_map).unwrap();
 //! encoder.set_repeat(Repeat::Infinite).unwrap();
 //! for state in &beacon_states {
@@ -83,29 +89,6 @@
 //! // Write frame to file
 //! encoder.write_frame(&frame).unwrap();
 //! ```
-
-// TODO: make this compile
-// ```rust
-// use gif::{Frame, Encoder};
-// use std::fs::File;
-// let color_map = &[0, 0, 0, 0xFF, 0xFF, 0xFF];
-// let mut frame = Frame::default();
-// // Generate checkerboard lattice
-// for (i, j) in (0..10).zip(0..10) {
-//     frame.buffer.push(if (i * j) % 2 == 0 {
-//         1
-//     } else {
-//         0
-//     })
-// }
-// # (|| {
-// {
-// let mut file = File::create("test.gif")?;
-// let mut encoder = Encoder::new(&mut file, 100, 100);
-// encoder.write_global_palette(color_map)?.write_frame(&frame)
-// }
-// # })().unwrap();
-// ```
 #![deny(missing_docs)]
 #![cfg(feature = "std")]
 
@@ -128,8 +111,15 @@ pub use crate::encoder::{Encoder, ExtensionData, Repeat, EncodingError};
 fn round_trip() {
     use std::io::prelude::*;
     use std::fs::File;
+    use std::path::PathBuf;
+
+    let mut path = PathBuf::from("tests/samples/sample_1.gif");
+    xtest_data::setup!().filter([
+        xtest_data::FsItem::File(&mut path)
+    ]).build();
+
     let mut data = vec![];
-    File::open("tests/samples/sample_1.gif").unwrap().read_to_end(&mut data).unwrap();
+    File::open(path).unwrap().read_to_end(&mut data).unwrap();
     let mut decoder = Decoder::new(&*data).unwrap();
     let palette: Vec<u8> = decoder.palette().unwrap().into();
     let frame = decoder.read_next_frame().unwrap().unwrap();

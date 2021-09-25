@@ -13,7 +13,7 @@ The high level interface consists of the two types
 
 ### Decoding GIF files
 
-```rust
+```rust,no_run
 // Open the file
 use std::fs::File;
 let input = File::open("tests/samples/sample_1.gif").unwrap();
@@ -31,7 +31,7 @@ while let Some(frame) = decoder.read_next_frame().unwrap() {
 
 The encoder can be used to save simple computer generated images:
 
-```rust
+```rust,no_run
 use gif::{Frame, Encoder, Repeat};
 use std::fs::File;
 use std::borrow::Cow;
@@ -68,7 +68,7 @@ for state in &beacon_states {
 [`Frame::from_*`](https://docs.rs/gif/*/gif/struct.Frame.html) can be used to convert a true color image to a paletted
 image with a maximum of 256 colors:
 
-```rust
+```rust,no_run
 use std::fs::File;
 
 // Get pixel data from some source

@@ -465,13 +465,19 @@ impl iter::Iterator for InterlaceIterator {
 
 #[cfg(test)]
 mod test {
-    use std::fs::File;
+    use std::{fs::File, path::PathBuf};
+    use xtest_data::FsItem;
 
     use super::{Decoder, InterlaceIterator};
     
     #[test]
     fn test_simple_indexed() {
-        let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap()).unwrap();
+        let mut path = PathBuf::from("tests/samples/sample_1.gif");
+        xtest_data::setup!().filter([
+            FsItem::File(&mut path)
+        ]).build();
+
+        let mut decoder = Decoder::new(File::open(path).unwrap()).unwrap();
         let frame = decoder.read_next_frame().unwrap().unwrap();
         assert_eq!(&*frame.buffer, &[
             1, 1, 1, 1, 1, 2, 2, 2, 2, 2,
