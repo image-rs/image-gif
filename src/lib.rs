@@ -17,7 +17,7 @@
 //! use std::fs::File;
 //! # use std::path::PathBuf;
 //! # let mut path = PathBuf::from("tests/samples/sample_1.gif");
-//! # xtest_data::setup!().filter([xtest_data::FsItem::File(&mut path)]).build();
+//! # xtest_data::setup!().rewrite([&mut path]).build();
 //! // Open the file
 //! let mut decoder = gif::DecodeOptions::new();
 //! // Configure the decoder such that it will expand the image to RGBA.
@@ -41,7 +41,7 @@
 //! use std::fs::File;
 //! # use std::path::PathBuf;
 //! # let mut path = PathBuf::from("tests/samples/beacon.gif");
-//! # xtest_data::setup!().filter([xtest_data::FsItem::File(&mut path)]).build();
+//! # xtest_data::setup!().rewrite([&mut path]).build();
 //! use std::borrow::Cow;
 //! 
 //! let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];
@@ -114,9 +114,7 @@ fn round_trip() {
     use std::path::PathBuf;
 
     let mut path = PathBuf::from("tests/samples/sample_1.gif");
-    xtest_data::setup!().filter([
-        xtest_data::FsItem::File(&mut path)
-    ]).build();
+    xtest_data::setup!().rewrite([&mut path]).build();
 
     let mut data = vec![];
     File::open(path).unwrap().read_to_end(&mut data).unwrap();

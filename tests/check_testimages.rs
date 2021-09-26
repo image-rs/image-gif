@@ -15,14 +15,14 @@ fn suite_path(suites: impl IntoIterator<Item=&'static str>) -> TestSuites {
     let mut xsetup = xtest_data::setup!();
     let trees: Vec<_> = suites
         .into_iter()
-        .map(|suite| xsetup.tree(base.join(suite)))
+        .map(|suite| xsetup.add(base.join(suite)))
         .collect();
-    let results = xsetup.file("tests/results.txt");
+    let results = xsetup.add("tests/results.txt");
     let xdata = xsetup.build();
 
     TestSuites {
-        suites: trees.iter().map(|tree| xdata.tree(&tree).to_owned()).collect(),
-        result: xdata.file(&results).to_owned(),
+        suites: trees.iter().map(|tree| xdata.path(&tree).to_owned()).collect(),
+        result: xdata.path(&results).to_owned(),
     }
 }
 

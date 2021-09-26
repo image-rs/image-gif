@@ -1,12 +1,10 @@
-use std::{fs, io};
+use std::{fs, io, path::PathBuf};
 use gif::DecodeOptions;
 
 #[test]
 fn try_decode_crash_regression() {
-    let mut xsetup = xtest_data::setup!();
-    let results = xsetup.tree("tests/crashtest");
-    let xdata = xsetup.build();
-    let files = xdata.tree(&results);
+    let mut files = PathBuf::from("tests/crashtest");
+    xtest_data::setup!().rewrite([&mut files]).build();
 
     let files = fs::read_dir(files).unwrap();
     let options = DecodeOptions::new();

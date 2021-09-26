@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use gif::{DecodeOptions, DisposalMethod, Encoder, Frame};
 
 #[test]
@@ -60,10 +61,8 @@ fn create_image_with_oob_frames() -> Vec<u8> {
 
 #[test]
 fn check_for_end_code_is_configurable() {
-    let mut xsetup = xtest_data::setup!();
-    let file = xsetup.file("tests/samples/gifplayer-muybridge.gif");
-    let xdata = xsetup.build();
-    let image = xdata.file(&file);
+    let mut image = PathBuf::from("tests/samples/gifplayer-muybridge.gif");
+    xtest_data::setup!().rewrite([&mut image]).build();
 
     // In this particular image, the image data of the 62nd frame has no end code.
     let image: &[u8] = &std::fs::read(image).expect("file to be present");

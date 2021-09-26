@@ -1,12 +1,12 @@
+use std::path::PathBuf;
 use gif::{ColorOutput, Decoder, Encoder, Frame};
 
 #[test]
 fn encode_roundtrip() {
-    let mut xsetup = xtest_data::setup!();
-    let original = xsetup.file("tests/samples/2x2.gif");
-    let xdata = xsetup.build();
+    let mut original = PathBuf::from("tests/samples/2x2.gif");
+    xtest_data::setup!().rewrite([&mut original]).build();
 
-    let original = std::fs::read(xdata.file(&original))
+    let original = std::fs::read(&original)
         .expect("original file not found");
     round_trip_from_image(&original);
 }
