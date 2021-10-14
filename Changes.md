@@ -1,3 +1,21 @@
+# v0.11.3
+
+Bugfixes:
+- Fix panic while decoding some images, has no precise cause in the file.
+- Warn about `set_extensions` being unimplemented...
+
+Features:
+- Added `StreamingDecoder::version` to query the precise version of the
+  standard used for encoding the file. This is merely a hint.
+- Added `DecodeOptions::allow_unknown_blocks` to skip over unknown or
+  unspecified block kinds.
+
+Optimization:
+- `Frame::from_rgba` now recognizes when less than 256 colors are being used,
+  dynamically skipping the quantization phase.
+- Encoding image chunks is faster and simpler 
+
+
 # v0.11.2
 
 - Fix panic when LZW code size is invalid
