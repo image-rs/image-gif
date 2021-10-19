@@ -20,6 +20,7 @@ exclude = [
 [dependencies]
 weezl = "0.1.4"
 color_quant = "1.0"
+png = "0.17.2"
 
 [dev-dependencies]
 glob = "0.3"
@@ -49,5 +50,10 @@ required-features = ["std"]
 
 [[bench]]
 name = "decode"
+harness = false
+required-features = ["std"]
+
+[[bench]]
+name = "rgb_frame"
 harness = false
 required-features = ["std"]
