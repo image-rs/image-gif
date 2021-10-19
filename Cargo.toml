@@ -20,11 +20,11 @@ exclude = [
 [dependencies]
 weezl = "0.1.4"
 color_quant = "1.0"
-png = "0.17.2"
 
 [dev-dependencies]
 glob = "0.3"
 criterion = "0.3.1"
+png = "0.17.2"
 
 [features]
 default = ["raii_no_panic", "std"]
