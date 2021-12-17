@@ -21,13 +21,11 @@ fn round_trip_from_image(original: &[u8]) {
         }).collect()
     };
 
-    let mut buffer = vec![];
-    {
-        let mut encoder = Encoder::new(&mut buffer, width, height, &global_palette).unwrap();
-        for frame in &frames {
-            encoder.write_frame(frame).unwrap();
-        }
+    let mut encoder = Encoder::new(vec![], width, height, &global_palette).unwrap();
+    for frame in &frames {
+        encoder.write_frame(frame).unwrap();
     }
+    let buffer = encoder.into_inner().unwrap();
 
     {
         let mut decoder = Decoder::new(&buffer[..]).expect("Invalid info encoded");
