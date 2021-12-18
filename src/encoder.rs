@@ -3,7 +3,6 @@ use std::io;
 use std::io::prelude::*;
 use std::fmt;
 use std::error;
-use std::mem;
 
 use weezl::{BitOrder, encode::Encoder as LzwEncoder};
 
@@ -142,7 +141,7 @@ impl<W: Write> Encoder<W> {
     pub fn new(w: W, width: u16, height: u16, global_palette: &[u8]) -> Result<Self, EncodingError> {
         let buffer_size = (width as usize) * (height as usize);
         Encoder {
-            w: mem::ManuallyDrop::new(w),
+            w: Some(w),
             global_palette: false,
             width: width,
             height: height,
@@ -188,11 +187,12 @@ impl<W: Write> Encoder<W> {
 
             ))?;
         //}
-        self.w.write_le(Block::Image as u8)?;
-        self.w.write_le(frame.left)?;
-        self.w.write_le(frame.top)?;
-        self.w.write_le(frame.width)?;
-        self.w.write_le(frame.height)?;
+        let writer = self.w.as_mut().unwrap();
+        writer.write_le(Block::Image as u8)?;
+        writer.write_le(frame.left)?;
+        writer.write_le(frame.top)?;
+        writer.write_le(frame.width)?;
+        writer.write_le(frame.height)?;
         let mut flags = 0;
         if frame.interlaced {
             flags |= 0b0100_0000;
@@ -205,25 +205,26 @@ impl<W: Write> Encoder<W> {
                     return Err(EncodingError::from(FormatErrorKind::TooManyColors));
                 }
                 flags |= flag_size(num_colors);
-                self.w.write_le(flags)?;
+                writer.write_le(flags)?;
                 self.write_color_table(palette)
             },
             None => if !self.global_palette {
                 Err(EncodingError::from(FormatErrorKind::MissingColorPalette))
             } else {
-                self.w.write_le(flags).map_err(Into::into)
+                writer.write_le(flags).map_err(Into::into)
             }
         }?;
         self.write_image_block(&frame.buffer)
     }
 
     fn write_image_block(&mut self, data: &[u8]) -> Result<(), EncodingError> {
+        let writer = self.w.as_mut().unwrap();
         {
             let min_code_size: u8 = match flag_size(*data.iter().max().unwrap_or(&0) as usize + 1) + 1 {
                 1 => 2, // As per gif spec: The minimal code size has to be >= 2
                 n => n
             };
-            self.w.write_le(min_code_size)?;
+            writer.write_le(min_code_size)?;
             self.buffer.clear();
             let mut enc = LzwEncoder::new(BitOrder::Lsb, min_code_size);
             let len = enc.into_vec(&mut self.buffer).encode_all(data).consumed_out;
@@ -232,28 +233,29 @@ impl<W: Write> Encoder<W> {
             // than `chunks` according to both Rust docs and benchmark results.
             let mut iter = self.buffer[..len].chunks_exact(0xFF);
             while let Some(full_block) = iter.next() {
-                self.w.write_le(0xFFu8)?;
-                self.w.write_all(full_block)?;
+                writer.write_le(0xFFu8)?;
+                writer.write_all(full_block)?;
             }
             let last_block = iter.remainder();
             if !last_block.is_empty() {
-                self.w.write_le(last_block.len() as u8)?;
-                self.w.write_all(last_block)?;
+                writer.write_le(last_block.len() as u8)?;
+                writer.write_all(last_block)?;
             }
         }
-        self.w.write_le(0u8).map_err(Into::into)
+        writer.write_le(0u8).map_err(Into::into)
     }
 
     fn write_color_table(&mut self, table: &[u8]) -> Result<(), EncodingError> {
+        let writer = self.w.as_mut().unwrap();
         let num_colors = table.len() / 3;
         if num_colors > 256 {
             return Err(EncodingError::from(FormatErrorKind::TooManyColors));
         }
         let size = flag_size(num_colors);
-        self.w.write_all(&table[..num_colors * 3])?;
+        writer.write_all(&table[..num_colors * 3])?;
         // Waste some space as of gif spec
         for _ in 0..((2 << size) - num_colors) {
-            self.w.write_all(&[0, 0, 0])?
+            writer.write_all(&[0, 0, 0])?
         }
         Ok(())
     }
@@ -268,28 +270,29 @@ impl<W: Write> Encoder<W> {
         if let Repetitions(Repeat::Finite(0)) = extension {
             return Ok(())
         }
-        self.w.write_le(Block::Extension as u8)?;
+        let writer = self.w.as_mut().unwrap();
+        writer.write_le(Block::Extension as u8)?;
         match extension {
             Control { flags, delay, trns } => {
-                self.w.write_le(Extension::Control as u8)?;
-                self.w.write_le(4u8)?;
-                self.w.write_le(flags)?;
-                self.w.write_le(delay)?;
-                self.w.write_le(trns)?;
+                writer.write_le(Extension::Control as u8)?;
+                writer.write_le(4u8)?;
+                writer.write_le(flags)?;
+                writer.write_le(delay)?;
+                writer.write_le(trns)?;
             }
             Repetitions(repeat) => {
-                self.w.write_le(Extension::Application as u8)?;
-                self.w.write_le(11u8)?;
-                self.w.write_all(b"NETSCAPE2.0")?;
-                self.w.write_le(3u8)?;
-                self.w.write_le(1u8)?;
+                writer.write_le(Extension::Application as u8)?;
+                writer.write_le(11u8)?;
+                writer.write_all(b"NETSCAPE2.0")?;
+                writer.write_le(3u8)?;
+                writer.write_le(1u8)?;
                 match repeat {
-                    Repeat::Finite(no) => self.w.write_le(no)?,
-                    Repeat::Infinite => self.w.write_le(0u16)?,
+                    Repeat::Finite(no) => writer.write_le(no)?,
+                    Repeat::Infinite => writer.write_le(0u16)?,
                 }
             }
         }
-        self.w.write_le(0u8).map_err(Into::into)
+        writer.write_le(0u8).map_err(Into::into)
     }
 
     /// Writes a raw extension to the image.
@@ -298,66 +301,64 @@ impl<W: Write> Encoder<W> {
     /// identifier (e.g. `Extension::Application as u8`). `data` are the extension payload blocks. If any
     /// contained slice has a lenght > 255 it is automatically divided into sub-blocks.
     pub fn write_raw_extension(&mut self, func: AnyExtension, data: &[&[u8]]) -> io::Result<()> {
-        self.w.write_le(Block::Extension as u8)?;
-        self.w.write_le(func.0)?;
+        let writer = self.w.as_mut().unwrap();
+        writer.write_le(Block::Extension as u8)?;
+        writer.write_le(func.0)?;
         for block in data {
             for chunk in block.chunks(0xFF) {
-                self.w.write_le(chunk.len() as u8)?;
-                self.w.write_all(chunk)?;
+                writer.write_le(chunk.len() as u8)?;
+                writer.write_all(chunk)?;
             }
         }
-        self.w.write_le(0u8)
+        writer.write_le(0u8)
     }
 
     /// Writes the logical screen desriptor
     fn write_screen_desc(&mut self, flags: u8) -> io::Result<()> {
-        self.w.write_all(b"GIF89a")?;
-        self.w.write_le(self.width)?;
-        self.w.write_le(self.height)?;
-        self.w.write_le(flags)?; // packed field
-        self.w.write_le(0u8)?; // bg index
-        self.w.write_le(0u8) // aspect ratio
+        let writer = self.w.as_mut().unwrap();
+        writer.write_all(b"GIF89a")?;
+        writer.write_le(self.width)?;
+        writer.write_le(self.height)?;
+        writer.write_le(flags)?; // packed field
+        writer.write_le(0u8)?; // bg index
+        writer.write_le(0u8) // aspect ratio
     }
 
     /// Returns writer instance used by this encoder
-    pub fn into_inner(self) -> io::Result<W> {
-        // safety: ManuallyDrop wrapper prevents (second) Drop
-        unsafe { mem::ManuallyDrop::new(self).inner_drop() }
+    pub fn into_inner(mut self) -> io::Result<W> {
+        self.write_trailer()?;
+        Ok(self.w.take().unwrap())
     }
 
-    /// A shared drop implementation used by the `Drop` trait and by `into_inner`
-    ///
-    /// ## Safety
-    ///
-    /// Must be called only once, and keep in mind it is called by `Drop`.
-    unsafe fn inner_drop(&mut self) -> io::Result<W> {
-        self.buffer = Vec::new(); // an empty Vec has no heap allocation
-        let mut w = mem::ManuallyDrop::take(&mut self.w);
-        w.write_le(Block::Trailer as u8)?;
-        Ok(w)
+    /// Write the final tailer.
+    fn write_trailer(&mut self) -> io::Result<()> {
+        self.w.as_mut().unwrap().write_le(Block::Trailer as u8)
     }
 }
 
 /// GIF encoder.
 pub struct Encoder<W: Write> {
-    w: mem::ManuallyDrop<W>,
+    w: Option<W>,
     global_palette: bool,
     width: u16,
     height: u16,
     buffer: Vec<u8>
-    // check `inner_drop` before adding new fields
 }
 
 impl<W: Write> Drop for Encoder<W> {
 
     #[cfg(feature = "raii_no_panic")]
     fn drop(&mut self) {
-        let _ = unsafe { self.inner_drop() };
+        if self.w.is_some() {
+            let _ = self.write_trailer();
+        }
     }
 
     #[cfg(not(feature = "raii_no_panic"))]
     fn drop(&mut self) {
-        let _ = unsafe { self.inner_drop().unwrap() };
+        if self.w.is_some() {
+            self.write_trailer().unwrap();
+        }
     }
 }
 
