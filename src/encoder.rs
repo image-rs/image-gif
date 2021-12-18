@@ -3,6 +3,7 @@ use std::io;
 use std::io::prelude::*;
 use std::fmt;
 use std::error;
+use std::mem;
 
 use weezl::{BitOrder, encode::Encoder as LzwEncoder};
 
@@ -133,15 +134,6 @@ impl ExtensionData {
     }
 }
 
-/// GIF encoder.
-pub struct Encoder<W: Write> {
-    w: W,
-    global_palette: bool,
-    width: u16,
-    height: u16,
-    buffer: Vec<u8>
-}
-
 impl<W: Write> Encoder<W> {
     /// Creates a new encoder.
     ///
@@ -150,7 +142,7 @@ impl<W: Write> Encoder<W> {
     pub fn new(w: W, width: u16, height: u16, global_palette: &[u8]) -> Result<Self, EncodingError> {
         let buffer_size = (width as usize) * (height as usize);
         Encoder {
-            w: w,
+            w: mem::ManuallyDrop::new(w),
             global_palette: false,
             width: width,
             height: height,
@@ -326,18 +318,46 @@ impl<W: Write> Encoder<W> {
         self.w.write_le(0u8)?; // bg index
         self.w.write_le(0u8) // aspect ratio
     }
+
+    /// Returns writer instance used by this encoder
+    pub fn into_inner(self) -> io::Result<W> {
+        // safety: ManuallyDrop wrapper prevents (second) Drop
+        unsafe { mem::ManuallyDrop::new(self).inner_drop() }
+    }
+
+    /// A shared drop implementation used by the `Drop` trait and by `into_inner`
+    ///
+    /// ## Safety
+    ///
+    /// Must be called only once, and keep in mind it is called by `Drop`.
+    unsafe fn inner_drop(&mut self) -> io::Result<W> {
+        self.buffer = Vec::new(); // an empty Vec has no heap allocation
+        let mut w = mem::ManuallyDrop::take(&mut self.w);
+        w.write_le(Block::Trailer as u8)?;
+        Ok(w)
+    }
+}
+
+/// GIF encoder.
+pub struct Encoder<W: Write> {
+    w: mem::ManuallyDrop<W>,
+    global_palette: bool,
+    width: u16,
+    height: u16,
+    buffer: Vec<u8>
+    // check `inner_drop` before adding new fields
 }
 
 impl<W: Write> Drop for Encoder<W> {
 
     #[cfg(feature = "raii_no_panic")]
     fn drop(&mut self) {
-        let _ = self.w.write_le(Block::Trailer as u8);
+        let _ = unsafe { self.inner_drop() };
     }
 
     #[cfg(not(feature = "raii_no_panic"))]
     fn drop(&mut self) {
-        self.w.write_le(Block::Trailer as u8).unwrap()
+        let _ = unsafe { self.inner_drop().unwrap() };
     }
 }
 
