@@ -607,17 +607,33 @@ impl StreamingDecoder {
                     let max_bytes = self.current_frame().required_bytes();
                     let decoder = self.lzw_reader.as_mut().unwrap();
                     if decoder.has_ended() {
+                        debug_assert!(n > 0, "Made forward progress after LZW end");
                         return goto!(n, DecodeSubBlock(0), emit Decoded::Data(&[]));
                     }
+
+                    let mut dummy_target;
+                    let decode_target;
+
                     if self.decode_buffer.is_empty() {
                         let size = (1 << 14).min(max_bytes);
                         self.decode_buffer = vec![0; size];
                     }
-                    let decoded = decoder.decode_bytes(&buf[..n], self.decode_buffer.as_mut_slice());
+
+                    if max_bytes == 0 {
+                        dummy_target = [0; 16];
+                        decode_target = &mut dummy_target[..];
+                    } else {
+                        decode_target = self.decode_buffer.as_mut_slice();
+                    }
+
+                    debug_assert!(!decode_target.is_empty(), "LZW decoding can make forward progress.");
+                    let decoded = decoder.decode_bytes(&buf[..n], decode_target);
+
                     if let Err(err) = decoded.status {
                         return Err(io::Error::new(io::ErrorKind::InvalidData, &*format!("{:?}", err)).into());
                     }
-                    let bytes = &self.decode_buffer[..decoded.consumed_out];
+
+                    let bytes = &self.decode_buffer[..decoded.consumed_out.min(max_bytes)];
                     let consumed = decoded.consumed_in;
                     goto!(consumed, DecodeSubBlock(left - consumed), emit Decoded::Data(bytes))
                 }  else if b != 0 { // decode next sub-block
@@ -627,11 +643,27 @@ impl StreamingDecoder {
                     // The end of the lzw stream is only reached if left == 0 and an additional call
                     // to `decode_bytes` results in an empty slice.
                     let decoder = self.lzw_reader.as_mut().unwrap();
+                    // Some mutable bytes to decode into. We need this for forward progress in
+                    // `lzw`. However, in some cases we do not actually need any bytes, when
+                    // `max_bytes` is `0`.
+                    let mut dummy_target;
+                    let decode_target;
+
                     if self.decode_buffer.is_empty() {
                         let size = (1 << 14).min(max_bytes);
                         self.decode_buffer = vec![0; size];
                     }
-                    let decoded = decoder.decode_bytes(&[], self.decode_buffer.as_mut_slice());
+
+                    if max_bytes == 0 {
+                        dummy_target = [0; 16];
+                        decode_target = &mut dummy_target[..];
+                    } else {
+                        decode_target = self.decode_buffer.as_mut_slice();
+                    }
+
+                    debug_assert!(!decode_target.is_empty(), "LZW decoding can make forward progress.");
+                    let decoded = decoder.decode_bytes(&[], decode_target);
+
                     match decoded.status {
                         Ok(LzwStatus::Done) | Ok(LzwStatus::Ok) => {},
                         Ok(LzwStatus::NoProgress) => {
@@ -646,7 +678,7 @@ impl StreamingDecoder {
                             return Err(io::Error::new(io::ErrorKind::InvalidData, &*format!("{:?}", err)).into());
                         }
                     }
-                    let bytes = &self.decode_buffer[..decoded.consumed_out];
+                    let bytes = &self.decode_buffer[..decoded.consumed_out.min(max_bytes)];
 
                     if bytes.len() > 0 {
                         goto!(0, DecodeSubBlock(0), emit Decoded::Data(bytes))
