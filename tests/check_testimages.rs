@@ -22,10 +22,10 @@ where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
         path.push("*.gif");
         let pattern = &*format!("{}", path.display());
         for path in glob::glob(pattern).unwrap().filter_map(Result::ok) {
-            print!("{:?}: ", path.clone());
+            print!("{}: ", path.to_string_lossy());
             match func(path.clone()) {
                 Ok(crc) => {
-                    results.insert(format!("{:?}", path), format!("{}", crc));
+                    results.insert(path, format!("{}", crc));
                     println!("{}", crc)
                 },
                 Err(_) if path.file_name().unwrap().to_str().unwrap().starts_with("x") => {
@@ -46,7 +46,7 @@ where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
         if parts[1] == "Expected failure" {
             failures += 1;
         } else {
-            ref_results.insert(parts[0].to_string(), parts[1].to_string());
+            ref_results.insert(PathBuf::from(parts[0]), parts[1].to_string());
         }
     }
     assert_eq!(expected_failures, failures);
