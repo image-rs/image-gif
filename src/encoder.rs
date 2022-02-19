@@ -324,6 +324,16 @@ impl<W: Write> Encoder<W> {
         writer.write_le(0u8) // aspect ratio
     }
 
+    /// Gets a reference to the writer instance used by this encoder.
+    pub fn get_ref(&self) -> &W {
+        self.w.as_ref().unwrap()
+    }
+
+    /// Gets a mutable reference to the writer instance used by this encoder.
+    pub fn get_mut(&mut self) -> &mut W {
+        self.w.as_mut().unwrap()
+    }
+
     /// Returns writer instance used by this encoder
     pub fn into_inner(mut self) -> io::Result<W> {
         self.write_trailer()?;
