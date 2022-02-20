@@ -330,6 +330,8 @@ impl<W: Write> Encoder<W> {
     }
 
     /// Gets a mutable reference to the writer instance used by this encoder.
+    ///
+    /// It is inadvisable to directly write to the underlying writer.
     pub fn get_mut(&mut self) -> &mut W {
         self.w.as_mut().unwrap()
     }
