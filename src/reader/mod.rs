@@ -254,6 +254,11 @@ impl<R> Decoder<R> where R: Read {
     
     /// Returns the next frame info
     pub fn next_frame_info(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
+        if !self.buffer.is_empty() {
+            // FIXME: Warn about discarding data?
+            self.buffer.clear();
+        }
+
         loop {
             match self.decoder.decode_next()? {
                 Some(Decoded::Frame(frame)) => {
