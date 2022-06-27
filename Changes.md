@@ -1,3 +1,13 @@
+# v0.11.4
+
+Bufixes:
+- Fix decoding confusing superfluous image data from previous frames with
+  current frame data.
+- Bump minimum required version of `weezl`.
+
+Features:
+- Add `Encoder::{get_ref, get_mut, into_inner}` to access underlying stream.
+
 # v0.11.3
 
 Bugfixes:
