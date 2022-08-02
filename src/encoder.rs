@@ -177,6 +177,11 @@ impl<W: Write> Encoder<W> {
     ///
     /// Note: This function also writes a control extension if necessary.
     pub fn write_frame(&mut self, frame: &Frame) -> Result<(), EncodingError> {
+        if frame.buffer.len() > 0 {
+            assert_ne!(frame.width, 0, "frame width is zero; perhaps you forgot to fill it in?");
+            assert_ne!(frame.height, 0, "frame height is zero; perhaps you forgot to fill it in?");
+        }
+
         // TODO commented off to pass test in lib.rs
         //if frame.delay > 0 || frame.transparent.is_some() {
             self.write_extension(ExtensionData::new_control_ext(
