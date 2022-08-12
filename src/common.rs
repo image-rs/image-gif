@@ -223,7 +223,7 @@ impl Frame<'static> {
         for pixel in pixels.chunks_exact(4) {
             if colors.insert((pixel[0], pixel[1], pixel[2], pixel[3])) && colors.len() > 256 {
                 // > 256 colours, let's use NeuQuant.
-                let nq =  color_quant::NeuQuant::new(speed, 256, pixels);
+                let nq = color_quant::NeuQuant::new(speed, 256, pixels);
 
                 return Frame {
                     width,
@@ -239,7 +239,7 @@ impl Frame<'static> {
         // Palette size <= 256 elements, we can build an exact palette.
         let mut colors_vec: Vec<(u8, u8, u8, u8)> = colors.into_iter().collect();
         colors_vec.sort();
-        let palette = colors_vec.iter().map(|&(r, g, b, _a)| vec![r, g, b]).flatten().collect();
+        let palette = colors_vec.iter().flat_map(|&(r, g, b, _a)| [r, g, b]).collect();
         let colors_lookup: HashMap<(u8, u8, u8, u8), u8> =  colors_vec.into_iter().zip(0..=255).collect();
 
         let index_of = | pixel: &[u8] |
