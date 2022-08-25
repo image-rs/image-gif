@@ -3,6 +3,7 @@ use std::io;
 use std::io::prelude::*;
 use std::fmt;
 use std::error;
+use std::borrow::Cow;
 
 use weezl::{BitOrder, encode::Encoder as LzwEncoder};
 
@@ -177,6 +178,11 @@ impl<W: Write> Encoder<W> {
     ///
     /// Note: This function also writes a control extension if necessary.
     pub fn write_frame(&mut self, frame: &Frame) -> Result<(), EncodingError> {
+        self.write_frame_header(frame)?;
+        self.write_image_block(&frame.buffer)
+    }
+
+    fn write_frame_header(&mut self, frame: &Frame) -> Result<(), EncodingError> {
         // TODO commented off to pass test in lib.rs
         //if frame.delay > 0 || frame.transparent.is_some() {
             self.write_extension(ExtensionData::new_control_ext(
@@ -213,34 +219,32 @@ impl<W: Write> Encoder<W> {
             } else {
                 writer.write_le(flags).map_err(Into::into)
             }
-        }?;
-        self.write_image_block(&frame.buffer)
+        }
     }
 
     fn write_image_block(&mut self, data: &[u8]) -> Result<(), EncodingError> {
-        let writer = self.w.as_mut().unwrap();
-        {
-            let min_code_size: u8 = match flag_size(*data.iter().max().unwrap_or(&0) as usize + 1) + 1 {
-                1 => 2, // As per gif spec: The minimal code size has to be >= 2
-                n => n
-            };
-            writer.write_le(min_code_size)?;
-            self.buffer.clear();
-            let mut enc = LzwEncoder::new(BitOrder::Lsb, min_code_size);
-            let len = enc.into_vec(&mut self.buffer).encode_all(data).consumed_out;
+        self.buffer.clear();
+        lzw_encode(data, &mut self.buffer);
 
-            // Write blocks. `chunks_exact` seems to be slightly faster
-            // than `chunks` according to both Rust docs and benchmark results.
-            let mut iter = self.buffer[..len].chunks_exact(0xFF);
-            while let Some(full_block) = iter.next() {
-                writer.write_le(0xFFu8)?;
-                writer.write_all(full_block)?;
-            }
-            let last_block = iter.remainder();
-            if !last_block.is_empty() {
-                writer.write_le(last_block.len() as u8)?;
-                writer.write_all(last_block)?;
-            }
+        let writer = self.w.as_mut().unwrap();
+        Self::write_encoded_image_block(writer, &self.buffer)
+    }
+
+    fn write_encoded_image_block(writer: &mut W, data_with_min_code_size: &[u8]) -> Result<(), EncodingError> {
+        let (&min_code_size, data) = data_with_min_code_size.split_first().unwrap_or((&2, &[]));
+        writer.write_le(min_code_size)?;
+
+        // Write blocks. `chunks_exact` seems to be slightly faster
+        // than `chunks` according to both Rust docs and benchmark results.
+        let mut iter = data.chunks_exact(0xFF);
+        while let Some(full_block) = iter.next() {
+            writer.write_le(0xFFu8)?;
+            writer.write_all(full_block)?;
+        }
+        let last_block = iter.remainder();
+        if !last_block.is_empty() {
+            writer.write_le(last_block.len() as u8)?;
+            writer.write_all(last_block)?;
         }
         writer.write_le(0u8).map_err(Into::into)
     }
@@ -313,6 +317,16 @@ impl<W: Write> Encoder<W> {
         writer.write_le(0u8)
     }
 
+    /// Writes a frame to the image, but expects `Frame.buffer` to contain LZW-encoded data
+    /// from [`Frame::make_lzw_pre_encoded`].
+    ///
+    /// Note: This function also writes a control extension if necessary.
+    pub fn write_lzw_pre_encoded_frame(&mut self, frame: &Frame) -> Result<(), EncodingError> {
+        self.write_frame_header(frame)?;
+        let writer = self.w.as_mut().unwrap();
+        Self::write_encoded_image_block(writer, &frame.buffer)
+    }
+
     /// Writes the logical screen desriptor
     fn write_screen_desc(&mut self, flags: u8) -> io::Result<()> {
         let writer = self.w.as_mut().unwrap();
@@ -345,6 +359,31 @@ impl<W: Write> Encoder<W> {
     /// Write the final tailer.
     fn write_trailer(&mut self) -> io::Result<()> {
         self.w.as_mut().unwrap().write_le(Block::Trailer as u8)
+    }
+}
+
+/// Encodes the data into the provided buffer.
+///
+/// The first byte is the minimum code size, followed by LZW data.
+fn lzw_encode(data: &[u8], buffer: &mut Vec<u8>) {
+    let min_code_size = match flag_size(1 + data.iter().copied().max().unwrap_or(0) as usize) + 1 {
+        1 => 2, // As per gif spec: The minimal code size has to be >= 2
+        n => n
+    };
+    buffer.push(min_code_size);
+    let mut enc = LzwEncoder::new(BitOrder::Lsb, min_code_size);
+    let len = enc.into_vec(buffer).encode_all(data).consumed_out;
+    buffer.truncate(len+1);
+}
+
+impl Frame<'_> {
+    /// Replace frame's buffer with a LZW-compressed one for use with [`Encoder::write_lzw_pre_encoded_frame`].
+    ///
+    /// Frames can be compressed in any order, separately from the `Encoder`, which can be used to compress frames in parallel.
+    pub fn make_lzw_pre_encoded(&mut self) {
+        let mut buffer = Vec::with_capacity(self.buffer.len() / 2);
+        lzw_encode(&self.buffer, &mut buffer);
+        self.buffer = Cow::Owned(buffer);
     }
 }
 

@@ -69,14 +69,15 @@ fn encode_roundtrip_few_colors() {
     // We clone "pixels", since the parameter is replaced with a
     // paletted version, and later we want to compare the output with
     // the original RGBA image.
-    let frames = [Frame::from_rgba_speed(WIDTH, HEIGHT, &mut pixels.clone(), 30)];
+    let mut frame = Frame::from_rgba_speed(WIDTH, HEIGHT, &mut pixels.clone(), 30);
 
     let mut buffer = vec![];
     {
         let mut encoder = Encoder::new(&mut buffer, WIDTH, HEIGHT, &[]).unwrap();
-        for frame in &frames {
-            encoder.write_frame(frame).unwrap();
-        }
+        encoder.write_frame(&frame).unwrap();
+
+        frame.make_lzw_pre_encoded();
+        encoder.write_lzw_pre_encoded_frame(&frame).unwrap();
     }
 
     {
@@ -93,8 +94,9 @@ fn encode_roundtrip_few_colors() {
         let new_frames: Vec<_> = core::iter::from_fn(move || {
             decoder.read_next_frame().unwrap().cloned()
         }).collect();
-        assert_eq!(new_frames.len(), 1, "Diverging number of frames");
+        assert_eq!(new_frames.len(), 2, "Diverging number of frames");
         // NB: reference.buffer can't be used as it contains the palette version.
         assert_eq!(new_frames[0].buffer, pixels);
+        assert_eq!(new_frames[1].buffer, pixels);
     }
 }
