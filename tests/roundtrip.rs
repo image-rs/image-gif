@@ -53,6 +53,7 @@ fn round_trip_from_image(original: &[u8]) {
 }
 
 #[test]
+#[cfg(feature = "color_quant")]
 fn encode_roundtrip_few_colors() {
     const WIDTH: u16 = 128;
     const HEIGHT: u16 = 128;

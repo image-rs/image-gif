@@ -19,7 +19,7 @@ exclude = [
 
 [dependencies]
 weezl = "0.1.5"
-color_quant = "1.0"
+color_quant = { version = "1.0", optional = true }
 
 [dev-dependencies]
 glob = "0.3"
@@ -27,7 +27,7 @@ criterion = "0.3.1"
 png = "0.17.2"
 
 [features]
-default = ["raii_no_panic", "std"]
+default = ["raii_no_panic", "std", "color_quant"]
 raii_no_panic = []
 # Reservation for a feature turning off std
 std = []
@@ -60,4 +60,4 @@ required-features = ["std"]
 [[bench]]
 name = "rgb_frame"
 harness = false
-required-features = ["std"]
+required-features = ["std, color_quant"]
