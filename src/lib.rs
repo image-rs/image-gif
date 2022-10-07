@@ -71,6 +71,7 @@
 //! image with a maximum of 256 colors:
 //!
 //! ```rust
+//! # #[cfg(feature = "color_quant")] {
 //! use std::fs::File;
 //! 
 //! // Get pixel data from some source
@@ -82,6 +83,7 @@
 //! let mut encoder = gif::Encoder::new(&mut image, frame.width, frame.height, &[]).unwrap();
 //! // Write frame to file
 //! encoder.write_frame(&frame).unwrap();
+//! # }
 //! ```
 
 // TODO: make this compile
@@ -148,4 +150,5 @@ macro_rules! insert_as_doc {
 }
 
 // Provides the README.md as doc, to ensure the example works!
+#[cfg(feature = "color_quant")]
 insert_as_doc!(include_str!("../README.md"));

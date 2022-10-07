@@ -1,6 +1,3 @@
-//! Common common used both by decoder and encoder
-extern crate color_quant;
-
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -187,6 +184,7 @@ impl Frame<'static> {
     ///
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height * 4`.
+    #[cfg(feature = "color_quant")]
     pub fn from_rgba(width: u16, height: u16, pixels: &mut [u8]) -> Frame<'static> {
         Frame::from_rgba_speed(width, height, pixels, 1)
     }
@@ -205,6 +203,7 @@ impl Frame<'static> {
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height * 4`.
     /// *   If `speed < 1` or `speed > 30`
+    #[cfg(feature = "color_quant")]
     pub fn from_rgba_speed(width: u16, height: u16, pixels: &mut [u8], speed: i32) -> Frame<'static> {
         assert_eq!(width as usize * height as usize * 4, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
         assert!(speed >= 1 && speed <= 30, "speed needs to be in the range [1, 30]");
@@ -301,6 +300,7 @@ impl Frame<'static> {
     ///
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height * 3`.
+    #[cfg(feature = "color_quant")]
     pub fn from_rgb(width: u16, height: u16, pixels: &[u8]) -> Frame<'static> {
         Frame::from_rgb_speed(width, height, pixels, 1)
     }
@@ -319,6 +319,7 @@ impl Frame<'static> {
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height * 3`.
     /// *   If `speed < 1` or `speed > 30`
+    #[cfg(feature = "color_quant")]
     pub fn from_rgb_speed(width: u16, height: u16, pixels: &[u8], speed: i32) -> Frame<'static> {
         assert_eq!(width as usize * height as usize * 3, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
         let mut vec: Vec<u8> = Vec::with_capacity(pixels.len() + width as usize * height as usize);
@@ -334,6 +335,7 @@ impl Frame<'static> {
 }
 
 #[test]
+#[cfg(feature = "color_quant")]
 // Creating the `colors_lookup` hashmap in Frame::from_rgba_speed panics due to
 // overflow while bypassing NeuQuant and zipping a RangeFrom with 256 colors.
 // Changing .zip(0_u8..) to .zip(0_u8..=255) fixes this issue.
