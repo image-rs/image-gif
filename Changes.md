@@ -1,3 +1,14 @@
+# v0.12.0
+
+Features:
+- Add compression of pre-compressed frame data, via `Encoder::write_lzw_pre_encoded_frame`.
+- The `color_quant` dependency is now optional. Turning it off disables some
+  interfaces that would internally build quantization tables, which can be
+  costly compared in specialized situations.
+
+Optimization:
+- Avoid some allocations in by replacing `flat_map` argument with arrays
+
 # v0.11.4
 
 Bufixes:
