@@ -1,4 +1,4 @@
-use gif::{DecodeOptions, DisposalMethod, Encoder, Frame};
+use gif::{DecodeOptions, DisposalMethod, Encoder, Frame, DecodingError};
 
 #[test]
 fn frame_consistency_is_configurable() {
@@ -81,4 +81,35 @@ fn check_for_end_code_is_configurable() {
         }
         assert!(decoder.read_next_frame().is_err());
     }
+}
+
+#[test]
+fn check_skip_frame_data() {
+    let image: &[u8] = include_bytes!("samples/moon_impact.gif");
+
+    let mut options = DecodeOptions::new();
+    options.skip_frame_decoding(true);
+    let mut decoder = options.clone().read_info(image).unwrap();
+
+    for _ in 0..14 {
+        assert!(matches!(decoder.next_frame_info().unwrap(), Some(_)));
+    }
+
+    assert!(matches!(decoder.next_frame_info(), Ok(None)));
+}
+
+#[test]
+fn check_skip_frame_data_decode_frame_error() {
+    let image: &[u8] = include_bytes!("samples/moon_impact.gif");
+
+    let mut options = DecodeOptions::new();
+    options.skip_frame_decoding(true);
+    let mut skipping_decoder = options.read_info(image).unwrap();
+    let mut normal_decoder = DecodeOptions::new().read_info(image).unwrap();
+
+    while let Ok(Some(_normal_frame)) = normal_decoder.read_next_frame() {
+        let _compressed_frame = skipping_decoder.read_next_frame().unwrap().unwrap();
+    }
+    assert!(skipping_decoder.read_next_frame().unwrap().is_none());
+
 }
