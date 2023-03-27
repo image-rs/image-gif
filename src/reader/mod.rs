@@ -68,6 +68,7 @@ pub struct DecodeOptions {
     memory_limit: MemoryLimit,
     color_output: ColorOutput,
     check_frame_consistency: bool,
+    skip_frame_decoding: bool,
     check_for_end_code: bool,
     allow_unknown_blocks: bool,
 }
@@ -79,6 +80,7 @@ impl DecodeOptions {
             memory_limit: MemoryLimit(50_000_000), // 50 MB
             color_output: ColorOutput::Indexed,
             check_frame_consistency: false,
+            skip_frame_decoding: false,
             check_for_end_code: false,
             allow_unknown_blocks: false,
         }
@@ -106,6 +108,17 @@ impl DecodeOptions {
     /// caller, for example to emulate a specific style.
     pub fn check_frame_consistency(&mut self, check: bool) {
         self.check_frame_consistency = check;
+    }
+
+    /// Configure whether to skip decoding frames.
+    ///
+    /// The default is false.
+    ///
+    /// When turned on, LZW decoding is skipped. `Decoder::read_next_frame` will fail, but
+    /// `Decoder::next_frame_info` will return the metadata of the next frame.
+    /// This is useful to count frames without incurring the overhead of decoding.
+    pub fn skip_frame_decoding(&mut self, skip: bool) {
+        self.skip_frame_decoding = skip;
     }
 
     /// Configure if LZW encoded blocks must end with a marker end code.

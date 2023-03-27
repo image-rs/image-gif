@@ -82,3 +82,18 @@ fn check_for_end_code_is_configurable() {
         assert!(decoder.read_next_frame().is_err());
     }
 }
+
+#[test]
+fn check_skip_frame_data() {
+    let image: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/samples/moon_impact.gif"));
+
+    let mut options = DecodeOptions::new();
+    options.skip_frame_decoding(true);
+    let mut decoder = options.clone().read_info(image).unwrap();
+
+    for _ in 0..14 {
+        assert!(matches!(decoder.next_frame_info(), Ok(Some(_))));
+    }
+
+    assert!(matches!(decoder.next_frame_info(), Ok(None)));
+}

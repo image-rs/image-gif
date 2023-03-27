@@ -191,6 +191,7 @@ pub struct StreamingDecoder {
     lzw_reader: Option<LzwDecoder>,
     decode_buffer: Vec<u8>,
     skip_extensions: bool,
+    skip_frame_decoding: bool,
     check_frame_consistency: bool,
     check_for_end_code: bool,
     allow_unknown_blocks: bool,
@@ -234,6 +235,7 @@ impl StreamingDecoder {
             lzw_reader: None,
             decode_buffer: vec![],
             skip_extensions: true,
+            skip_frame_decoding: options.skip_frame_decoding,
             check_frame_consistency: options.check_frame_consistency,
             check_for_end_code: options.check_for_end_code,
             allow_unknown_blocks: options.allow_unknown_blocks,
@@ -598,11 +600,26 @@ impl StreamingDecoder {
                         "invalid minimal code size"
                     ))
                 }
-                self.lzw_reader = Some(LzwDecoder::new(BitOrder::Lsb, code_size));
+                if !self.skip_frame_decoding {
+                    self.lzw_reader = Some(LzwDecoder::new(BitOrder::Lsb, code_size));
+                }
                 goto!(DecodeSubBlock(b as usize), emit Decoded::Frame(self.current_frame_mut()))
+
             }
             DecodeSubBlock(left) => {
-                if left > 0 {
+                if self.skip_frame_decoding {
+                    if left > 0 {
+                        let consumed = std::cmp::min(left, buf.len());
+                        let left = left - consumed;
+                        goto!(consumed, DecodeSubBlock(left))
+                    } else if b != 0 {
+                        goto!(DecodeSubBlock(b as usize))
+                    } else {
+                        // end of image data reached
+                        self.current = None;
+                        goto!(0, FrameDecoded, emit Decoded::DataEnd)
+                    }
+                } else if left > 0 {
                     let n = cmp::min(left, buf.len());
                     let max_bytes = self.current_frame().required_bytes();
                     let decoder = self.lzw_reader.as_mut().unwrap();
