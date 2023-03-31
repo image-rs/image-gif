@@ -1,4 +1,4 @@
-use gif::{DecodeOptions, DisposalMethod, Encoder, Frame};
+use gif::{DecodeOptions, DisposalMethod, Encoder, Frame, DecodingError};
 
 #[test]
 fn frame_consistency_is_configurable() {
@@ -96,4 +96,15 @@ fn check_skip_frame_data() {
     }
 
     assert!(matches!(decoder.next_frame_info(), Ok(None)));
+}
+
+#[test]
+fn check_skip_frame_data_decode_frame_error() {
+    let image: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/samples/moon_impact.gif"));
+
+    let mut options = DecodeOptions::new();
+    options.skip_frame_decoding(true);
+    let mut decoder = options.clone().read_info(image).unwrap();
+
+    assert!(matches!(decoder.read_next_frame(), Err(DecodingError::Format(_))));
 }

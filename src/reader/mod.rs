@@ -114,8 +114,8 @@ impl DecodeOptions {
     ///
     /// The default is false.
     ///
-    /// When turned on, LZW decoding is skipped. `Decoder::read_next_frame` will fail, but
-    /// `Decoder::next_frame_info` will return the metadata of the next frame.
+    /// When turned on, LZW decoding is skipped. `Decoder::read_next_frame` will return an error
+    /// variant, but `Decoder::next_frame_info` will return the metadata of the next frame.
     /// This is useful to count frames without incurring the overhead of decoding.
     pub fn skip_frame_decoding(&mut self, skip: bool) {
         self.skip_frame_decoding = skip;
