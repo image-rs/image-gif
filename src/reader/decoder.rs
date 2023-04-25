@@ -260,7 +260,10 @@ impl StreamingDecoder {
         // NOTE: Do not change the function signature without double-checking the
         //       unsafe block!
         let len = buf.len();
-        while buf.len() > 0 && self.state.is_some() {
+        while buf.len() > 0 {
+            if self.state.is_none() {
+                return Err(DecodingError::format("unable to recover from previous error"));
+            }
             match self.next_state(buf) {
                 Ok((bytes, Decoded::Nothing)) => {
                     buf = &buf[bytes..]
