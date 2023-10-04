@@ -1,4 +1,4 @@
-use gif::{DecodeOptions, DisposalMethod, Encoder, Frame, DecodingError};
+use gif::{DecodeOptions, DisposalMethod, Encoder, Frame};
 
 #[test]
 fn frame_consistency_is_configurable() {
