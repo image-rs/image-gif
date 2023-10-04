@@ -145,6 +145,7 @@ fn round_trip() {
 
 macro_rules! insert_as_doc {
     { $content:expr } => {
+        #[allow(unused_doc_comments)]
         #[doc = $content] extern { }
     }
 }
