@@ -55,13 +55,13 @@ fn main() {
     });
 
     run_bench_def(&mut group, BenchDef {
-        data: include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/samples/sample_1.gif")),
+        data: include_bytes!("../tests/samples/sample_1.gif"),
         id: "sample_1.gif",
         sample_size: 100,
     });
 
     run_bench_def(&mut group, BenchDef {
-        data: include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/samples/sample_big.gif")),
+        data: include_bytes!("../tests/samples/sample_big.gif"),
         id: "sample_big.gif",
         sample_size: 20,
     });
