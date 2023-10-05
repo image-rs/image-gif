@@ -322,6 +322,13 @@ impl<W: Write> Encoder<W> {
     ///
     /// Note: This function also writes a control extension if necessary.
     pub fn write_lzw_pre_encoded_frame(&mut self, frame: &Frame) -> Result<(), EncodingError> {
+        // empty data is allowed
+        if let Some(&min_code_size) = frame.buffer.get(0) {
+            if min_code_size > 11 || min_code_size < 2 {
+                return Err(EncodingError::from(io::Error::new(io::ErrorKind::InvalidInput, "invalid code size")));
+            }
+        }
+
         self.write_frame_header(frame)?;
         let writer = self.w.as_mut().unwrap();
         Self::write_encoded_image_block(writer, &frame.buffer)
