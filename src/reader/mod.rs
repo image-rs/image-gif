@@ -454,6 +454,7 @@ struct InterlaceIterator {
 impl iter::Iterator for InterlaceIterator {
     type Item = usize;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.len == 0 || self.pass > 3 {
             return None
