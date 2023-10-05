@@ -8,7 +8,7 @@ use std::default::Default;
 use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 use crate::reader::DecodeOptions;
 
-use weezl::{BitOrder, decode::Decoder as LzwDecoder, LzwStatus};
+use weezl::{decode::Decoder as LzwDecoder, BitOrder, LzwError, LzwStatus};
 
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
@@ -185,14 +185,80 @@ enum ByteValue {
     CodeSize,
 }
 
+struct LzwReader {
+    lzw_decoder: Option<LzwDecoder>,
+    decode_buffer: Vec<u8>,
+    min_code_size: u8,
+    check_for_end_code: bool,
+}
+
+impl LzwReader {
+    #[inline]
+    pub fn new(check_for_end_code: bool) -> Self {
+        Self {
+            lzw_decoder: None,
+            min_code_size: 0,
+            decode_buffer: Vec::new(),
+            check_for_end_code,
+        }
+    }
+
+    pub fn reset(&mut self, min_code_size: u8, max_bytes: usize) -> Result<(), DecodingError> {
+        // LZW spec: max 12 bits per code
+        if min_code_size > 11 {
+            return Err(DecodingError::format(
+                "invalid minimal code size"
+            ))
+        }
+
+        // The decoder can be reused if the code size stayed the same
+        if self.min_code_size != min_code_size || self.lzw_decoder.is_none() {
+            self.min_code_size = min_code_size;
+            self.lzw_decoder = Some(LzwDecoder::new(BitOrder::Lsb, min_code_size));
+        } else {
+            self.lzw_decoder.as_mut().unwrap().reset();
+        }
+
+        let preferred_decode_buffer_size = (1 << 14).min(max_bytes).max(256);
+        if self.decode_buffer.is_empty() {
+            // libstd special-cases these for zero pages
+            self.decode_buffer = vec![0; preferred_decode_buffer_size];
+        } else if self.decode_buffer.len() * 2 <= preferred_decode_buffer_size {
+            // only grow if needs to double in size to amortize reallocations
+            self.decode_buffer.resize(preferred_decode_buffer_size, 0);
+        }
+
+        Ok(())
+    }
+
+    pub fn has_ended(&self) -> bool {
+        self.lzw_decoder.as_ref().map_or(true, |e| e.has_ended())
+    }
+
+    pub fn decode_bytes(&mut self, lzw_data: &[u8]) -> io::Result<(usize, &[u8])> {
+        let decoder = self.lzw_decoder.as_mut().ok_or_else(|| io::ErrorKind::Unsupported)?;
+        let decoded = decoder.decode_bytes(lzw_data, &mut self.decode_buffer);
+
+        match decoded.status {
+            Ok(LzwStatus::Done) | Ok(LzwStatus::Ok) => {}
+            Ok(LzwStatus::NoProgress) => {
+                if self.check_for_end_code {
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, "No end code in lzw stream"));
+                }
+            }
+            Err(LzwError::InvalidCode) => {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid code in LZW stream").into());
+            }
+        }
+        Ok((decoded.consumed_in, &self.decode_buffer[..decoded.consumed_out]))
+    }
+}
+
 /// GIF decoder which supports streaming
 pub struct StreamingDecoder {
     state: Option<State>,
-    lzw_reader: Option<LzwDecoder>,
-    decode_buffer: Vec<u8>,
     skip_extensions: bool,
     check_frame_consistency: bool,
-    check_for_end_code: bool,
     allow_unknown_blocks: bool,
     version: Version,
     width: u16,
@@ -203,6 +269,7 @@ pub struct StreamingDecoder {
     ext: ExtensionData,
     /// Frame data
     current: Option<Frame<'static>>,
+    lzw_reader: LzwReader,
 }
 
 /// One version number of the GIF standard.
@@ -231,11 +298,8 @@ impl StreamingDecoder {
     pub(crate) fn with_options(options: &DecodeOptions) -> Self {
         StreamingDecoder {
             state: Some(Magic(0, [0; 6])),
-            lzw_reader: None,
-            decode_buffer: vec![],
             skip_extensions: true,
             check_frame_consistency: options.check_frame_consistency,
-            check_for_end_code: options.check_for_end_code,
             allow_unknown_blocks: options.allow_unknown_blocks,
             version: Version::V87a,
             width: 0,
@@ -247,7 +311,8 @@ impl StreamingDecoder {
                 data: Vec::with_capacity(256), // 0xFF + 1 byte length
                 is_block_end: true,
             },
-            current: None
+            current: None,
+            lzw_reader: LzwReader::new(options.check_for_end_code),
         }
     }
     
@@ -595,98 +660,37 @@ impl StreamingDecoder {
                 }
             }
             LzwInit(code_size) => {
-                // LZW spec: max 12 bits per code
-                if code_size > 11 {
-                    return Err(DecodingError::format(
-                        "invalid minimal code size"
-                    ))
-                }
-                self.lzw_reader = Some(LzwDecoder::new(BitOrder::Lsb, code_size));
+                let max_bytes = self.current_frame().required_bytes();
+                self.lzw_reader.reset(code_size, max_bytes)?;
+
                 goto!(DecodeSubBlock(b as usize), emit Decoded::Frame(self.current_frame_mut()))
             }
             DecodeSubBlock(left) => {
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
-                    let max_bytes = self.current_frame().required_bytes();
-                    let decoder = self.lzw_reader.as_mut().unwrap();
-                    if decoder.has_ended() {
-                        debug_assert!(n > 0, "Made forward progress after LZW end");
+                    if self.lzw_reader.has_ended() {
                         return goto!(n, DecodeSubBlock(0), emit Decoded::Data(&[]));
                     }
 
-                    let mut dummy_target;
-                    let decode_target;
+                    let (mut consumed, bytes) = self.lzw_reader.decode_bytes(&buf[..n])?;
 
-                    if self.decode_buffer.is_empty() {
-                        let size = (1 << 14).min(max_bytes);
-                        self.decode_buffer = vec![0; size];
+                    // skip if can't make progress (decode would fail if check_for_end_code was set)
+                    if consumed == 0 && bytes.is_empty() {
+                        consumed = n;
                     }
 
-                    if max_bytes == 0 {
-                        dummy_target = [0; 16];
-                        decode_target = &mut dummy_target[..];
-                    } else {
-                        decode_target = self.decode_buffer.as_mut_slice();
-                    }
-
-                    debug_assert!(!decode_target.is_empty(), "LZW decoding can make forward progress.");
-                    let decoded = decoder.decode_bytes(&buf[..n], decode_target);
-
-                    if let Err(err) = decoded.status {
-                        return Err(io::Error::new(io::ErrorKind::InvalidData, &*format!("{:?}", err)).into());
-                    }
-
-                    let bytes = &self.decode_buffer[..decoded.consumed_out.min(max_bytes)];
-                    let consumed = decoded.consumed_in;
                     goto!(consumed, DecodeSubBlock(left - consumed), emit Decoded::Data(bytes))
-                }  else if b != 0 { // decode next sub-block
+                } else if b != 0 {
+                    // decode next sub-block
                     goto!(DecodeSubBlock(b as usize))
                 } else {
-                    let max_bytes = self.current_frame().required_bytes();
-                    // The end of the lzw stream is only reached if left == 0 and an additional call
-                    // to `decode_bytes` results in an empty slice.
-                    let decoder = self.lzw_reader.as_mut().unwrap();
-                    // Some mutable bytes to decode into. We need this for forward progress in
-                    // `lzw`. However, in some cases we do not actually need any bytes, when
-                    // `max_bytes` is `0`.
-                    let mut dummy_target;
-                    let decode_target;
-
-                    if self.decode_buffer.is_empty() {
-                        let size = (1 << 14).min(max_bytes);
-                        self.decode_buffer = vec![0; size];
-                    }
-
-                    if max_bytes == 0 {
-                        dummy_target = [0; 16];
-                        decode_target = &mut dummy_target[..];
-                    } else {
-                        decode_target = self.decode_buffer.as_mut_slice();
-                    }
-
-                    debug_assert!(!decode_target.is_empty(), "LZW decoding can make forward progress.");
-                    let decoded = decoder.decode_bytes(&[], decode_target);
-
-                    match decoded.status {
-                        Ok(LzwStatus::Done) | Ok(LzwStatus::Ok) => {},
-                        Ok(LzwStatus::NoProgress) => {
-                            if self.check_for_end_code {
-                                return Err(io::Error::new(io::ErrorKind::InvalidData, "No end code in lzw stream").into());
-                            } else {
-                                self.current = None;
-                                return goto!(0, FrameDecoded, emit Decoded::DataEnd);
-                            }
-                        },
-                        Err(err) => {
-                            return Err(io::Error::new(io::ErrorKind::InvalidData, &*format!("{:?}", err)).into());
-                        }
-                    }
-                    let bytes = &self.decode_buffer[..decoded.consumed_out.min(max_bytes)];
+                    let (_, bytes) = self.lzw_reader.decode_bytes(&[])?;
 
                     if bytes.len() > 0 {
                         goto!(0, DecodeSubBlock(0), emit Decoded::Data(bytes))
                     } else {
-                        // end of image data reached
+                        // The end of the lzw stream is only reached if left == 0 and an additional call
+                        // to `decode_bytes` results in an empty slice.
                         self.current = None;
                         goto!(0, FrameDecoded, emit Decoded::DataEnd)
                     }
