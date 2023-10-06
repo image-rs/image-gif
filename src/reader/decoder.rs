@@ -147,7 +147,7 @@ pub enum Decoded<'a> {
 /// Internal state of the GIF decoder
 #[derive(Debug)]
 enum State {
-    Magic(usize, [u8; 6]),
+    Magic(u8, [u8; 6]),
     U16Byte1(U16Value, u8),
     U16(U16Value),
     Byte(ByteValue),
@@ -386,7 +386,7 @@ impl StreamingDecoder {
         
         match state {
             Magic(i, mut version) => if i < 6 {
-                version[i] = b;
+                version[i as usize] = b;
                 goto!(Magic(i+1, version))
             } else if &version[..3] == b"GIF" {
                 self.version = match &version[3..] {
