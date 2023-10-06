@@ -124,7 +124,7 @@ impl ExtensionData {
             },
             None => 0
         };
-        flags |= (needs_user_input as u8) << 1;
+        flags |= u8::from(needs_user_input) << 1;
         flags |= (dispose as u8) << 2;
         ExtensionData::Control {
             flags: flags,

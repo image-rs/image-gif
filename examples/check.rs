@@ -3,7 +3,7 @@ use std::{env, fs, process};
 fn main() {
     let file = env::args().nth(1)
         .unwrap_or_else(|| explain_usage());
-    let file = fs::File::open(&file)
+    let file = fs::File::open(file)
         .expect("failed to open input file");
     let mut reader = {
         let mut options = gif::DecodeOptions::new();

@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let output_path = format!("{}.{:03}.gif", output_file_stem, frame_number);
         let mut output = File::create(&output_path)?;
         let mut encoder = gif::Encoder::new(&mut output, screen_width, screen_height, &global_pal)?;
-        encoder.write_frame(&frame)?;
+        encoder.write_frame(frame)?;
         frame_number += 1;
 
         use gif::DisposalMethod::*;

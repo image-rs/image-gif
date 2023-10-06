@@ -157,7 +157,7 @@ impl<R: Read> ReadDecoder<R> {
         while !self.at_eof {
             let (consumed, result) = {
                 let buf = self.reader.fill_buf()?;
-                if buf.len() == 0 {
+                if buf.is_empty() {
                     return Err(DecodingError::format(
                         "unexpected EOF"
                     ))
@@ -379,7 +379,7 @@ impl<R> Decoder<R> where R: Read {
             let (len, channels) = handle_data!(&self.buffer);
             let _ = self.buffer.drain(..len);
             buf = &mut buf[len*channels..];
-            if buf.len() == 0 {
+            if buf.is_empty() {
                 return Ok(true)
             }
         }
@@ -420,8 +420,8 @@ impl<R> Decoder<R> where R: Read {
     pub fn palette(&self) -> Result<&[u8], DecodingError> {
         // TODO prevent planic
         Ok(match self.current_frame.palette {
-            Some(ref table) => &*table,
-            None => &*self.global_palette.as_ref().ok_or(DecodingError::format(
+            Some(ref table) => table,
+            None => self.global_palette.as_ref().ok_or(DecodingError::format(
                 "no color table available for current frame"
             ))?,
         })
@@ -429,7 +429,7 @@ impl<R> Decoder<R> where R: Read {
     
     /// The global color palette
     pub fn global_palette(&self) -> Option<&[u8]> {
-        self.global_palette.as_ref().map(|v| &**v)
+        self.global_palette.as_deref()
     }
 
     /// Width of the image
