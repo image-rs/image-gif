@@ -272,9 +272,9 @@ impl StreamingDecoder {
         //       unsafe block!
         let len = buf.len();
         while buf.len() > 0 {
-            if self.state.is_none() {
-                return Err(DecodingError::format("unable to recover from previous error"));
-            }
+            // It's not necessary to check here whether state is `Some`,
+            // because `next_state` checks it anyway, and will return `DecodeError`
+            // if the state has already been set to `None`.
             match self.next_state(buf) {
                 Ok((bytes, Decoded::Nothing)) => {
                     buf = &buf[bytes..]
@@ -374,8 +374,14 @@ impl StreamingDecoder {
         
         let b = buf[0];
         
-        // Driver should ensure that state is never None
-        let state = self.state.take().unwrap();
+        let state = match self.state.take() {
+            Some(state) => state,
+            None => {
+                // This is not expected to happen, unless `update` has been driven
+                // incorrectly past the end of file.
+                return Err(DecodingError::format("unable to recover from previous error"));
+            },
+        };
         //println!("{:?}", state);
         
         match state {
