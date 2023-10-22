@@ -20,18 +20,25 @@ pub struct DecodingFormatError {
 }
 
 impl fmt::Display for DecodingFormatError {
+    #[cold]
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&*self.underlying, fmt)
     }
 }
 
 impl error::Error for DecodingFormatError {
+    #[cold]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         Some(&*self.underlying as _)
     }
 }
 
 impl DecodingFormatError {
+    // Cold hints the optimizer that the error paths are less likely.
+    //
+    // This function isn't inlined to reduce code size
+    // when it's often used with a string literal.
+    #[cold]
     fn new(
         err: impl Into<Box<dyn error::Error + Send + Sync>>,
     ) -> Self {
@@ -60,6 +67,7 @@ impl DecodingError {
 }
 
 impl fmt::Display for DecodingError {
+    #[cold]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             DecodingError::Format(ref d) => d.fmt(fmt),
@@ -69,6 +77,7 @@ impl fmt::Display for DecodingError {
 }
 
 impl error::Error for DecodingError {
+    #[cold]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             DecodingError::Format(ref err) => Some(err),
@@ -78,12 +87,14 @@ impl error::Error for DecodingError {
 }
 
 impl From<io::Error> for DecodingError {
+    #[inline]
     fn from(err: io::Error) -> Self {
         DecodingError::Io(err)
     }
 }
 
 impl From<DecodingFormatError> for DecodingError {
+    #[inline]
     fn from(err: DecodingFormatError) -> Self {
         DecodingError::Format(err)
     }
@@ -261,9 +272,9 @@ impl StreamingDecoder {
         //       unsafe block!
         let len = buf.len();
         while buf.len() > 0 {
-            if self.state.is_none() {
-                return Err(DecodingError::format("unable to recover from previous error"));
-            }
+            // It's not necessary to check here whether state is `Some`,
+            // because `next_state` checks it anyway, and will return `DecodeError`
+            // if the state has already been set to `None`.
             match self.next_state(buf) {
                 Ok((bytes, Decoded::Nothing)) => {
                     buf = &buf[bytes..]
@@ -363,8 +374,14 @@ impl StreamingDecoder {
         
         let b = buf[0];
         
-        // Driver should ensure that state is never None
-        let state = self.state.take().unwrap();
+        let state = match self.state.take() {
+            Some(state) => state,
+            None => {
+                // This is not expected to happen, unless `update` has been driven
+                // incorrectly past the end of file.
+                return Err(DecodingError::format("unable to recover from previous error"));
+            },
+        };
         //println!("{:?}", state);
         
         match state {

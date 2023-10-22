@@ -316,12 +316,15 @@ impl<R> Decoder<R> where R: Read {
             let width = self.line_length();
             let height = self.current_frame.height as usize;
             for row in (InterlaceIterator { len: height, next: 0, pass: 0 }) {
-                if !self.fill_buffer(&mut buf[row*width..][..width])? {
+                let start = row * width;
+                // Handle a too-small buffer without panicking
+                let line = buf.get_mut(start .. start + width).ok_or_else(|| DecodingError::format("buffer too small"))?;
+                if !self.fill_buffer(line)? {
                     return Err(DecodingError::format("image truncated"))
                 }
             }
         } else {
-            let buf = &mut buf[..self.buffer_size()];
+            let buf = buf.get_mut(..self.buffer_size()).ok_or_else(|| DecodingError::format("buffer too small"))?;
             if !self.fill_buffer(buf)? {
                 return Err(DecodingError::format("image truncated"))
             }
@@ -454,13 +457,17 @@ struct InterlaceIterator {
 impl iter::Iterator for InterlaceIterator {
     type Item = usize;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if self.len == 0 || self.pass > 3 {
-            return None
+        if self.len == 0 {
+            return None;
         }
-        let mut next = self.next + [8, 8, 4, 2][self.pass];
+        // although the pass never goes out of bounds thanks to len==0,
+        // the optimizer doesn't see it. get()? avoids costlier panicking code.
+        let mut next = self.next + *[8, 8, 4, 2].get(self.pass)?;
         while next >= self.len {
-            next = [4, 2, 1, 0][self.pass];
+            debug_assert!(self.pass < 4);
+            next = *[4, 2, 1, 0].get(self.pass)?;
             self.pass += 1;
         }
         mem::swap(&mut next, &mut self.next);
