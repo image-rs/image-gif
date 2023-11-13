@@ -259,15 +259,17 @@ impl Frame<'static> {
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height`.
     /// *   If the length of palette > `256 * 3`.
-    pub fn from_palette_pixels(width: u16, height: u16, pixels: &[u8], palette: &[u8], transparent: Option<u8>) -> Frame<'static> {
+    pub fn from_palette_pixels(width: u16, height: u16, pixels: impl Into<Vec<u8>>, palette: impl Into<Vec<u8>>, transparent: Option<u8>) -> Frame<'static> {
+        let pixels = pixels.into();
+        let palette = palette.into();
         assert_eq!(width as usize * height as usize, pixels.len(), "Too many or too little pixels for the given width and height to create a GIF Frame");
         assert!(palette.len() <= 256*3, "Too many palette values to create a GIF Frame");
 
         Frame {
             width,
             height,
-            buffer: Cow::Owned(pixels.to_vec()),
-            palette: Some(palette.to_vec()),
+            buffer: Cow::Owned(pixels),
+            palette: Some(palette),
             transparent,
             ..Frame::default()
         }
@@ -277,7 +279,8 @@ impl Frame<'static> {
     ///
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height`.
-    pub fn from_indexed_pixels(width: u16, height: u16, pixels: &[u8], transparent: Option<u8>) -> Frame<'static> {
+    pub fn from_indexed_pixels(width: u16, height: u16, pixels: impl Into<Vec<u8>>, transparent: Option<u8>) -> Frame<'static> {
+        let pixels = pixels.into();
         assert_eq!(width as usize * height as usize, pixels.len(), "Too many or too little pixels for the given width and height to create a GIF Frame");
 
         Frame {
