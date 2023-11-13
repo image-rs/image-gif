@@ -331,10 +331,6 @@ impl Frame<'static> {
         }
         Frame::from_rgba_speed(width, height, &mut vec, speed)
     }
-
-    pub(crate) fn required_bytes(&self) -> usize {
-        usize::from(self.width) * usize::from(self.height)
-    }
 }
 
 #[test]

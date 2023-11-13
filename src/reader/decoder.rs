@@ -138,7 +138,7 @@ pub enum Decoded<'a> {
     /// The returned frame does **not** contain any owned image data.
     Frame(&'a Frame<'static>),
     /// Decoded some data of the current frame.
-    Data(&'a [u8]),
+    BytesDecoded(usize),
     /// No more data available the current frame.
     DataEnd,
 
@@ -257,7 +257,6 @@ impl LzwReader {
 pub struct StreamingDecoder {
     state: Option<State>,
     lzw_reader: LzwReader,
-    decode_buffer: Vec<u8>,
     skip_extensions: bool,
     check_frame_consistency: bool,
     allow_unknown_blocks: bool,
@@ -299,7 +298,6 @@ impl StreamingDecoder {
         StreamingDecoder {
             state: Some(Magic(0, [0; 6])),
             lzw_reader: LzwReader::new(options.check_for_end_code),
-            decode_buffer: vec![],
             skip_extensions: true,
             check_frame_consistency: options.check_frame_consistency,
             allow_unknown_blocks: options.allow_unknown_blocks,
@@ -321,7 +319,7 @@ impl StreamingDecoder {
     ///
     /// Returns the number of bytes consumed from the input buffer 
     /// and the last decoding result.
-    pub fn update<'a>(&'a mut self, mut buf: &[u8])
+    pub fn update<'a>(&'a mut self, mut buf: &[u8], mut decode_bytes_into: Option<&mut [u8]>)
     -> Result<(usize, Decoded<'a>), DecodingError> {
         // NOTE: Do not change the function signature without double-checking the
         //       unsafe block!
@@ -330,7 +328,7 @@ impl StreamingDecoder {
             // It's not necessary to check here whether state is `Some`,
             // because `next_state` checks it anyway, and will return `DecodeError`
             // if the state has already been set to `None`.
-            match self.next_state(buf) {
+            match self.next_state(buf, decode_bytes_into.as_deref_mut()) {
                 Ok((bytes, Decoded::Nothing)) => {
                     buf = &buf[bytes..]
                 }
@@ -407,7 +405,7 @@ impl StreamingDecoder {
         }
     }
 
-    fn next_state<'a>(&'a mut self, buf: &[u8]) -> Result<(usize, Decoded<'a>), DecodingError> {
+    fn next_state<'a>(&'a mut self, buf: &[u8], decode_bytes_into: Option<&mut [u8]>) -> Result<(usize, Decoded<'a>), DecodingError> {
         macro_rules! goto (
             ($n:expr, $state:expr) => ({
                 self.state = Some($state); 
@@ -665,18 +663,6 @@ impl StreamingDecoder {
                 }
             }
             LzwInit(min_code_size) => {
-
-                let max_bytes = self.current_frame().required_bytes();
-                // The buffer can't be empty, as otherwise LZW won't make forward progress
-                let preferred_decode_buffer_size = (1 << 14).min(max_bytes).max(256);
-                if self.decode_buffer.is_empty() {
-                    // libstd special-cases these for zero pages
-                    self.decode_buffer = vec![0; preferred_decode_buffer_size];
-                } else if self.decode_buffer.len() * 2 <= preferred_decode_buffer_size {
-                    // only grow if it doubles in size to avoid frequent reallocations
-                    self.decode_buffer.resize(preferred_decode_buffer_size, 0);
-                }
-
                 // Reset validates the min code size
                 self.lzw_reader.reset(min_code_size)?;
 
@@ -685,30 +671,25 @@ impl StreamingDecoder {
             DecodeSubBlock(left) => {
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
-                    if self.lzw_reader.has_ended() {
-                        debug_assert!(n > 0, "Made forward progress after LZW end");
-                        return goto!(n, DecodeSubBlock(0), emit Decoded::Data(&[]));
+                    if self.lzw_reader.has_ended() || decode_bytes_into.is_none() {
+                        return goto!(n, DecodeSubBlock(0), emit Decoded::BytesDecoded(0));
                     }
 
-                    let (mut consumed, bytes_len) = self.lzw_reader.decode_bytes(&buf[..n], &mut self.decode_buffer)?;
-                    let bytes = &self.decode_buffer[..bytes_len];
+                    let (mut consumed, bytes_len) = self.lzw_reader.decode_bytes(&buf[..n], decode_bytes_into.unwrap())?;
 
                     // skip if can't make progress (decode would fail if check_for_end_code was set)
-                    if consumed == 0 && bytes.is_empty() {
+                    if consumed == 0 && bytes_len == 0 {
                         consumed = n;
                     }
 
-                    goto!(consumed, DecodeSubBlock(left - consumed), emit Decoded::Data(bytes))
+                    goto!(consumed, DecodeSubBlock(left - consumed), emit Decoded::BytesDecoded(bytes_len))
                 }  else if b != 0 { // decode next sub-block
                     goto!(DecodeSubBlock(b as usize))
                 } else {
-                    // The end of the lzw stream is only reached if left == 0 and an additional call
-                    // to `decode_bytes` results in an empty slice.
-                    let (_, bytes_len) = self.lzw_reader.decode_bytes(&[], &mut self.decode_buffer)?;
-                    let bytes = &self.decode_buffer[..bytes_len];
+                    let (_, bytes_len) = self.lzw_reader.decode_bytes(&[], decode_bytes_into.unwrap_or(&mut []))?;
 
-                    if bytes.len() > 0 {
-                        goto!(0, DecodeSubBlock(0), emit Decoded::Data(bytes))
+                    if bytes_len > 0 {
+                        goto!(0, DecodeSubBlock(0), emit Decoded::BytesDecoded(bytes_len))
                     } else {
                         // end of image data reached
                         self.current = None;
