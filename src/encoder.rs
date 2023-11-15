@@ -141,12 +141,13 @@ impl<W: Write> Encoder<W> {
     /// if no global palette shall be used an empty slice may be supplied.
     pub fn new(w: W, width: u16, height: u16, global_palette: &[u8]) -> Result<Self, EncodingError> {
         let buffer_size = (width as usize) * (height as usize);
+        let mut buffer = Vec::new();
+        buffer.try_reserve_exact(buffer_size).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
         Encoder {
             w: Some(w),
             global_palette: false,
-            width: width,
-            height: height,
-            buffer: Vec::with_capacity(buffer_size)
+            width, height,
+            buffer,
         }.write_global_palette(global_palette)
     }
 

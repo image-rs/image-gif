@@ -507,7 +507,7 @@ impl StreamingDecoder {
                         let global_table = b & 0x80 != 0;
                         let entries = if global_table {
                             let entries = PLTE_CHANNELS*(1 << ((b & 0b111) + 1) as usize);
-                            self.global_color_table.reserve_exact(entries);
+                            self.global_color_table.try_reserve_exact(entries).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
                             entries
                         } else {
                             0usize
@@ -568,9 +568,9 @@ impl StreamingDecoder {
 
                         if local_table {
                             let entries = PLTE_CHANNELS * (1 << (table_size + 1));
-                            
-                            self.current_frame_mut().palette =
-                                Some(Vec::with_capacity(entries));
+                            let mut pal = Vec::new();
+                            pal.try_reserve_exact(entries).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                            self.current_frame_mut().palette = Some(pal);
                             goto!(LocalPalette(entries))
                         } else {
                             goto!(Byte(CodeSize))

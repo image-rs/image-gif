@@ -336,8 +336,9 @@ impl<R> Decoder<R> where R: Read {
                     self.current_frame.interlaced = false;
                 }
                 FrameDataType::Lzw { min_code_size } => {
+                    let mut vec = Vec::new();
                     // Guesstimate 2bpp
-                    let mut vec = Vec::with_capacity(pixel_bytes/4);
+                    vec.try_reserve(pixel_bytes/4).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
                     self.copy_lzw_into_buffer(min_code_size, &mut vec)?;
                     self.current_frame.buffer = Cow::Owned(vec);
                 },
@@ -380,6 +381,7 @@ impl<R> Decoder<R> where R: Read {
         loop {
             match self.decoder.decode_next(None)? {
                 Some(Decoded::LzwData(data)) => {
+                    buf.try_reserve(data.len()).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
                     buf.extend_from_slice(data);
                 },
                 Some(Decoded::DataEnd) => return Ok(()),
