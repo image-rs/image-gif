@@ -147,7 +147,7 @@ pub enum Decoded<'a> {
 /// Internal state of the GIF decoder
 #[derive(Debug)]
 enum State {
-    Magic(usize, [u8; 6]),
+    Magic(u8, [u8; 6]),
     U16Byte1(U16Value, u8),
     U16(U16Value),
     Byte(ByteValue),
@@ -315,7 +315,7 @@ impl StreamingDecoder {
     
     #[inline(always)]
     /// Current frame info as a mutable ref.
-    pub fn current_frame_mut<'a>(&'a mut self) -> &'a mut Frame<'static> {
+    pub fn current_frame_mut(&mut self) -> &mut Frame<'static> {
         self.current.as_mut().unwrap()
     }
     
@@ -386,7 +386,7 @@ impl StreamingDecoder {
         
         match state {
             Magic(i, mut version) => if i < 6 {
-                version[i] = b;
+                version[i as usize] = b;
                 goto!(Magic(i+1, version))
             } else if &version[..3] == b"GIF" {
                 self.version = match &version[3..] {
@@ -451,7 +451,7 @@ impl StreamingDecoder {
                     },
                     Background { table_size } => {
                         goto!(
-                            Byte(AspectRatio { table_size: table_size }),
+                            Byte(AspectRatio { table_size }),
                             emit Decoded::BackgroundColor(b)
                         )
                     },
@@ -527,7 +527,7 @@ impl StreamingDecoder {
                         None => self.background_color[0] = 0
                     }
                     goto!(BlockStart(Block::from_u8(b)), emit Decoded::GlobalPalette(
-                        mem::replace(&mut self.global_color_table, Vec::new())
+                        mem::take(&mut self.global_color_table)
                     ))
                 }
             }
@@ -560,7 +560,7 @@ impl StreamingDecoder {
                         goto!(BlockStart(Block::from_u8(b)))
                     }
                 } else {
-                    return Err(DecodingError::format(
+                    Err(DecodingError::format(
                         "expected block terminator not found"
                     ))
                 }
@@ -580,7 +580,7 @@ impl StreamingDecoder {
                         }
                     }
                 } else {
-                    return Err(DecodingError::format(
+                    Err(DecodingError::format(
                         "unknown extention block encountered"
                     ))
                 }
@@ -590,14 +590,12 @@ impl StreamingDecoder {
                 if left > 0 {
                     self.ext.data.extend_from_slice(&buf[..n]);
                     goto!(n, SkipBlock(left - n))
+                } else if b == 0 {
+                    self.ext.is_block_end = true;
+                    goto!(BlockEnd(b), emit Decoded::BlockFinished(self.ext.id, &self.ext.data))
                 } else {
-                    if b == 0 {
-                        self.ext.is_block_end = true;
-                        goto!(BlockEnd(b), emit Decoded::BlockFinished(self.ext.id, &self.ext.data))
-                    } else {
-                        self.ext.is_block_end = false;
-                        goto!(SkipBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.id, &self.ext.data))
-                    }
+                    self.ext.is_block_end = false;
+                    goto!(SkipBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.id, &self.ext.data))
                 }
             }
             LocalPalette(left) => {
@@ -605,7 +603,7 @@ impl StreamingDecoder {
                 if left > 0 {
                     
                     self.current_frame_mut().palette
-                        .as_mut().unwrap().extend(buf[..n].iter().cloned());
+                        .as_mut().unwrap().extend(buf[..n].iter().copied());
                     goto!(n, LocalPalette(left - n))
                 } else {
                     goto!(LzwInit(b))

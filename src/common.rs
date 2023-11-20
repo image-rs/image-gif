@@ -237,7 +237,7 @@ impl Frame<'static> {
 
         // Palette size <= 256 elements, we can build an exact palette.
         let mut colors_vec: Vec<(u8, u8, u8, u8)> = colors.into_iter().collect();
-        colors_vec.sort();
+        colors_vec.sort_unstable();
         let palette = colors_vec.iter().flat_map(|&(r, g, b, _a)| [r, g, b]).collect();
         let colors_lookup: HashMap<(u8, u8, u8, u8), u8> =  colors_vec.into_iter().zip(0..=255).collect();
 
@@ -247,7 +247,7 @@ impl Frame<'static> {
         return Frame {
             width,
             height,
-            buffer: Cow::Owned(pixels.chunks_exact(4).map(|pix| index_of(pix)).collect()),
+            buffer: Cow::Owned(pixels.chunks_exact(4).map(index_of).collect()),
             palette: Some(palette),
             transparent: transparent.map(|t| index_of(&t)),
             ..Frame::default()

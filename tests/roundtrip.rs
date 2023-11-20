@@ -2,7 +2,7 @@ use gif::{ColorOutput, Decoder, Encoder, Frame};
 
 #[test]
 fn encode_roundtrip() {
-    const ORIGINAL: &'static [u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/samples/2x2.gif"));
+    const ORIGINAL: &'static [u8] = include_bytes!("samples/2x2.gif");
     round_trip_from_image(ORIGINAL);
 }
 

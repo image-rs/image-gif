@@ -61,7 +61,7 @@ fn create_image_with_oob_frames() -> Vec<u8> {
 #[test]
 fn check_for_end_code_is_configurable() {
     // In this particular image, the image data of the 62nd frame has no end code.
-    let image: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/samples/gifplayer-muybridge.gif"));
+    let image: &[u8] = include_bytes!("samples/gifplayer-muybridge.gif");
 
     {
         let options = DecodeOptions::new();
