@@ -4,6 +4,8 @@ use std::cmp;
 use std::mem;
 use std::iter;
 use std::io::prelude::*;
+use std::num::NonZeroU64;
+use std::convert::{TryFrom, TryInto};
 
 use crate::common::{Block, Frame};
 
@@ -30,11 +32,8 @@ pub enum ColorOutput {
 }
 
 #[derive(Clone, Debug)]
-/// Memory limit in bytes. `MemoryLimit(0)` means
-/// that there is no memory limit set.
-pub struct MemoryLimit(pub u32);
-
-impl MemoryLimit {
+/// The maximum amount of memory the decoder is allowed to use for each frame
+pub enum MemoryLimit {
     /// Enforce no memory limit.
     ///
     /// If you intend to process images from unknown origins this is a potentially dangerous
@@ -42,22 +41,45 @@ impl MemoryLimit {
     /// malicious images crafted specifically to require an enormous amount of memory to process
     /// while having a disproportionately small file size.
     ///
-    /// The risks for modern machines are a bit smaller as the dimensions of each frame can not
-    /// exceed `u32::MAX` (~4Gb) but this is still a significant amount of memory.
-    pub const NONE: MemoryLimit = MemoryLimit(0);
+    /// The risks for modern machines are a bit smaller as the size of each frame cannot
+    /// exceed 16GiB, but this is still a significant amount of memory.
+    Unlimited,
+    /// Limit the amount of memory that can be used for a single frame to this many bytes.
+    ///
+    /// It may not be enforced precisely due to allocator overhead
+    /// and the decoder potentially allocating small auxiliary buffers,
+    /// but it will precisely limit the size of the output buffer for each frame.
+    //
+    // The `NonZero` type is used to make FFI simpler.
+    // Due to the guaranteed niche optimization, `Unlimited` will be represented as `0`,
+    // and the whole enum as a simple `u64`.
+    Bytes(NonZeroU64),
+}
 
+impl MemoryLimit {
     fn buffer_size(&self, color: ColorOutput, width: u16, height: u16) -> Option<usize> {
-        let pixels = u32::from(width) * u32::from(height);
+        let pixels = u64::from(width) * u64::from(height);
 
         let bytes_per_pixel = match color {
             ColorOutput::Indexed => 1,
             ColorOutput::RGBA => 4,
         };
 
-        if self.0 > 0 && pixels > self.0 / bytes_per_pixel {
-            None
-        } else {
-            Some(pixels as usize * bytes_per_pixel as usize)
+        // This cannot overflow because the maximum possible value is 16GiB, well within u64 range
+        let total_bytes = pixels * bytes_per_pixel;
+
+        // On 32-bit platforms the size of the output buffer may not be representable
+        let usize_bytes = usize::try_from(total_bytes).ok()?;
+
+        match self {
+            MemoryLimit::Unlimited => Some(usize_bytes),
+            MemoryLimit::Bytes(limit) => {
+                if total_bytes > limit.get() {
+                    None
+                } else {
+                    Some(usize_bytes)
+                }
+            },
         }
     }
 }
@@ -76,7 +98,7 @@ impl DecodeOptions {
     /// Creates a new decoder builder
     pub fn new() -> DecodeOptions {
         DecodeOptions {
-            memory_limit: MemoryLimit(50_000_000), // 50 MB
+            memory_limit: MemoryLimit::Bytes(50_000_000.try_into().unwrap()), // 50 MB
             color_output: ColorOutput::Indexed,
             check_frame_consistency: false,
             check_for_end_code: false,
