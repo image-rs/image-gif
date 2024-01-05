@@ -50,7 +50,7 @@ pub enum EncodingError {
 }
 
 impl fmt::Display for EncodingError {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             EncodingError::Io(err) => err.fmt(fmt),
             EncodingError::Format(err) => err.fmt(fmt),
@@ -177,12 +177,12 @@ impl<W: Write> Encoder<W> {
     /// Writes a frame to the image.
     ///
     /// Note: This function also writes a control extension if necessary.
-    pub fn write_frame(&mut self, frame: &Frame) -> Result<(), EncodingError> {
+    pub fn write_frame(&mut self, frame: &Frame<'_>) -> Result<(), EncodingError> {
         self.write_frame_header(frame)?;
         self.write_image_block(&frame.buffer)
     }
 
-    fn write_frame_header(&mut self, frame: &Frame) -> Result<(), EncodingError> {
+    fn write_frame_header(&mut self, frame: &Frame<'_>) -> Result<(), EncodingError> {
         // TODO commented off to pass test in lib.rs
         //if frame.delay > 0 || frame.transparent.is_some() {
             self.write_extension(ExtensionData::new_control_ext(
@@ -321,7 +321,7 @@ impl<W: Write> Encoder<W> {
     /// from [`Frame::make_lzw_pre_encoded`].
     ///
     /// Note: This function also writes a control extension if necessary.
-    pub fn write_lzw_pre_encoded_frame(&mut self, frame: &Frame) -> Result<(), EncodingError> {
+    pub fn write_lzw_pre_encoded_frame(&mut self, frame: &Frame<'_>) -> Result<(), EncodingError> {
         // empty data is allowed
         if let Some(&min_code_size) = frame.buffer.get(0) {
             if min_code_size > 11 || min_code_size < 2 {

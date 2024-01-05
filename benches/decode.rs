@@ -26,7 +26,7 @@ fn main() {
         sample_size: usize,
     }
 
-    fn run_bench_def<M: Measurement>(group: &mut BenchmarkGroup<M>, def: BenchDef) {
+    fn run_bench_def<M: Measurement>(group: &mut BenchmarkGroup<'_, M>, def: BenchDef) {
         group
             .sample_size(def.sample_size)
             .throughput(Throughput::Bytes(def.data.len() as u64))

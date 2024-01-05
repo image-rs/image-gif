@@ -8,7 +8,7 @@ readme = "README.md"
 homepage = "https://github.com/image-rs/image-gif"
 repository = "https://github.com/image-rs/image-gif"
 documentation = "https://docs.rs/gif"
-edition = "2018"
+edition = "2021"
 exclude = [
     "tests/crashtest/*",
     "tests/samples/*",
@@ -31,6 +31,7 @@ png = "0.17.2"
 [features]
 default = ["raii_no_panic", "std", "color_quant"]
 raii_no_panic = []
+color_quant = ["dep:color_quant"]
 # Reservation for a feature turning off std
 std = []
 

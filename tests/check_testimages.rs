@@ -1,5 +1,3 @@
-extern crate gif;
-extern crate glob;
 
 use std::collections::HashMap;
 use std::fs::File;

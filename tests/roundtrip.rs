@@ -8,7 +8,7 @@ fn encode_roundtrip() {
 
 fn round_trip_from_image(original: &[u8]) {
     let (width, height, global_palette);
-    let frames: Vec<Frame> = {
+    let frames: Vec<_> = {
         let mut decoder = Decoder::new(original).unwrap();
         width = decoder.width();
         height = decoder.height();

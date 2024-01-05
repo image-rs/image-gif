@@ -174,7 +174,7 @@ struct ReadDecoder<R: Read> {
 }
 
 impl<R: Read> ReadDecoder<R> {
-    fn decode_next(&mut self, mut decode_bytes_into: Option<&mut [u8]>) -> Result<Option<Decoded>, DecodingError> {
+    fn decode_next(&mut self, mut decode_bytes_into: Option<&mut [u8]>) -> Result<Option<Decoded<'_>>, DecodingError> {
         while !self.at_eof {
             let (consumed, result) = {
                 let buf = self.reader.fill_buf()?;
@@ -193,7 +193,7 @@ impl<R: Read> ReadDecoder<R> {
                 },
                 result => return Ok(unsafe{
                     // FIXME: #6393
-                    Some(mem::transmute::<Decoded, Decoded>(result))
+                    Some(mem::transmute::<Decoded<'_>, Decoded<'_>>(result))
                 }),
             }
         }
