@@ -4,10 +4,9 @@ license = "MIT OR Apache-2.0"
 version = "0.0.0"
 description = "C bindings to the gif library"
 authors = ["HeroicKatora <HeroicKatora@users.noreply.github.com>"]
-
 homepage = "https://github.com/image-rs/image-gif"
 repository = "https://github.com/image-rs/image-gif"
-edition = "2018"
+edition = "2021"
 
 [lib]
 crate-type = ["staticlib", "cdylib"]
