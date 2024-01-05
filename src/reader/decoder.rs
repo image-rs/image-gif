@@ -68,7 +68,7 @@ impl DecodingError {
 
 impl fmt::Display for DecodingError {
     #[cold]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             DecodingError::Format(ref d) => d.fmt(fmt),
             DecodingError::Io(ref err) => err.fmt(fmt),
@@ -350,7 +350,7 @@ impl StreamingDecoder {
                         // the match (e.g. `return Ok(self.next_state(buf)?)`). If
                         // it compiles the returned lifetime is correct.
                         unsafe { 
-                            mem::transmute::<Decoded, Decoded>(result)
+                            mem::transmute::<Decoded<'_>, Decoded<'a>>(result)
                         }
                     ))
                 }
