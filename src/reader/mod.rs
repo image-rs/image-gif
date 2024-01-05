@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 use std::io;
-use std::cmp;
 use std::mem;
 use std::iter;
 use std::io::prelude::*;
@@ -175,7 +174,7 @@ struct ReadDecoder<R: Read> {
 }
 
 impl<R: Read> ReadDecoder<R> {
-    fn decode_next(&mut self) -> Result<Option<Decoded>, DecodingError> {
+    fn decode_next(&mut self, mut decode_bytes_into: Option<&mut [u8]>) -> Result<Option<Decoded>, DecodingError> {
         while !self.at_eof {
             let (consumed, result) = {
                 let buf = self.reader.fill_buf()?;
@@ -184,7 +183,7 @@ impl<R: Read> ReadDecoder<R> {
                         "unexpected EOF"
                     ))
                 }
-                self.decoder.update(buf)?
+                self.decoder.update(buf, decode_bytes_into.as_deref_mut())?
             };
             self.reader.consume(consumed);
             match result {
@@ -234,7 +233,7 @@ impl<R> Decoder<R> where R: Read {
             },
             bg_color: None,
             global_palette: None,
-            buffer: Vec::with_capacity(32),
+            buffer: vec![],
             color_output: options.color_output,
             memory_limit: options.memory_limit,
             current_frame: Frame::default(),
@@ -243,7 +242,7 @@ impl<R> Decoder<R> where R: Read {
     
     fn init(mut self) -> Result<Self, DecodingError> {
         loop {
-            match self.decoder.decode_next()? {
+            match self.decoder.decode_next(None)? {
                 Some(Decoded::BackgroundColor(bg_color)) => {
                     self.bg_color = Some(bg_color)
                 }
@@ -276,13 +275,8 @@ impl<R> Decoder<R> where R: Read {
     
     /// Returns the next frame info
     pub fn next_frame_info(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
-        if !self.buffer.is_empty() {
-            // FIXME: Warn about discarding data?
-            self.buffer.clear();
-        }
-
         loop {
-            match self.decoder.decode_next()? {
+            match self.decoder.decode_next(None)? {
                 Some(Decoded::Frame(frame)) => {
                     self.current_frame = frame.clone();
                     if frame.palette.is_none() && self.global_palette.is_none() {
@@ -357,65 +351,61 @@ impl<R> Decoder<R> where R: Read {
     /// Reads data of the current frame into a pre-allocated buffer until the buffer has been
     /// filled completely.
     ///
+    /// The buffer length must be an even number of pixels (multiple of 4 if decoding RGBA).
+    ///
     /// `Self::next_frame_info` needs to be called beforehand. Returns `true` if the supplied
     /// buffer could be filled completely. Should not be called after `false` had been returned.
     pub fn fill_buffer(&mut self, mut buf: &mut [u8]) -> Result<bool, DecodingError> {
-        use self::ColorOutput::*;
-        const PLTE_CHANNELS: usize = 3;
-        macro_rules! handle_data(
-            ($data:expr) => {
-                match self.color_output {
-                    RGBA => {
-                        let transparent = self.current_frame.transparent;
-                        let palette: &[u8] = match self.current_frame.palette {
-                            Some(ref table) => &*table,
-                            None => &*self.global_palette.as_ref().unwrap(),
-                        };
-                        let len = cmp::min(buf.len()/N_CHANNELS, $data.len());
-                        for (rgba, &idx) in buf[..len*N_CHANNELS].chunks_mut(N_CHANNELS).zip($data.iter()) {
-                            let plte_offset = PLTE_CHANNELS * idx as usize;
-                            if palette.len() >= plte_offset + PLTE_CHANNELS {
-                                let colors = &palette[plte_offset..];
-                                rgba[0] = colors[0];
-                                rgba[1] = colors[1];
-                                rgba[2] = colors[2];
-                                rgba[3] = if let Some(t) = transparent {
-                                    if t == idx { 0x00 } else { 0xFF }
-                                } else {
-                                    0xFF
+        loop {
+            let decode_into = match self.color_output {
+                // When decoding indexed data, LZW can write the pixels directly
+                ColorOutput::Indexed => &mut buf[..],
+                // When decoding RGBA, the pixel data will be expanded by a factor of 4,
+                // and it's simpler to decode indexed pixels to another buffer first
+                ColorOutput::RGBA => {
+                    let buffer_size = buf.len() / N_CHANNELS;
+                    if buffer_size == 0 {
+                        return Err(DecodingError::Io(io::Error::new(io::ErrorKind::InvalidInput, "odd-sized buffer")));
+                    }
+                    if self.buffer.len() < buffer_size {
+                        self.buffer.resize(buffer_size, 0);
+                    }
+                    &mut self.buffer[..buffer_size]
+                }
+            };
+            match self.decoder.decode_next(Some(decode_into))? {
+                Some(Decoded::BytesDecoded(bytes_decoded)) => {
+                    match self.color_output {
+                        ColorOutput::RGBA => {
+                            let transparent = self.current_frame.transparent;
+                            let palette: &[u8] = self.current_frame.palette.as_deref()
+                                .or(self.global_palette.as_deref())
+                                .unwrap_or_default(); // next_frame_info already checked it won't happen
+
+                            let (pixels, rest) = buf.split_at_mut(bytes_decoded * N_CHANNELS);
+                            buf = rest;
+
+                            for (rgba, idx) in pixels.chunks_exact_mut(N_CHANNELS).zip(self.buffer.iter().copied().take(bytes_decoded)) {
+                                let plte_offset = PLTE_CHANNELS * idx as usize;
+                                if let Some(colors) = palette.get(plte_offset..plte_offset+PLTE_CHANNELS) {
+                                    rgba[0] = colors[0];
+                                    rgba[1] = colors[1];
+                                    rgba[2] = colors[2];
+                                    rgba[3] = if let Some(t) = transparent {
+                                        if t == idx { 0x00 } else { 0xFF }
+                                    } else {
+                                        0xFF
+                                    };
                                 }
                             }
+                        },
+                        ColorOutput::Indexed => {
+                            buf = &mut buf[bytes_decoded..];
                         }
-                        (len, N_CHANNELS)
-                    },
-                    Indexed => {
-                        let len = cmp::min(buf.len(), $data.len());
-                        buf[..len].copy_from_slice(&$data[..len]);
-                        (len, 1)
                     }
-                }
-            }
-        );
-        let buf_len = self.buffer.len();
-        if buf_len > 0 {
-            let (len, channels) = handle_data!(&self.buffer);
-            let _ = self.buffer.drain(..len);
-            buf = &mut buf[len*channels..];
-            if buf.is_empty() {
-                return Ok(true)
-            }
-        }
-        loop {
-            match self.decoder.decode_next()? {
-                Some(Decoded::Data(data)) => {
-                    let (len, channels) = handle_data!(data);
-                    buf = &mut buf[len*channels..]; // shorten buf
-                    if buf.len() > 0 {
-                        continue
-                    } else if len < data.len() {
-                        self.buffer.extend_from_slice(&data[len..]);
+                    if buf.is_empty() {
+                        return Ok(true)
                     }
-                    return Ok(true)
                 },
                 Some(_) => return Ok(false), // make sure that no important result is missed
                 None => return Ok(false)
