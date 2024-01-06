@@ -11,7 +11,7 @@ use crate::common::{Block, Frame};
 mod decoder;
 pub use self::decoder::{
     PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, DecodingFormatError, Extensions,
-    Version, FrameDataType
+    Version, FrameDataType, OutputBuffer
 };
 
 const N_CHANNELS: usize = 4;
@@ -188,7 +188,7 @@ struct ReadDecoder<R: Read> {
 }
 
 impl<R: Read> ReadDecoder<R> {
-    fn decode_next(&mut self, mut decode_bytes_into: Option<&mut [u8]>) -> Result<Option<Decoded<'_>>, DecodingError> {
+    fn decode_next(&mut self, write_into: &mut OutputBuffer<'_>) -> Result<Option<Decoded<'_>>, DecodingError> {
         while !self.at_eof {
             let (consumed, result) = {
                 let buf = self.reader.fill_buf()?;
@@ -197,7 +197,7 @@ impl<R: Read> ReadDecoder<R> {
                         "unexpected EOF"
                     ))
                 }
-                self.decoder.update(buf, decode_bytes_into.as_deref_mut())?
+                self.decoder.update(buf, write_into)?
             };
             self.reader.consume(consumed);
             match result {
@@ -258,7 +258,7 @@ impl<R> Decoder<R> where R: Read {
     
     fn init(mut self) -> Result<Self, DecodingError> {
         loop {
-            match self.decoder.decode_next(None)? {
+            match self.decoder.decode_next(&mut OutputBuffer::None)? {
                 Some(Decoded::BackgroundColor(bg_color)) => {
                     self.bg_color = Some(bg_color)
                 }
@@ -292,7 +292,7 @@ impl<R> Decoder<R> where R: Read {
     /// Returns the next frame info
     pub fn next_frame_info(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
         loop {
-            match self.decoder.decode_next(None)? {
+            match self.decoder.decode_next(&mut OutputBuffer::None)? {
                 Some(Decoded::FrameMetadata(frame, frame_data_type)) => {
                     self.current_frame = frame.clone();
                     self.current_frame_data_type = frame_data_type;
@@ -379,11 +379,8 @@ impl<R> Decoder<R> where R: Read {
         // `write_lzw_pre_encoded_frame` smuggles `min_code_size` in the first byte.
         buf.push(min_code_size);
         loop {
-            match self.decoder.decode_next(None)? {
-                Some(Decoded::LzwData(data)) => {
-                    buf.try_reserve(data.len()).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
-                    buf.extend_from_slice(data);
-                },
+            match self.decoder.decode_next(&mut OutputBuffer::Vec(buf))? {
+                Some(Decoded::LzwDataCopied(_len)) => {},
                 Some(Decoded::DataEnd) => return Ok(()),
                 _ => return Err(DecodingError::format("unexpected data")),
             }
@@ -415,7 +412,7 @@ impl<R> Decoder<R> where R: Read {
                     &mut self.buffer[..buffer_size]
                 }
             };
-            match self.decoder.decode_next(Some(decode_into))? {
+            match self.decoder.decode_next(&mut OutputBuffer::Slice(decode_into))? {
                 Some(Decoded::BytesDecoded(bytes_decoded)) => {
                     match self.color_output {
                         ColorOutput::RGBA => {
