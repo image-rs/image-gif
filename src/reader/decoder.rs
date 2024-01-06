@@ -353,6 +353,14 @@ impl StreamingDecoder {
         //       unsafe block!
         let len = buf.len();
         while buf.len() > 0 {
+            // This dead code is a compile-check for lifetimes that otherwise aren't checked
+            // due to the `mem::transmute` used later.
+            // Keep it in sync with the other call to `next_state`.
+            #[cfg(test)]
+            if false {
+                return self.next_state(buf, write_into);
+            }
+
             // It's not necessary to check here whether state is `Some`,
             // because `next_state` checks it anyway, and will return `DecodeError`
             // if the state has already been set to `None`.
@@ -386,7 +394,6 @@ impl StreamingDecoder {
             }
         }
         Ok((len-buf.len(), Decoded::Nothing))
-        
     }
     
     /// Returns the data of the last extension that has been decoded.

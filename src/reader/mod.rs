@@ -197,6 +197,13 @@ impl<R: Read> ReadDecoder<R> {
                         "unexpected EOF"
                     ))
                 }
+
+                // Dead code checks the lifetimes that the later mem::transmute can't.
+                #[cfg(test)]
+                if false {
+                    return self.decoder.update(buf, write_into).map(|(_, res)| Some(res));
+                }
+
                 self.decoder.update(buf, write_into)?
             };
             self.reader.consume(consumed);
