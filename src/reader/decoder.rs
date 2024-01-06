@@ -275,7 +275,6 @@ impl LzwReader {
 pub struct StreamingDecoder {
     state: State,
     lzw_reader: LzwReader,
-    skip_extensions: bool,
     skip_frame_decoding: bool,
     check_frame_consistency: bool,
     allow_unknown_blocks: bool,
@@ -325,7 +324,6 @@ impl StreamingDecoder {
         StreamingDecoder {
             state: Magic(0, [0; 6]),
             lzw_reader: LzwReader::new(options.check_for_end_code),
-            skip_extensions: true,
             skip_frame_decoding: options.skip_frame_decoding,
             check_frame_consistency: options.check_frame_consistency,
             allow_unknown_blocks: options.allow_unknown_blocks,
@@ -426,15 +424,6 @@ impl StreamingDecoder {
     /// read the version information in the magic header bytes.
     pub fn version(&self) -> Version {
         self.version
-    }
-
-    /// Configure whether extensions are saved or skipped.
-    #[deprecated = "Does not work as intended. In fact, doesn't do anything. This may disappear soon."]
-    pub fn set_extensions(&mut self, extensions: Extensions) {
-        self.skip_extensions = match extensions {
-            Extensions::Skip => true,
-            Extensions::Save => false,
-        }
     }
 
     fn next_state(&mut self, buf: &[u8], write_into: &mut OutputBuffer<'_>) -> Result<(usize, Decoded<'_>), DecodingError> {
