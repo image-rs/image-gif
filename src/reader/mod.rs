@@ -11,7 +11,7 @@ use crate::common::{Block, Frame};
 mod decoder;
 pub use self::decoder::{
     PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, DecodingFormatError, Extensions,
-    Version
+    Version, FrameDataType
 };
 
 const N_CHANNELS: usize = 4;
@@ -89,6 +89,7 @@ pub struct DecodeOptions {
     memory_limit: MemoryLimit,
     color_output: ColorOutput,
     check_frame_consistency: bool,
+    skip_frame_decoding: bool,
     check_for_end_code: bool,
     allow_unknown_blocks: bool,
 }
@@ -100,6 +101,7 @@ impl DecodeOptions {
             memory_limit: MemoryLimit::Bytes(50_000_000.try_into().unwrap()), // 50 MB
             color_output: ColorOutput::Indexed,
             check_frame_consistency: false,
+            skip_frame_decoding: false,
             check_for_end_code: false,
             allow_unknown_blocks: false,
         }
@@ -127,6 +129,18 @@ impl DecodeOptions {
     /// caller, for example to emulate a specific style.
     pub fn check_frame_consistency(&mut self, check: bool) {
         self.check_frame_consistency = check;
+    }
+
+    /// Configure whether to skip decoding frames.
+    ///
+    /// The default is false.
+    ///
+    /// When turned on, LZW decoding is skipped. `Decoder::read_next_frame` will return
+    /// compressed LZW bytes in frame's data.
+    /// `Decoder::next_frame_info` will return the metadata of the next frame as usual.
+    /// This is useful to count frames without incurring the overhead of decoding.
+    pub fn skip_frame_decoding(&mut self, skip: bool) {
+        self.skip_frame_decoding = skip;
     }
 
     /// Configure if LZW encoded blocks must end with a marker end code.
@@ -210,6 +224,7 @@ pub struct Decoder<R: Read> {
     bg_color: Option<u8>,
     global_palette: Option<Vec<u8>>,
     current_frame: Frame<'static>,
+    current_frame_data_type: FrameDataType,
     buffer: Vec<u8>,
 }
 
@@ -237,6 +252,7 @@ impl<R> Decoder<R> where R: Read {
             color_output: options.color_output,
             memory_limit: options.memory_limit,
             current_frame: Frame::default(),
+            current_frame_data_type: FrameDataType::Pixels,
         }
     }
     
@@ -277,8 +293,9 @@ impl<R> Decoder<R> where R: Read {
     pub fn next_frame_info(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
         loop {
             match self.decoder.decode_next(None)? {
-                Some(Decoded::Frame(frame)) => {
+                Some(Decoded::FrameMetadata(frame, frame_data_type)) => {
                     self.current_frame = frame.clone();
+                    self.current_frame_data_type = frame_data_type;
                     if frame.palette.is_none() && self.global_palette.is_none() {
                         return Err(DecodingError::format(
                             "no color table available for current frame"
@@ -311,11 +328,21 @@ impl<R> Decoder<R> where R: Read {
                 pixel_bytes, self.buffer_size(),
                 "Checked computation diverges from required buffer size"
             );
-
-            let mut vec = vec![0; pixel_bytes];
-            self.read_into_buffer(&mut vec)?;
-            self.current_frame.buffer = Cow::Owned(vec);
-            self.current_frame.interlaced = false;
+            match self.current_frame_data_type {
+                FrameDataType::Pixels => {
+                    let mut vec = vec![0; pixel_bytes];
+                    self.read_into_buffer(&mut vec)?;
+                    self.current_frame.buffer = Cow::Owned(vec);
+                    self.current_frame.interlaced = false;
+                }
+                FrameDataType::Lzw { min_code_size } => {
+                    let mut vec = Vec::new();
+                    // Guesstimate 2bpp
+                    vec.try_reserve(pixel_bytes/4).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                    self.copy_lzw_into_buffer(min_code_size, &mut vec)?;
+                    self.current_frame.buffer = Cow::Owned(vec);
+                },
+            }
             Ok(Some(&self.current_frame))
         } else {
             Ok(None)
@@ -346,6 +373,21 @@ impl<R> Decoder<R> where R: Read {
             }
         };
         Ok(())
+    }
+
+    fn copy_lzw_into_buffer(&mut self, min_code_size: u8, buf: &mut Vec<u8>) -> Result<(), DecodingError> {
+        // `write_lzw_pre_encoded_frame` smuggles `min_code_size` in the first byte.
+        buf.push(min_code_size);
+        loop {
+            match self.decoder.decode_next(None)? {
+                Some(Decoded::LzwData(data)) => {
+                    buf.try_reserve(data.len()).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                    buf.extend_from_slice(data);
+                },
+                Some(Decoded::DataEnd) => return Ok(()),
+                _ => return Err(DecodingError::format("unexpected data")),
+            }
+        }
     }
 
     /// Reads data of the current frame into a pre-allocated buffer until the buffer has been

@@ -325,7 +325,8 @@ impl Frame<'static> {
     #[cfg(feature = "color_quant")]
     pub fn from_rgb_speed(width: u16, height: u16, pixels: &[u8], speed: i32) -> Frame<'static> {
         assert_eq!(width as usize * height as usize * 3, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
-        let mut vec: Vec<u8> = Vec::with_capacity(pixels.len() + width as usize * height as usize);
+        let mut vec: Vec<u8> = Vec::new();
+        vec.try_reserve_exact(pixels.len() + width as usize * height as usize).expect("OOM");
         for v in pixels.chunks_exact(3) {
             vec.extend_from_slice(&[v[0], v[1], v[2], 0xFF])
         }

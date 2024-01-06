@@ -110,6 +110,12 @@ pub enum Extensions {
     Skip
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum FrameDataType {
+    Pixels,
+    Lzw { min_code_size: u8 },
+}
+
 /// Indicates whether a certain object has been decoded
 #[derive(Debug)]
 pub enum Decoded<'a> {
@@ -133,15 +139,16 @@ pub enum Decoded<'a> {
     /// Indicates the label of the extension which might be unknown. A label of `0` is used when
     /// the sub block does not belong to an extension.
     BlockFinished(AnyExtension, &'a [u8]),
-    /// Decoded all information of the next frame.
+    /// Decoded all information of the next frame, except the image data.
     ///
     /// The returned frame does **not** contain any owned image data.
-    Frame(&'a Frame<'static>),
+    FrameMetadata(&'a Frame<'static>, FrameDataType),
     /// Decoded some data of the current frame.
     BytesDecoded(usize),
+    /// Copied compressed data of the current frame.
+    LzwData(&'a [u8]),
     /// No more data available the current frame.
     DataEnd,
-
 }
 
 /// Internal state of the GIF decoder
@@ -159,7 +166,10 @@ enum State {
     SkipBlock(usize),
     LocalPalette(usize),
     LzwInit(u8),
+    /// Decompresses LZW
     DecodeSubBlock(usize),
+    /// Keeps LZW compressed
+    CopySubBlock(usize),
     FrameDecoded,
     Trailer
 }
@@ -258,6 +268,7 @@ pub struct StreamingDecoder {
     state: Option<State>,
     lzw_reader: LzwReader,
     skip_extensions: bool,
+    skip_frame_decoding: bool,
     check_frame_consistency: bool,
     allow_unknown_blocks: bool,
     version: Version,
@@ -299,6 +310,7 @@ impl StreamingDecoder {
             state: Some(Magic(0, [0; 6])),
             lzw_reader: LzwReader::new(options.check_for_end_code),
             skip_extensions: true,
+            skip_frame_decoding: options.skip_frame_decoding,
             check_frame_consistency: options.check_frame_consistency,
             allow_unknown_blocks: options.allow_unknown_blocks,
             version: Version::V87a,
@@ -405,7 +417,7 @@ impl StreamingDecoder {
         }
     }
 
-    fn next_state<'a>(&'a mut self, buf: &[u8], decode_bytes_into: Option<&mut [u8]>) -> Result<(usize, Decoded<'a>), DecodingError> {
+    fn next_state<'a>(&'a mut self, buf: &'a [u8], decode_bytes_into: Option<&mut [u8]>) -> Result<(usize, Decoded<'a>), DecodingError> {
         macro_rules! goto (
             ($n:expr, $state:expr) => ({
                 self.state = Some($state); 
@@ -495,7 +507,7 @@ impl StreamingDecoder {
                         let global_table = b & 0x80 != 0;
                         let entries = if global_table {
                             let entries = PLTE_CHANNELS*(1 << ((b & 0b111) + 1) as usize);
-                            self.global_color_table.reserve_exact(entries);
+                            self.global_color_table.try_reserve_exact(entries).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
                             entries
                         } else {
                             0usize
@@ -556,9 +568,9 @@ impl StreamingDecoder {
 
                         if local_table {
                             let entries = PLTE_CHANNELS * (1 << (table_size + 1));
-                            
-                            self.current_frame_mut().palette =
-                                Some(Vec::with_capacity(entries));
+                            let mut pal = Vec::new();
+                            pal.try_reserve_exact(entries).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                            self.current_frame_mut().palette = Some(pal);
                             goto!(LocalPalette(entries))
                         } else {
                             goto!(Byte(CodeSize))
@@ -663,12 +675,29 @@ impl StreamingDecoder {
                 }
             }
             LzwInit(min_code_size) => {
-                // Reset validates the min code size
-                self.lzw_reader.reset(min_code_size)?;
-
-                goto!(DecodeSubBlock(b as usize), emit Decoded::Frame(self.current_frame_mut()))
+                if !self.skip_frame_decoding {
+                    // Reset validates the min code size
+                    self.lzw_reader.reset(min_code_size)?;
+                    goto!(DecodeSubBlock(b as usize), emit Decoded::FrameMetadata(self.current_frame_mut(), FrameDataType::Pixels))
+                } else {
+                    goto!(CopySubBlock(b as usize), emit Decoded::FrameMetadata(self.current_frame_mut(), FrameDataType::Lzw { min_code_size }))
+                }
+            }
+            CopySubBlock(left) => {
+                debug_assert!(self.skip_frame_decoding);
+                let n = cmp::min(left, buf.len());
+                if left > 0 {
+                    goto!(n, CopySubBlock(left - n), emit Decoded::LzwData(&buf[..n]))
+                } else if b != 0 {
+                    goto!(CopySubBlock(b as usize))
+                } else {
+                    // end of image data reached
+                    self.current = None;
+                    goto!(0, FrameDecoded, emit Decoded::DataEnd)
+                }
             }
             DecodeSubBlock(left) => {
+                debug_assert!(!self.skip_frame_decoding);
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
                     if self.lzw_reader.has_ended() || decode_bytes_into.is_none() {
