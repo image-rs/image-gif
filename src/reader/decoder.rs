@@ -403,8 +403,9 @@ impl StreamingDecoder {
         self.current.as_mut().unwrap()
     }
     
-    #[inline(always)]
     /// Current frame info as a ref.
+    #[inline(always)]
+    #[track_caller]
     pub fn current_frame<'a>(&'a self) -> &'a Frame<'static> {
         self.current.as_ref().unwrap()
     }
@@ -496,9 +497,9 @@ impl StreamingDecoder {
                         goto!(Byte(ByteValue::GlobalFlags))
                     },
                     (Delay, delay) => {
+                        self.current_frame_mut().delay = delay;
                         self.ext.data.push(value as u8);
                         self.ext.data.push(b);
-                        self.current_frame_mut().delay = delay;
                         goto!(Byte(ByteValue::TransparentIdx))
                     },
                     (ImageLeft, left) => {
@@ -544,14 +545,15 @@ impl StreamingDecoder {
                     },
                     ControlFlags => {
                         self.ext.data.push(b);
+                        let frame = self.current_frame_mut();
                         let control_flags = b;
                         if control_flags & 1 != 0 {
                             // Set to Some(...), gets overwritten later
-                            self.current_frame_mut().transparent = Some(0)
+                            frame.transparent = Some(0)
                         }
-                        self.current_frame_mut().needs_user_input =
+                        frame.needs_user_input =
                             control_flags & 0b10 != 0;
-                        self.current_frame_mut().dispose = match DisposalMethod::from_u8(
+                        frame.dispose = match DisposalMethod::from_u8(
                             (control_flags & 0b11100) >> 2
                         ) {
                             Some(method) => method,
@@ -570,13 +572,14 @@ impl StreamingDecoder {
                         let local_table = (b & 0b1000_0000) != 0;
                         let interlaced   = (b & 0b0100_0000) != 0;
                         let table_size  =  b & 0b0000_0111;
+                        let check_frame_consistency = self.check_frame_consistency;
+                        let (width, height) = (self.width, self.height);
 
-                        self.current_frame_mut().interlaced = interlaced;
+                        let frame = self.current_frame_mut();
 
-                        if self.check_frame_consistency {
+                        frame.interlaced = interlaced;
+                        if check_frame_consistency {
                             // Consistency checks.
-                            let (width, height) = (self.width, self.height);
-                            let frame = self.current_frame_mut();
                             if width.checked_sub(frame.width) < Some(frame.left)
                                 || height.checked_sub(frame.height) < Some(frame.top)
                             {
@@ -588,7 +591,7 @@ impl StreamingDecoder {
                             let entries = PLTE_CHANNELS * (1 << (table_size + 1));
                             let mut pal = Vec::new();
                             pal.try_reserve_exact(entries).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
-                            self.current_frame_mut().palette = Some(pal);
+                            frame.palette = Some(pal);
                             goto!(LocalPalette(entries))
                         } else {
                             goto!(Byte(CodeSize))
@@ -685,9 +688,13 @@ impl StreamingDecoder {
             LocalPalette(left) => {
                 let n = cmp::min(left, buf.len());
                 if left > 0 {
-                    
-                    self.current_frame_mut().palette
-                        .as_mut().unwrap().extend(buf[..n].iter().copied());
+                    let src = &buf[..n];
+                    if let Some(pal) = self.current_frame_mut().palette.as_mut() {
+                        // capacity has already been reserved in ImageFlags
+                        if pal.capacity() - pal.len() >= src.len() {
+                            pal.extend_from_slice(src);
+                        }
+                    }
                     goto!(n, LocalPalette(left - n))
                 } else {
                     goto!(LzwInit(b))
