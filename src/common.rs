@@ -239,10 +239,10 @@ impl Frame<'static> {
         let mut colors_vec: Vec<(u8, u8, u8, u8)> = colors.into_iter().collect();
         colors_vec.sort_unstable();
         let palette = colors_vec.iter().flat_map(|&(r, g, b, _a)| [r, g, b]).collect();
-        let colors_lookup: HashMap<(u8, u8, u8, u8), u8> =  colors_vec.into_iter().zip(0..=255).collect();
+        let colors_lookup: HashMap<(u8, u8, u8, u8), u8> = colors_vec.into_iter().zip(0..=255).collect();
 
         let index_of = | pixel: &[u8] |
-            *colors_lookup.get(&(pixel[0], pixel[1], pixel[2], pixel[3])).unwrap();
+            colors_lookup.get(&(pixel[0], pixel[1], pixel[2], pixel[3])).copied().unwrap_or(0);
 
         return Frame {
             width,
