@@ -176,7 +176,7 @@ enum State {
 use self::State::*;
 
 /// U16 values that may occur in a GIF image
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 enum U16Value {
     /// Logical screen descriptor width
     ScreenWidth,
@@ -195,11 +195,11 @@ enum U16Value {
 }
 
 /// Single byte screen descriptor values
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 enum ByteValue {
     GlobalFlags,
-    Background { table_size: usize },
-    AspectRatio { table_size: usize },
+    Background { global_flags: u8 },
+    AspectRatio { global_flags: u8 },
     ControlFlags,
     ImageFlags,
     TransparentIdx,
@@ -504,23 +504,23 @@ impl StreamingDecoder {
                 use self::ByteValue::*;
                 match value {
                     GlobalFlags => {
-                        let global_table = b & 0x80 != 0;
-                        let entries = if global_table {
-                            let entries = PLTE_CHANNELS*(1 << ((b & 0b111) + 1) as usize);
-                            self.global_color_table.try_reserve_exact(entries).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
-                            entries
-                        } else {
-                            0usize
-                        };
-                        goto!(Byte(Background { table_size: entries }))
+                        goto!(Byte(Background { global_flags: b }))
                     },
-                    Background { table_size } => {
+                    Background { global_flags } => {
                         goto!(
-                            Byte(AspectRatio { table_size }),
+                            Byte(AspectRatio { global_flags }),
                             emit Decoded::BackgroundColor(b)
                         )
                     },
-                    AspectRatio { table_size } => {
+                    AspectRatio { global_flags } => {
+                        let global_table = global_flags & 0x80 != 0;
+                        let table_size = if global_table {
+                            let table_size = PLTE_CHANNELS * (1 << ((global_flags & 0b111) + 1) as usize);
+                            self.global_color_table.try_reserve_exact(table_size).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                            table_size
+                        } else {
+                            0usize
+                        };
                         goto!(GlobalPalette(table_size))
                     },
                     ControlFlags => {
