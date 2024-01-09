@@ -604,7 +604,7 @@ impl StreamingDecoder {
                     goto!(n, GlobalPalette(left - n))
                 } else {
                     let idx = self.background_color[0];
-                    match self.global_color_table.chunks(PLTE_CHANNELS).nth(idx as usize) {
+                    match self.global_color_table.chunks_exact(PLTE_CHANNELS).nth(idx as usize) {
                         Some(chunk) => self.background_color[..PLTE_CHANNELS]
                             .copy_from_slice(&chunk[..PLTE_CHANNELS]),
                         None => self.background_color[0] = 0
