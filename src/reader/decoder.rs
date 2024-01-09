@@ -691,9 +691,7 @@ impl StreamingDecoder {
                 } else if b != 0 {
                     goto!(CopySubBlock(b as usize))
                 } else {
-                    // end of image data reached
-                    self.current = None;
-                    goto!(0, FrameDecoded, emit Decoded::DataEnd)
+                    goto!(0, FrameDecoded)
                 }
             }
             DecodeSubBlock(left) => {
@@ -720,14 +718,14 @@ impl StreamingDecoder {
                     if bytes_len > 0 {
                         goto!(0, DecodeSubBlock(0), emit Decoded::BytesDecoded(bytes_len))
                     } else {
-                        // end of image data reached
-                        self.current = None;
-                        goto!(0, FrameDecoded, emit Decoded::DataEnd)
+                        goto!(0, FrameDecoded)
                     }
                 }
             }
             FrameDecoded => {
-                goto!(BlockEnd(b))
+                // end of image data reached
+                self.current = None;
+                goto!(BlockEnd(b), emit Decoded::DataEnd)
             }
             Trailer => {
                 self.state = None;
