@@ -159,7 +159,7 @@ enum State {
     U16(U16Value),
     Byte(ByteValue),
     GlobalPalette(usize),
-    BlockStart(Option<Block>),
+    BlockStart(u8),
     /// Block end, with remaining expected data. NonZero for invalid EOF.
     BlockEnd(u8),
     ExtensionBlock(AnyExtension),
@@ -343,10 +343,6 @@ impl StreamingDecoder {
             match self.next_state(buf, decode_bytes_into.as_deref_mut()) {
                 Ok((bytes, Decoded::Nothing)) => {
                     buf = &buf[bytes..]
-                }
-                Ok((bytes, Decoded::Trailer)) => {
-                    buf = &buf[bytes..];
-                    break
                 }
                 Ok((bytes, result)) => {
                     buf = &buf[bytes..];
@@ -546,7 +542,6 @@ impl StreamingDecoder {
                              *idx = b
                         }
                         goto!(SkipBlock(0))
-                        //goto!(AwaitBlockEnd)
                     }
                     ImageFlags => {
                         let local_table = (b & 0b1000_0000) != 0;
@@ -591,13 +586,13 @@ impl StreamingDecoder {
                             .copy_from_slice(&chunk[..PLTE_CHANNELS]),
                         None => self.background_color[0] = 0
                     }
-                    goto!(BlockStart(Block::from_u8(b)), emit Decoded::GlobalPalette(
+                    goto!(BlockStart(b), emit Decoded::GlobalPalette(
                         mem::take(&mut self.global_color_table)
                     ))
                 }
             }
             BlockStart(type_) => {
-                match type_ {
+                match Block::from_u8(type_) {
                     Some(Block::Image) => {
                         self.add_frame();
                         goto!(U16Byte1(U16Value::ImageLeft, b), emit Decoded::BlockStart(Block::Image))
@@ -620,9 +615,10 @@ impl StreamingDecoder {
             BlockEnd(terminator) => {
                 if terminator == 0 {
                     if b == Block::Trailer as u8 {
-                        goto!(0, BlockStart(Some(Block::Trailer)))
+                        // can't consume, because the trailer is not a real block, and won't have futher data
+                        goto!(0, BlockStart(b))
                     } else {
-                        goto!(BlockStart(Block::from_u8(b)))
+                        goto!(BlockStart(b))
                     }
                 } else {
                     Err(DecodingError::format(
@@ -728,9 +724,7 @@ impl StreamingDecoder {
                 goto!(BlockEnd(b), emit Decoded::DataEnd)
             }
             Trailer => {
-                self.state = None;
-                Ok((1, Decoded::Trailer))
-                //panic!("EOF {:?}", self)
+                Ok((0, Decoded::Trailer))
             }
         }
     }
