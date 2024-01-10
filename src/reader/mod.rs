@@ -341,15 +341,35 @@ impl<R> Decoder<R> where R: Read {
             );
             match self.current_frame_data_type {
                 FrameDataType::Pixels => {
-                    let mut vec = vec![0; pixel_bytes];
+                    let can_reuse_existing_buffer = matches!(self.current_frame.buffer, Cow::Owned(_)) &&
+                        self.current_frame.buffer.to_mut().capacity() >= pixel_bytes;
+
+                    let mut vec = if can_reuse_existing_buffer {
+                        let mut vec = mem::replace(&mut self.current_frame.buffer, Cow::Borrowed(&[])).into_owned();
+                        vec.resize(pixel_bytes, 0);
+                        vec
+                    } else {
+                        // free mem of the previous buffer, if any
+                        self.current_frame.buffer = Cow::Borrowed(&[]);
+                        // resizing would realloc anyway, and 0-init is faster than a copy
+                        vec![0; pixel_bytes]
+                    };
+
                     self.read_into_buffer(&mut vec)?;
                     self.current_frame.buffer = Cow::Owned(vec);
                     self.current_frame.interlaced = false;
                 }
                 FrameDataType::Lzw { min_code_size } => {
-                    let mut vec = Vec::new();
+                    let mut vec = if matches!(self.current_frame.buffer, Cow::Owned(_)) {
+                        let mut vec = mem::replace(&mut self.current_frame.buffer, Cow::Borrowed(&[])).into_owned();
+                        vec.clear();
+                        vec
+                    } else {
+                        Vec::new()
+                    };
                     // Guesstimate 2bpp
-                    vec.try_reserve(pixel_bytes/4).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                    vec.try_reserve(usize::from(width) * usize::from(height) / 4)
+                        .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
                     self.copy_lzw_into_buffer(min_code_size, &mut vec)?;
                     self.current_frame.buffer = Cow::Owned(vec);
                 },
