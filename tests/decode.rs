@@ -1,4 +1,4 @@
-use gif::{DecodeOptions, DisposalMethod, Encoder, Frame};
+use gif::{Decoder, DecodeOptions, DisposalMethod, Encoder, Frame};
 
 #[test]
 fn frame_consistency_is_configurable() {
@@ -81,6 +81,48 @@ fn check_for_end_code_is_configurable() {
         }
         assert!(decoder.read_next_frame().is_err());
     }
+}
+
+#[test]
+fn check_rebuild_without_reencode1() {
+    rebuild_without_reencode(include_bytes!("samples/gifplayer-muybridge.gif"));
+}
+
+#[test]
+fn check_rebuild_without_reencode2() {
+    rebuild_without_reencode(include_bytes!("samples/interlaced.gif"));
+}
+
+fn rebuild_without_reencode(image: &[u8]) {
+    let mut options = DecodeOptions::new();
+    options.skip_frame_decoding(true);
+    let mut decoder = options.read_info(&image[..]).unwrap();
+
+    let mut encoder = Encoder::new(Vec::new(), decoder.width(), decoder.height(), decoder.global_palette().unwrap_or_default()).unwrap();
+
+    let mut num_frames = 0;
+    while let Some(frame) = decoder.read_next_frame().unwrap() {
+        num_frames += 1;
+        encoder.write_lzw_pre_encoded_frame(&frame).unwrap();
+    }
+
+    let gif = encoder.into_inner().unwrap();
+    let rebuilt = Decoder::new(&gif[..]).unwrap();
+    let orig = Decoder::new(&image[..]).unwrap();
+
+    for (orig, rebuilt) in orig.into_iter().zip(rebuilt) {
+        num_frames -= 1;
+        let orig = orig.unwrap();
+        let rebuilt = rebuilt.unwrap();
+        assert_eq!(orig.delay, rebuilt.delay);
+        assert_eq!(orig.transparent, rebuilt.transparent);
+        assert_eq!(orig.palette, rebuilt.palette);
+        assert_eq!(orig.width, rebuilt.width);
+        assert_eq!(orig.height, rebuilt.height);
+        assert_eq!(orig.interlaced, rebuilt.interlaced);
+        assert_eq!(orig.buffer, rebuilt.buffer);
+    }
+    assert_eq!(num_frames, 0);
 }
 
 #[test]

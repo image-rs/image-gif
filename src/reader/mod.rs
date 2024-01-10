@@ -95,6 +95,12 @@ pub struct DecodeOptions {
     allow_unknown_blocks: bool,
 }
 
+impl Default for DecodeOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DecodeOptions {
     /// Creates a new decoder builder
     #[must_use]
@@ -328,6 +334,8 @@ impl<R> Decoder<R> where R: Read {
     ///
     /// Do not call `Self::next_frame_info` beforehand.
     /// Deinterlaces the result.
+    ///
+    /// You can also call `.into_iter()` on the decoder to use it as a regular iterator.
     pub fn read_next_frame(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
         if let Some(frame) = self.next_frame_info()? {
             let (width, height) = (frame.width, frame.height);
@@ -378,6 +386,14 @@ impl<R> Decoder<R> where R: Read {
         } else {
             Ok(None)
         }
+    }
+
+    /// This is private for iterator's use
+    fn take_current_frame(&mut self) -> Option<Frame<'static>> {
+        if self.current_frame.buffer.is_empty() {
+            return None;
+        }
+        Some(self.current_frame.take())
     }
 
     /// Reads the data of the current frame into a pre-allocated buffer.
@@ -499,7 +515,6 @@ impl<R> Decoder<R> where R: Read {
 
     /// Returns the color palette relevant for the current (next) frame
     pub fn palette(&self) -> Result<&[u8], DecodingError> {
-        // TODO prevent planic
         Ok(match self.current_frame.palette {
             Some(ref table) => table,
             None => self.global_palette.as_ref().ok_or(DecodingError::format(
@@ -531,6 +546,35 @@ impl<R> Decoder<R> where R: Read {
     /// Number of loop repetitions
     pub fn repeat(&self) -> Repeat {
         self.repeat
+    }
+}
+
+impl<R: Read> IntoIterator for Decoder<R> {
+    type Item = Result<Frame<'static>, DecodingError>;
+    type IntoIter = DecoderIter<R>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        DecoderIter {
+            inner: self,
+        }
+    }
+}
+
+/// Use `decoder.into_iter()` to iterate over the frames
+pub struct DecoderIter<R: Read> {
+    inner: Decoder<R>,
+}
+
+impl<R: Read> Iterator for DecoderIter<R> {
+    type Item = Result<Frame<'static>, DecodingError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.inner.read_next_frame() {
+            Ok(Some(_)) => self.inner.take_current_frame().map(Ok),
+            Ok(None) => None,
+            Err(err) => Some(Err(err)),
+        }
     }
 }
 
