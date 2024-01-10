@@ -6,6 +6,7 @@ use std::mem;
 use std::default::Default;
 
 use crate::Repeat;
+use crate::MemoryLimit;
 use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 use crate::reader::DecodeOptions;
 
@@ -273,6 +274,7 @@ pub struct StreamingDecoder {
     skip_frame_decoding: bool,
     check_frame_consistency: bool,
     allow_unknown_blocks: bool,
+    memory_limit: MemoryLimit,
     version: Version,
     width: u16,
     height: u16,
@@ -325,6 +327,7 @@ impl StreamingDecoder {
             skip_frame_decoding: options.skip_frame_decoding,
             check_frame_consistency: options.check_frame_consistency,
             allow_unknown_blocks: options.allow_unknown_blocks,
+            memory_limit: options.memory_limit.clone(),
             version: Version::V87a,
             width: 0,
             height: 0,
@@ -658,8 +661,10 @@ impl StreamingDecoder {
                 }
             }
             SkipBlock(left) => {
-                let n = cmp::min(left, buf.len());
                 if left > 0 {
+                    let n = cmp::min(left, buf.len());
+                    self.memory_limit.check_size(self.ext.data.len() + n)?;
+                    self.ext.data.try_reserve(n).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
                     self.ext.data.extend_from_slice(&buf[..n]);
                     goto!(n, SkipBlock(left - n))
                 } else if b == 0 {
@@ -720,6 +725,7 @@ impl StreamingDecoder {
                             (len, len)
                         },
                         OutputBuffer::Vec(vec) => {
+                            self.memory_limit.check_size(vec.len() + n)?;
                             vec.try_reserve(n).map_err(|_| io::ErrorKind::OutOfMemory)?;
                             vec.extend_from_slice(&buf[..n]);
                             (n, n)
