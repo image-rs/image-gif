@@ -125,6 +125,9 @@ pub enum Decoded<'a> {
     GlobalPalette(Vec<u8>),
     /// Index of the background color in the global palette.
     BackgroundColor(u8),
+    /// Palette and optional `Application` extension have been parsed,
+    /// reached frame data.
+    HeaderEnd,
     /// Decoded the image trailer.
     Trailer,
     /// The start of a block.
@@ -285,6 +288,8 @@ pub struct StreamingDecoder {
     ext: ExtensionData,
     /// Frame data
     current: Option<Frame<'static>>,
+    /// Needs to emit `HeaderEnd` once
+    header_end_reached: bool,
 }
 
 /// One version number of the GIF standard.
@@ -339,6 +344,7 @@ impl StreamingDecoder {
                 is_block_end: true,
             },
             current: None,
+            header_end_reached: false,
         }
     }
 
@@ -615,6 +621,11 @@ impl StreamingDecoder {
                 }
             }
             BlockStart(type_) => {
+                if !self.header_end_reached && type_ != Block::Extension as u8 {
+                    self.header_end_reached = true;
+                    return goto!(0, BlockStart(type_), emit Decoded::HeaderEnd);
+                }
+
                 match Block::from_u8(type_) {
                     Some(Block::Image) => {
                         self.add_frame();

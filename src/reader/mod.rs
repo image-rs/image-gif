@@ -277,12 +277,13 @@ impl<R> Decoder<R> where R: Read {
                     } else {
                         None
                     };
+                },
+                Some(Decoded::HeaderEnd | Decoded::Trailer) => {
                     break
                 },
                 Some(_) => {
-                    // Unreachable since this loop exists after the global
-                    // palette has been read.
-                    unreachable!()
+                    // There will be extra events when parsing application extension
+                    continue
                 },
                 None => return Err(DecodingError::format(
                     "file does not contain any image data"
