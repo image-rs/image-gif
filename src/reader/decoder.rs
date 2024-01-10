@@ -16,7 +16,7 @@ pub const PLTE_CHANNELS: usize = 3;
 /// An error returned in the case of the image not being formatted properly.
 #[derive(Debug)]
 pub struct DecodingFormatError {
-    underlying: Box<dyn error::Error + Send + Sync + 'static>
+    underlying: Box<dyn error::Error + Send + Sync + 'static>,
 }
 
 impl fmt::Display for DecodingFormatError {
@@ -107,7 +107,7 @@ pub enum Extensions {
     Save,
     /// Skips the data of unknown extensions
     /// and extracts the data from known ones
-    Skip
+    Skip,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -171,7 +171,7 @@ enum State {
     /// Keeps LZW compressed
     CopySubBlock(usize),
     FrameDecoded,
-    Trailer
+    Trailer,
 }
 use self::State::*;
 
@@ -224,9 +224,7 @@ impl LzwReader {
     pub fn reset(&mut self, min_code_size: u8) -> Result<(), DecodingError> {
         // LZW spec: max 12 bits per code
         if min_code_size > 11 {
-            return Err(DecodingError::format(
-                "invalid minimal code size"
-            ))
+            return Err(DecodingError::format("invalid minimal code size"));
         }
 
         // The decoder can be reused if the code size stayed the same
@@ -340,16 +338,19 @@ impl StreamingDecoder {
                 data: Vec::with_capacity(256), // 0xFF + 1 byte length
                 is_block_end: true,
             },
-            current: None
+            current: None,
         }
     }
-    
-    /// Updates the internal state of the decoder. 
+
+    /// Updates the internal state of the decoder.
     ///
-    /// Returns the number of bytes consumed from the input buffer 
+    /// Returns the number of bytes consumed from the input buffer
     /// and the last decoding result.
-    pub fn update<'a>(&'a mut self, mut buf: &[u8], write_into: &mut OutputBuffer<'_>)
-    -> Result<(usize, Decoded<'a>), DecodingError> {
+    pub fn update<'a>(
+        &'a mut self,
+        mut buf: &[u8],
+        write_into: &mut OutputBuffer<'_>,
+    ) -> Result<(usize, Decoded<'a>), DecodingError> {
         // NOTE: Do not change the function signature without double-checking the
         //       unsafe block!
         let len = buf.len();
@@ -387,24 +388,24 @@ impl StreamingDecoder {
                         }
                     ))
                 }
-                Err(err) => return Err(err)
+                Err(err) => return Err(err),
             }
         }
-        Ok((len-buf.len(), Decoded::Nothing))
+        Ok((len - buf.len(), Decoded::Nothing))
     }
-    
+
     /// Returns the data of the last extension that has been decoded.
     #[must_use]
     pub fn last_ext(&self) -> (AnyExtension, &[u8], bool) {
         (self.ext.id, &self.ext.data, self.ext.is_block_end)
     }
-    
+
     #[inline(always)]
     /// Current frame info as a mutable ref.
     pub fn current_frame_mut(&mut self) -> &mut Frame<'static> {
         self.current.as_mut().unwrap()
     }
-    
+
     /// Current frame info as a ref.
     #[inline(always)]
     #[track_caller]
@@ -560,14 +561,14 @@ impl StreamingDecoder {
                     TransparentIdx => {
                         self.ext.data.push(b);
                         if let Some(ref mut idx) = self.current_frame_mut().transparent {
-                             *idx = b;
+                            *idx = b;
                         }
                         goto!(SkipBlock(0))
                     }
                     ImageFlags => {
                         let local_table = (b & 0b1000_0000) != 0;
-                        let interlaced   = (b & 0b0100_0000) != 0;
-                        let table_size  =  b & 0b0000_0111;
+                        let interlaced = (b & 0b0100_0000) != 0;
+                        let table_size = b & 0b0000_0111;
                         let check_frame_consistency = self.check_frame_consistency;
                         let (width, height) = (self.width, self.height);
 
@@ -592,8 +593,8 @@ impl StreamingDecoder {
                         } else {
                             goto!(Byte(CodeSize))
                         }
-                    },
-                    CodeSize => goto!(LzwInit(b))
+                    }
+                    CodeSize => goto!(LzwInit(b)),
                 }
             }
             GlobalPalette(left) => {
@@ -633,7 +634,7 @@ impl StreamingDecoder {
                         }
                     }
                 }
-            }
+            },
             BlockEnd(terminator) => {
                 if terminator == 0 {
                     if b == Block::Trailer as u8 {
@@ -764,23 +765,19 @@ impl StreamingDecoder {
                 self.current = None;
                 goto!(BlockEnd(b), emit Decoded::DataEnd)
             }
-            Trailer => {
-                Ok((0, Decoded::Trailer))
-            }
+            Trailer => Ok((0, Decoded::Trailer)),
         }
     }
-    
+
     fn read_control_extension(&mut self, b: u8) -> Result<State, DecodingError> {
         self.add_frame();
         self.ext.data.push(b);
         if b != 4 {
-            return Err(DecodingError::format(
-                "control extension has wrong length"
-            ))
+            return Err(DecodingError::format("control extension has wrong length"));
         }
         Ok(Byte(ByteValue::ControlFlags))
     }
-    
+
     fn add_frame(&mut self) {
         if self.current.is_none() {
             self.current = Some(Frame::default());

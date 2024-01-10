@@ -185,7 +185,7 @@ impl DecodeOptions {
 struct ReadDecoder<R: Read> {
     reader: io::BufReader<R>,
     decoder: StreamingDecoder,
-    at_eof: bool
+    at_eof: bool,
 }
 
 impl<R: Read> ReadDecoder<R> {
@@ -264,7 +264,7 @@ impl<R> Decoder<R> where R: Read {
             current_frame_data_type: FrameDataType::Pixels,
         }
     }
-    
+
     fn init(mut self) -> Result<Self, DecodingError> {
         loop {
             match self.decoder.decode_next(&mut OutputBuffer::None)? {
@@ -297,7 +297,7 @@ impl<R> Decoder<R> where R: Read {
         }
         Ok(self)
     }
-    
+
     /// Returns the next frame info
     pub fn next_frame_info(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
         loop {
@@ -307,14 +307,13 @@ impl<R> Decoder<R> where R: Read {
                     self.current_frame_data_type = frame_data_type;
                     if frame.palette.is_none() && self.global_palette.is_none() {
                         return Err(DecodingError::format(
-                            "no color table available for current frame"
-                        ))
+                            "no color table available for current frame",
+                        ));
                     }
-                    break
-                },
+                    break;
+                }
                 Some(_) => (),
-                None => return Ok(None)
-                
+                None => return Ok(None),
             }
         }
         Ok(Some(&self.current_frame))
@@ -372,13 +371,13 @@ impl<R> Decoder<R> where R: Read {
                 // Handle a too-small buffer without panicking
                 let line = buf.get_mut(start .. start + width).ok_or_else(|| DecodingError::format("buffer too small"))?;
                 if !self.fill_buffer(line)? {
-                    return Err(DecodingError::format("image truncated"))
+                    return Err(DecodingError::format("image truncated"));
                 }
             }
         } else {
             let buf = buf.get_mut(..self.buffer_size()).ok_or_else(|| DecodingError::format("buffer too small"))?;
             if !self.fill_buffer(buf)? {
-                return Err(DecodingError::format("image truncated"))
+                return Err(DecodingError::format("image truncated"));
             }
         };
         Ok(())
@@ -452,41 +451,40 @@ impl<R> Decoder<R> where R: Read {
                         }
                     }
                     if buf.is_empty() {
-                        return Ok(true)
+                        return Ok(true);
                     }
-                },
+                }
                 Some(_) => return Ok(false), // make sure that no important result is missed
-                None => return Ok(false)
-                
+                None => return Ok(false),
             }
         }
     }
-    
+
     /// Output buffer size
     pub fn buffer_size(&self) -> usize {
         self.line_length() * self.current_frame.height as usize
     }
-    
+
     /// Line length of the current frame
     pub fn line_length(&self) -> usize {
         use self::ColorOutput::*;
         match self.color_output {
             RGBA => self.current_frame.width as usize * N_CHANNELS,
-            Indexed => self.current_frame.width as usize
+            Indexed => self.current_frame.width as usize,
         }
     }
-    
+
     /// Returns the color palette relevant for the current (next) frame
     pub fn palette(&self) -> Result<&[u8], DecodingError> {
         // TODO prevent planic
         Ok(match self.current_frame.palette {
             Some(ref table) => table,
             None => self.global_palette.as_ref().ok_or(DecodingError::format(
-                "no color table available for current frame"
+                "no color table available for current frame",
             ))?,
         })
     }
-    
+
     /// The global color palette
     pub fn global_palette(&self) -> Option<&[u8]> {
         self.global_palette.as_deref()
@@ -511,7 +509,7 @@ impl<R> Decoder<R> where R: Read {
 struct InterlaceIterator {
     len: usize,
     next: usize,
-    pass: usize
+    pass: usize,
 }
 
 impl iter::Iterator for InterlaceIterator {
@@ -540,7 +538,7 @@ mod test {
     use std::fs::File;
 
     use super::{Decoder, InterlaceIterator};
-    
+
     #[test]
     fn test_simple_indexed() {
         let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap()).unwrap();

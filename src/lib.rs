@@ -1,18 +1,18 @@
 //! # GIF en- and decoding library [![Build Status](https://github.com/image-rs/image-gif/workflows/Rust%20CI/badge.svg)](https://github.com/image-rs/image-gif/actions)
-//! 
+//!
 //! GIF en- and decoder written in Rust ([API Documentation](https://docs.rs/gif)).
-//! 
+//!
 //! # GIF encoding and decoding library
-//! 
+//!
 //! This library provides all functions necessary to de- and encode GIF files.
-//! 
+//!
 //! ## High level interface
-//! 
+//!
 //! The high level interface consists of the two types
 //! [`Encoder`](struct.Encoder.html) and [`Decoder`](struct.Decoder.html).
-//! 
+//!
 //! ### Decoding GIF files
-//! 
+//!
 //! ```rust
 //! // Open the file
 //! use std::fs::File;
@@ -26,18 +26,18 @@
 //!     // Process every frame
 //! }
 //! ```
-//! 
-//! 
-//! 
+//!
+//!
+//!
 //! ### Encoding GIF files
 //!
 //! The encoder can be used so save simple computer generated images:
-//! 
+//!
 //! ```rust
 //! use gif::{Frame, Encoder, Repeat};
 //! use std::fs::File;
 //! use std::borrow::Cow;
-//! 
+//!
 //! let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];
 //! let (width, height) = (6, 6);
 //! let mut beacon_states = [[
@@ -73,7 +73,7 @@
 //! ```rust
 //! # #[cfg(feature = "color_quant")] {
 //! use std::fs::File;
-//! 
+//!
 //! // Get pixel data from some source
 //! let mut pixels: Vec<u8> = vec![0; 30_000];
 //! // Create frame from data
