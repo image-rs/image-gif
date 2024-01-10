@@ -159,7 +159,7 @@ enum State {
     U16(U16Value),
     Byte(ByteValue),
     GlobalPalette(usize),
-    BlockStart(Option<Block>),
+    BlockStart(u8),
     /// Block end, with remaining expected data. NonZero for invalid EOF.
     BlockEnd(u8),
     ExtensionBlock(AnyExtension),
@@ -176,7 +176,7 @@ enum State {
 use self::State::*;
 
 /// U16 values that may occur in a GIF image
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 enum U16Value {
     /// Logical screen descriptor width
     ScreenWidth,
@@ -195,11 +195,11 @@ enum U16Value {
 }
 
 /// Single byte screen descriptor values
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 enum ByteValue {
     GlobalFlags,
-    Background { table_size: usize },
-    AspectRatio { table_size: usize },
+    Background { global_flags: u8 },
+    AspectRatio { global_flags: u8 },
     ControlFlags,
     ImageFlags,
     TransparentIdx,
@@ -368,10 +368,6 @@ impl StreamingDecoder {
                 Ok((bytes, Decoded::Nothing)) => {
                     buf = &buf[bytes..]
                 }
-                Ok((bytes, Decoded::Trailer)) => {
-                    buf = &buf[bytes..];
-                    break
-                }
                 Ok((bytes, result)) => {
                     buf = &buf[bytes..];
                     return Ok(
@@ -527,23 +523,23 @@ impl StreamingDecoder {
                 use self::ByteValue::*;
                 match value {
                     GlobalFlags => {
-                        let global_table = b & 0x80 != 0;
-                        let entries = if global_table {
-                            let entries = PLTE_CHANNELS*(1 << ((b & 0b111) + 1) as usize);
-                            self.global_color_table.try_reserve_exact(entries).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
-                            entries
-                        } else {
-                            0usize
-                        };
-                        goto!(Byte(Background { table_size: entries }))
+                        goto!(Byte(Background { global_flags: b }))
                     },
-                    Background { table_size } => {
+                    Background { global_flags } => {
                         goto!(
-                            Byte(AspectRatio { table_size }),
+                            Byte(AspectRatio { global_flags }),
                             emit Decoded::BackgroundColor(b)
                         )
                     },
-                    AspectRatio { table_size } => {
+                    AspectRatio { global_flags } => {
+                        let global_table = global_flags & 0x80 != 0;
+                        let table_size = if global_table {
+                            let table_size = PLTE_CHANNELS * (1 << ((global_flags & 0b111) + 1) as usize);
+                            self.global_color_table.try_reserve_exact(table_size).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                            table_size
+                        } else {
+                            0usize
+                        };
                         goto!(GlobalPalette(table_size))
                     },
                     ControlFlags => {
@@ -569,7 +565,6 @@ impl StreamingDecoder {
                              *idx = b
                         }
                         goto!(SkipBlock(0))
-                        //goto!(AwaitBlockEnd)
                     }
                     ImageFlags => {
                         let local_table = (b & 0b1000_0000) != 0;
@@ -614,13 +609,13 @@ impl StreamingDecoder {
                             .copy_from_slice(&chunk[..PLTE_CHANNELS]),
                         None => self.background_color[0] = 0
                     }
-                    goto!(BlockStart(Block::from_u8(b)), emit Decoded::GlobalPalette(
+                    goto!(BlockStart(b), emit Decoded::GlobalPalette(
                         mem::take(&mut self.global_color_table)
                     ))
                 }
             }
             BlockStart(type_) => {
-                match type_ {
+                match Block::from_u8(type_) {
                     Some(Block::Image) => {
                         self.add_frame();
                         goto!(U16Byte1(U16Value::ImageLeft, b), emit Decoded::BlockStart(Block::Image))
@@ -643,9 +638,10 @@ impl StreamingDecoder {
             BlockEnd(terminator) => {
                 if terminator == 0 {
                     if b == Block::Trailer as u8 {
-                        goto!(0, BlockStart(Some(Block::Trailer)))
+                        // can't consume, because the trailer is not a real block, and won't have futher data
+                        goto!(0, BlockStart(b))
                     } else {
-                        goto!(BlockStart(Block::from_u8(b)))
+                        goto!(BlockStart(b))
                     }
                 } else {
                     Err(DecodingError::format(
@@ -729,9 +725,7 @@ impl StreamingDecoder {
                 } else if b != 0 {
                     goto!(CopySubBlock(b as usize))
                 } else {
-                    // end of image data reached
-                    self.current = None;
-                    goto!(0, FrameDecoded, emit Decoded::DataEnd)
+                    goto!(0, FrameDecoded)
                 }
             }
             DecodeSubBlock(left) => {
@@ -758,19 +752,17 @@ impl StreamingDecoder {
                     if bytes_len > 0 {
                         goto!(0, DecodeSubBlock(0), emit Decoded::BytesDecoded(bytes_len))
                     } else {
-                        // end of image data reached
-                        self.current = None;
-                        goto!(0, FrameDecoded, emit Decoded::DataEnd)
+                        goto!(0, FrameDecoded)
                     }
                 }
             }
             FrameDecoded => {
-                goto!(BlockEnd(b))
+                // end of image data reached
+                self.current = None;
+                goto!(BlockEnd(b), emit Decoded::DataEnd)
             }
             Trailer => {
-                self.state = None;
-                Ok((1, Decoded::Trailer))
-                //panic!("EOF {:?}", self)
+                Ok((0, Decoded::Trailer))
             }
         }
     }
