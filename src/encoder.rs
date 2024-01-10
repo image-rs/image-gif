@@ -381,7 +381,8 @@ impl Frame<'_> {
     ///
     /// Frames can be compressed in any order, separately from the `Encoder`, which can be used to compress frames in parallel.
     pub fn make_lzw_pre_encoded(&mut self) {
-        let mut buffer = Vec::with_capacity(self.buffer.len() / 2);
+        let mut buffer = Vec::new();
+        buffer.try_reserve(self.buffer.len() / 2).expect("OOM");
         lzw_encode(&self.buffer, &mut buffer);
         self.buffer = Cow::Owned(buffer);
     }
