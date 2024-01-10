@@ -141,7 +141,7 @@ pub enum Decoded<'a> {
     /// Decoded all information of the next frame, except the image data.
     ///
     /// The returned frame does **not** contain any owned image data.
-    FrameMetadata(&'a Frame<'static>, FrameDataType),
+    FrameMetadata(&'a mut Frame<'static>, FrameDataType),
     /// Decoded some data of the current frame.
     BytesDecoded(usize),
     /// Copied (or consumed and discarded) compressed data of the current frame. In bytes.
