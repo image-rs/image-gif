@@ -286,7 +286,7 @@ impl<R> Decoder<R> where R: Read {
                 Some(Decoded::Repetitions(repeat)) => {
                     self.repeat = repeat;
                 },
-                Some(Decoded::HeaderEnd | Decoded::Trailer) => {
+                Some(Decoded::HeaderEnd) => {
                     break
                 },
                 Some(_) => {

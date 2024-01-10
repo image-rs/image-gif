@@ -124,9 +124,8 @@ pub enum Decoded<'a> {
     /// Palette and optional `Application` extension have been parsed,
     /// reached frame data.
     HeaderEnd,
-    /// Decoded the image trailer.
-    Trailer,
     /// The start of a block.
+    /// `BlockStart(Block::Trailer)` is the very last decode event
     BlockStart(Block),
     /// Decoded a sub-block. More sub-block are available.
     ///
@@ -159,8 +158,7 @@ enum State {
     Byte(ByteValue),
     GlobalPalette(usize),
     BlockStart(u8),
-    /// Block end, with remaining expected data. NonZero for invalid EOF.
-    BlockEnd(u8),
+    BlockEnd,
     ExtensionBlock(AnyExtension),
     ApplicationExtension,
     SkipBlock(usize),
@@ -261,7 +259,7 @@ impl LzwReader {
                 }
             },
             Err(err @ LzwError::InvalidCode) => {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, err).into());
+                return Err(io::Error::new(io::ErrorKind::InvalidData, err));
             }
         }
         Ok((decoded.consumed_in, decoded.consumed_out))
@@ -454,8 +452,8 @@ impl StreamingDecoder {
                 Ok((1, $res))
             })
         );
-        
-        let b = *buf.get(0).ok_or_else(|| io::ErrorKind::UnexpectedEof)?;
+
+        let b = *buf.get(0).ok_or(io::ErrorKind::UnexpectedEof)?;
 
         match self.state {
             Magic(i, mut version) => if i < 6 {
@@ -620,7 +618,8 @@ impl StreamingDecoder {
                         goto!(ExtensionBlock(AnyExtension(b)), emit Decoded::BlockStart(Block::Extension))
                     }
                     Some(Block::Trailer) => {
-                        goto!(0, State::Trailer, emit Decoded::BlockStart(Block::Trailer))
+                        // The `Trailer` is the final state, and isn't reachable without extraneous data after the end of file
+                        goto!(Trailer, emit Decoded::BlockStart(Block::Trailer))
                     }
                     None => {
                         if self.allow_unknown_blocks {
@@ -631,18 +630,13 @@ impl StreamingDecoder {
                     }
                 }
             },
-            BlockEnd(terminator) => {
-                if terminator == 0 {
-                    if b == Block::Trailer as u8 {
-                        // can't consume, because the trailer is not a real block, and won't have futher data
-                        goto!(0, BlockStart(b))
-                    } else {
-                        goto!(BlockStart(b))
-                    }
+            BlockEnd => {
+                if b == Block::Trailer as u8 {
+                    // can't consume yet, because the trailer is not a real block,
+                    // and won't have futher data for BlockStart
+                    goto!(0, BlockStart(b))
                 } else {
-                    Err(DecodingError::format(
-                        "expected block terminator not found"
-                    ))
+                    goto!(BlockStart(b))
                 }
             }
             ExtensionBlock(id) => {
@@ -671,9 +665,9 @@ impl StreamingDecoder {
                 } else if b == 0 {
                     self.ext.is_block_end = true;
                     if self.ext.id.into_known() == Some(Extension::Application) {
-                        goto!(ApplicationExtension, emit Decoded::BlockFinished(self.ext.id, &self.ext.data))
+                        goto!(0, ApplicationExtension, emit Decoded::BlockFinished(self.ext.id, &self.ext.data))
                     } else {
-                        goto!(BlockEnd(b), emit Decoded::BlockFinished(self.ext.id, &self.ext.data))
+                        goto!(BlockEnd, emit Decoded::BlockFinished(self.ext.id, &self.ext.data))
                     }
                 } else {
                     self.ext.is_block_end = false;
@@ -681,13 +675,14 @@ impl StreamingDecoder {
                 }
             }
             ApplicationExtension => {
+                debug_assert_eq!(0, b);
                 // the parser removes sub-block lenghts, so app name and data are concatenated
                 if self.ext.data.len() >= 15 && &self.ext.data[1..13] == b"NETSCAPE2.0\x01" {
                     let repeat = &self.ext.data[13..15];
                     let repeat = u16::from(repeat[0]) | u16::from(repeat[1]) << 8;
-                    goto!(0, BlockEnd(0), emit Decoded::Repetitions(if repeat == 0 { Repeat::Infinite } else { Repeat::Finite(repeat) }))
+                    goto!(BlockEnd, emit Decoded::Repetitions(if repeat == 0 { Repeat::Infinite } else { Repeat::Finite(repeat) }))
                 } else {
-                    goto!(0, BlockEnd(0))
+                    goto!(BlockEnd)
                 }
             }
             LocalPalette(left) => {
@@ -771,9 +766,10 @@ impl StreamingDecoder {
             FrameDecoded => {
                 // end of image data reached
                 self.current = None;
-                goto!(BlockEnd(b), emit Decoded::DataEnd)
+                debug_assert_eq!(0, b);
+                goto!(BlockEnd, emit Decoded::DataEnd)
             }
-            Trailer => Ok((0, Decoded::Trailer)),
+            Trailer => goto!(0, Trailer, emit Decoded::Nothing),
         }
     }
 
