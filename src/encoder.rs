@@ -22,6 +22,7 @@ pub enum EncodingFormatError {
 
 impl error::Error for EncodingFormatError {}
 impl fmt::Display for EncodingFormatError {
+    #[cold]
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::TooManyColors => write!(fmt, "the image has too many colors"),
@@ -40,6 +41,7 @@ pub enum EncodingError {
 }
 
 impl fmt::Display for EncodingError {
+    #[cold]
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             EncodingError::Io(err) => err.fmt(fmt),
@@ -49,6 +51,7 @@ impl fmt::Display for EncodingError {
 }
 
 impl error::Error for EncodingError {
+    #[cold]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
             EncodingError::Io(err) => Some(err),
@@ -58,12 +61,14 @@ impl error::Error for EncodingError {
 }
 
 impl From<io::Error> for EncodingError {
+    #[cold]
     fn from(err: io::Error) -> Self {
         EncodingError::Io(err)
     }
 }
 
 impl From<EncodingFormatError> for EncodingError {
+    #[cold]
     fn from(err: EncodingFormatError) -> Self {
         EncodingError::Format(err)
     }
