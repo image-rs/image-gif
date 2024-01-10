@@ -5,6 +5,7 @@ use std::io;
 use std::mem;
 use std::default::Default;
 
+use crate::Repeat;
 use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 use crate::reader::DecodeOptions;
 
@@ -118,6 +119,8 @@ pub enum Decoded<'a> {
     GlobalPalette(Vec<u8>),
     /// Index of the background color in the global palette.
     BackgroundColor(u8),
+    /// Loop count is known
+    Repetitions(Repeat),
     /// Palette and optional `Application` extension have been parsed,
     /// reached frame data.
     HeaderEnd,
@@ -159,6 +162,7 @@ enum State {
     /// Block end, with remaining expected data. NonZero for invalid EOF.
     BlockEnd(u8),
     ExtensionBlock(AnyExtension),
+    ApplicationExtension,
     SkipBlock(usize),
     LocalPalette(usize),
     LzwInit(u8),
@@ -666,10 +670,24 @@ impl StreamingDecoder {
                     goto!(n, SkipBlock(left - n))
                 } else if b == 0 {
                     self.ext.is_block_end = true;
-                    goto!(BlockEnd(b), emit Decoded::BlockFinished(self.ext.id, &self.ext.data))
+                    if self.ext.id.into_known() == Some(Extension::Application) {
+                        goto!(ApplicationExtension, emit Decoded::BlockFinished(self.ext.id, &self.ext.data))
+                    } else {
+                        goto!(BlockEnd(b), emit Decoded::BlockFinished(self.ext.id, &self.ext.data))
+                    }
                 } else {
                     self.ext.is_block_end = false;
                     goto!(SkipBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.id, &self.ext.data))
+                }
+            }
+            ApplicationExtension => {
+                // the parser removes sub-block lenghts, so app name and data are concatenated
+                if self.ext.data.len() >= 15 && &self.ext.data[1..13] == b"NETSCAPE2.0\x01" {
+                    let repeat = &self.ext.data[13..15];
+                    let repeat = u16::from(repeat[0]) | u16::from(repeat[1]) << 8;
+                    goto!(0, BlockEnd(0), emit Decoded::Repetitions(if repeat == 0 { Repeat::Infinite } else { Repeat::Finite(repeat) }))
+                } else {
+                    goto!(0, BlockEnd(0))
                 }
             }
             LocalPalette(left) => {
