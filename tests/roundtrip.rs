@@ -6,6 +6,12 @@ fn encode_roundtrip() {
     round_trip_from_image(ORIGINAL);
 }
 
+#[test]
+fn encode_roundtrip2() {
+    const ORIGINAL: &[u8] = include_bytes!("samples/interlaced.gif");
+    round_trip_from_image(ORIGINAL);
+}
+
 fn round_trip_from_image(original: &[u8]) {
     let (width, height, global_palette, repeat);
     let frames: Vec<_> = {
