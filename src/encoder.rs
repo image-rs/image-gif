@@ -7,36 +7,26 @@ use std::borrow::Cow;
 
 use weezl::{BitOrder, encode::Encoder as LzwEncoder};
 
-use crate::traits::{WriteBytesExt};
+use crate::traits::WriteBytesExt;
 use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 
+/// The image has incorrect properties, making it impossible to encode as a gif.
 #[derive(Debug)]
-enum FormatErrorKind {
+#[non_exhaustive]
+pub enum EncodingFormatError {
     /// The image has too many colors.
     TooManyColors,
     /// The image has no color palette which is required.
     MissingColorPalette,
 }
 
-/// The image has incorrect properties, making it impossible to encode as a gif.
-#[derive(Debug)]
-pub struct EncodingFormatError {
-    kind: FormatErrorKind
-}
-
 impl error::Error for EncodingFormatError {}
 impl fmt::Display for EncodingFormatError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.kind {
-            FormatErrorKind::TooManyColors => write!(fmt, "the image has too many colors"),
-            FormatErrorKind::MissingColorPalette => write!(fmt, "the GIF format requires a color palette but none was given")
+        match self {
+            Self::TooManyColors => write!(fmt, "the image has too many colors"),
+            Self::MissingColorPalette => write!(fmt, "the GIF format requires a color palette but none was given"),
         }
-    }
-}
-
-impl From<FormatErrorKind> for EncodingFormatError {
-    fn from(kind: FormatErrorKind) -> Self {
-        EncodingFormatError { kind }
     }
 }
 
@@ -78,13 +68,6 @@ impl From<EncodingFormatError> for EncodingError {
         EncodingError::Format(err)
     }
 }
-
-impl From<FormatErrorKind> for EncodingError {
-    fn from(kind: FormatErrorKind) -> Self {
-        EncodingError::Format(kind.into())
-    }
-}
-
 
 /// Number of repetitions
 #[derive(Copy, Clone, Debug)]
@@ -163,7 +146,7 @@ impl<W: Write> Encoder<W> {
         flags |= 0b1000_0000;
         let num_colors = palette.len() / 3;
         if num_colors > 256 {
-            return Err(EncodingError::from(FormatErrorKind::TooManyColors));
+            return Err(EncodingError::from(EncodingFormatError::TooManyColors));
         }
         // Size of global color table.
         flags |= flag_size(num_colors);
@@ -209,14 +192,14 @@ impl<W: Write> Encoder<W> {
                 flags |= 0b1000_0000;
                 let num_colors = palette.len() / 3;
                 if num_colors > 256 {
-                    return Err(EncodingError::from(FormatErrorKind::TooManyColors));
+                    return Err(EncodingError::from(EncodingFormatError::TooManyColors));
                 }
                 flags |= flag_size(num_colors);
                 writer.write_le(flags)?;
                 self.write_color_table(palette)
             },
             None => if !self.global_palette {
-                Err(EncodingError::from(FormatErrorKind::MissingColorPalette))
+                Err(EncodingError::from(EncodingFormatError::MissingColorPalette))
             } else {
                 writer.write_le(flags).map_err(Into::into)
             }
@@ -254,7 +237,7 @@ impl<W: Write> Encoder<W> {
         let writer = self.w.as_mut().unwrap();
         let num_colors = table.len() / 3;
         if num_colors > 256 {
-            return Err(EncodingError::from(FormatErrorKind::TooManyColors));
+            return Err(EncodingError::from(EncodingFormatError::TooManyColors));
         }
         let size = flag_size(num_colors);
         writer.write_all(&table[..num_colors * 3])?;
@@ -438,5 +421,5 @@ fn flag_size(size: usize) -> u8 {
 
 #[test]
 fn error_cast() {
-    let _ : Box<dyn error::Error> = EncodingError::from(FormatErrorKind::MissingColorPalette).into();
+    let _ : Box<dyn error::Error> = EncodingError::from(EncodingFormatError::MissingColorPalette).into();
 }
