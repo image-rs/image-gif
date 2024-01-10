@@ -245,7 +245,7 @@ impl LzwReader {
     }
 
     pub fn decode_bytes(&mut self, lzw_data: &[u8], decode_buffer: &mut OutputBuffer<'_>) -> io::Result<(usize, usize)> {
-        let decoder = self.decoder.as_mut().ok_or_else(|| io::ErrorKind::Unsupported)?;
+        let decoder = self.decoder.as_mut().ok_or(io::ErrorKind::Unsupported)?;
 
         let decode_buffer = match decode_buffer {
             OutputBuffer::Slice(buf) => &mut **buf,
@@ -256,7 +256,7 @@ impl LzwReader {
         let decoded = decoder.decode_bytes(lzw_data, decode_buffer);
 
         match decoded.status {
-            Ok(LzwStatus::Done) | Ok(LzwStatus::Ok) => {},
+            Ok(LzwStatus::Done | LzwStatus::Ok) => {},
             Ok(LzwStatus::NoProgress) => {
                 if self.check_for_end_code {
                     return Err(io::Error::new(io::ErrorKind::InvalidData, "No end code in lzw stream"));
@@ -316,6 +316,7 @@ pub enum OutputBuffer<'a> {
 
 impl StreamingDecoder {
     /// Creates a new streaming decoder
+    #[must_use]
     pub fn new() -> StreamingDecoder {
         let options = DecodeOptions::new();
         Self::with_options(&options)
@@ -352,7 +353,7 @@ impl StreamingDecoder {
         // NOTE: Do not change the function signature without double-checking the
         //       unsafe block!
         let len = buf.len();
-        while buf.len() > 0 {
+        while !buf.is_empty() {
             // This dead code is a compile-check for lifetimes that otherwise aren't checked
             // due to the `mem::transmute` used later.
             // Keep it in sync with the other call to `next_state`.
@@ -366,7 +367,7 @@ impl StreamingDecoder {
             // if the state has already been set to `None`.
             match self.next_state(buf, write_into) {
                 Ok((bytes, Decoded::Nothing)) => {
-                    buf = &buf[bytes..]
+                    buf = &buf[bytes..];
                 }
                 Ok((bytes, result)) => {
                     buf = &buf[bytes..];
@@ -393,6 +394,7 @@ impl StreamingDecoder {
     }
     
     /// Returns the data of the last extension that has been decoded.
+    #[must_use]
     pub fn last_ext(&self) -> (AnyExtension, &[u8], bool) {
         (self.ext.id, &self.ext.data, self.ext.is_block_end)
     }
@@ -406,16 +408,19 @@ impl StreamingDecoder {
     /// Current frame info as a ref.
     #[inline(always)]
     #[track_caller]
-    pub fn current_frame<'a>(&'a self) -> &'a Frame<'static> {
+    #[must_use]
+    pub fn current_frame(&self) -> &Frame<'static> {
         self.current.as_ref().unwrap()
     }
 
     /// Width of the image
+    #[must_use]
     pub fn width(&self) -> u16 {
         self.width
     }
 
     /// Height of the image
+    #[must_use]
     pub fn height(&self) -> u16 {
         self.height
     }
@@ -424,6 +429,7 @@ impl StreamingDecoder {
     ///
     /// We suppose a minimum of `V87a` compatibility. This value will be reported until we have
     /// read the version information in the magic header bytes.
+    #[must_use]
     pub fn version(&self) -> Version {
         self.version
     }
@@ -476,7 +482,7 @@ impl StreamingDecoder {
             U16(next) => goto!(U16Byte1(next, b)),
             U16Byte1(next, value) => {
                 use self::U16Value::*;
-                let value = ((b as u16) << 8) | value as u16;
+                let value = (u16::from(b) << 8) | u16::from(value);
                 match (next, value) {
                     (ScreenWidth, width) => {
                         self.width = width;
@@ -539,7 +545,7 @@ impl StreamingDecoder {
                         let control_flags = b;
                         if control_flags & 1 != 0 {
                             // Set to Some(...), gets overwritten later
-                            frame.transparent = Some(0)
+                            frame.transparent = Some(0);
                         }
                         frame.needs_user_input =
                             control_flags & 0b10 != 0;
@@ -554,7 +560,7 @@ impl StreamingDecoder {
                     TransparentIdx => {
                         self.ext.data.push(b);
                         if let Some(ref mut idx) = self.current_frame_mut().transparent {
-                             *idx = b
+                             *idx = b;
                         }
                         goto!(SkipBlock(0))
                     }
@@ -777,7 +783,7 @@ impl StreamingDecoder {
     
     fn add_frame(&mut self) {
         if self.current.is_none() {
-            self.current = Some(Frame::default())
+            self.current = Some(Frame::default());
         }
     }
 }

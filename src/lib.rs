@@ -119,7 +119,7 @@ mod encoder;
 pub use crate::common::{AnyExtension, Block, Extension, DisposalMethod, Frame};
 
 pub use crate::reader::{StreamingDecoder, Decoded, DecodingError, DecodingFormatError};
-/// StreamingDecoder configuration parameters
+/// `StreamingDecoder` configuration parameters
 pub use crate::reader::{ColorOutput, MemoryLimit, Extensions};
 pub use crate::reader::{DecodeOptions, Decoder, Version};
 
@@ -140,7 +140,7 @@ fn round_trip() {
         let mut encoder = Encoder::new(&mut data2, frame.width, frame.height, &palette).unwrap();
         encoder.write_frame(frame).unwrap();
     }
-    assert_eq!(&data[..], &data2[..])
+    assert_eq!(&data[..], &data2[..]);
 }
 
 macro_rules! insert_as_doc {

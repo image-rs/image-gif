@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::io::BufReader;
 use std::io::prelude::*;
 
-const BASE_PATH: [&'static str; 2] = [".", "tests"];
+const BASE_PATH: [&str; 2] = [".", "tests"];
 
 fn process_images<F>(func: F)
 where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
@@ -72,10 +72,10 @@ fn render_images() {
                 * frame.height as usize
                 * 4
             );
-            crc.update(&*frame.buffer);
+            crc.update(&frame.buffer);
         }
         Ok(crc.checksum())
-    })
+    });
 }
 
 

@@ -96,6 +96,7 @@ pub struct DecodeOptions {
 
 impl DecodeOptions {
     /// Creates a new decoder builder
+    #[must_use]
     pub fn new() -> DecodeOptions {
         DecodeOptions {
             memory_limit: MemoryLimit::Bytes(50_000_000.try_into().unwrap()), // 50 MB
@@ -210,7 +211,7 @@ impl<R: Read> ReadDecoder<R> {
             match result {
                 Decoded::Nothing => (),
                 Decoded::BlockStart(Block::Trailer) => {
-                    self.at_eof = true
+                    self.at_eof = true;
                 },
                 result => return Ok(unsafe{
                     // FIXME: #6393
@@ -242,6 +243,7 @@ impl<R> Decoder<R> where R: Read {
     }
 
     /// Return a builder that allows configuring limits etc.
+    #[must_use]
     pub fn build() -> DecodeOptions {
         DecodeOptions::new()
     }
@@ -251,7 +253,7 @@ impl<R> Decoder<R> where R: Read {
             decoder: ReadDecoder {
                 reader: io::BufReader::new(reader),
                 decoder,
-                at_eof: false
+                at_eof: false,
             },
             bg_color: None,
             global_palette: None,
@@ -267,10 +269,10 @@ impl<R> Decoder<R> where R: Read {
         loop {
             match self.decoder.decode_next(&mut OutputBuffer::None)? {
                 Some(Decoded::BackgroundColor(bg_color)) => {
-                    self.bg_color = Some(bg_color)
+                    self.bg_color = Some(bg_color);
                 }
                 Some(Decoded::GlobalPalette(palette)) => {
-                    self.global_palette = if palette.len() > 0 {
+                    self.global_palette = if !palette.is_empty() {
                         Some(palette)
                     } else {
                         None
@@ -554,7 +556,7 @@ mod test {
             2, 2, 2, 2, 2, 1, 1, 1, 1, 1,
             2, 2, 2, 2, 2, 1, 1, 1, 1, 1,
             2, 2, 2, 2, 2, 1, 1, 1, 1, 1
-        ][..])
+        ][..]);
     }
 
     #[test]
@@ -579,7 +581,7 @@ mod test {
             (16, &[0, 8, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..]),
             (17, &[0, 8, 16, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..]),
         ] {
-            let iter = InterlaceIterator { len: len, next: 0, pass: 0 };
+            let iter = InterlaceIterator { len, next: 0, pass: 0 };
             let lines = iter.collect::<Vec<_>>();
             assert_eq!(lines, expect);
         }

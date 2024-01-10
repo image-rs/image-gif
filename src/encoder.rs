@@ -92,7 +92,7 @@ pub enum Repeat {
     /// Finite number of repetitions
     Finite(u16),
     /// Infinite number of repetitions
-    Infinite
+    Infinite,
 }
 
 /// Extension data.
@@ -104,33 +104,29 @@ pub enum ExtensionData {
         /// Frame delay.
         delay: u16,
         /// Transparent index.
-        trns: u8
+        trns: u8,
     },
     /// Sets the number of repetitions
-    Repetitions(Repeat)
+    Repetitions(Repeat),
 }
 
 impl ExtensionData {
     /// Constructor for control extension data.
     ///
     /// `delay` is given in units of 10 ms.
-    pub fn new_control_ext(delay: u16, dispose: DisposalMethod,
+    #[must_use] pub fn new_control_ext(delay: u16, dispose: DisposalMethod,
                            needs_user_input: bool, trns: Option<u8>) -> ExtensionData {
         let mut flags = 0;
         let trns = match trns {
             Some(trns) => {
                 flags |= 1;
-                trns as u8
+                trns
             },
             None => 0
         };
         flags |= u8::from(needs_user_input) << 1;
         flags |= (dispose as u8) << 2;
-        ExtensionData::Control {
-            flags: flags,
-            delay: delay,
-            trns: trns
-        }
+        ExtensionData::Control { flags, delay, trns }
     }
 }
 
@@ -184,16 +180,12 @@ impl<W: Write> Encoder<W> {
     }
 
     fn write_frame_header(&mut self, frame: &Frame<'_>) -> Result<(), EncodingError> {
-        // TODO commented off to pass test in lib.rs
-        //if frame.delay > 0 || frame.transparent.is_some() {
-            self.write_extension(ExtensionData::new_control_ext(
-                frame.delay,
-                frame.dispose,
-                frame.needs_user_input,
-                frame.transparent
-
-            ))?;
-        //}
+        self.write_extension(ExtensionData::new_control_ext(
+            frame.delay,
+            frame.dispose,
+            frame.needs_user_input,
+            frame.transparent,
+        ))?;
         let writer = self.w.as_mut().unwrap();
         writer.write_le(Block::Image as u8)?;
         writer.write_le(frame.left)?;
@@ -238,7 +230,7 @@ impl<W: Write> Encoder<W> {
         // Write blocks. `chunks_exact` seems to be slightly faster
         // than `chunks` according to both Rust docs and benchmark results.
         let mut iter = data.chunks_exact(0xFF);
-        while let Some(full_block) = iter.next() {
+        for full_block in iter.by_ref() {
             writer.write_le(0xFFu8)?;
             writer.write_all(full_block)?;
         }
@@ -260,7 +252,7 @@ impl<W: Write> Encoder<W> {
         writer.write_all(&table[..num_colors * 3])?;
         // Waste some space as of gif spec
         for _ in 0..((2 << size) - num_colors) {
-            writer.write_all(&[0, 0, 0])?
+            writer.write_all(&[0, 0, 0])?;
         }
         Ok(())
     }
@@ -273,7 +265,7 @@ impl<W: Write> Encoder<W> {
         // 0 finite repetitions can only be achieved
         // if the corresponting extension is not written
         if let Repetitions(Repeat::Finite(0)) = extension {
-            return Ok(())
+            return Ok(());
         }
         let writer = self.w.as_mut().unwrap();
         writer.write_le(Block::Extension as u8)?;
@@ -376,7 +368,7 @@ impl<W: Write> Encoder<W> {
 fn lzw_encode(data: &[u8], buffer: &mut Vec<u8>) {
     let min_code_size = match flag_size(1 + data.iter().copied().max().unwrap_or(0) as usize) + 1 {
         1 => 2, // As per gif spec: The minimal code size has to be >= 2
-        n => n
+        n => n,
     };
     buffer.push(min_code_size);
     let mut enc = LzwEncoder::new(BitOrder::Lsb, min_code_size);
@@ -401,11 +393,10 @@ pub struct Encoder<W: Write> {
     global_palette: bool,
     width: u16,
     height: u16,
-    buffer: Vec<u8>
+    buffer: Vec<u8>,
 }
 
 impl<W: Write> Drop for Encoder<W> {
-
     #[cfg(feature = "raii_no_panic")]
     fn drop(&mut self) {
         if self.w.is_some() {
