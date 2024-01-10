@@ -145,8 +145,8 @@ pub enum Decoded<'a> {
     FrameMetadata(&'a Frame<'static>, FrameDataType),
     /// Decoded some data of the current frame.
     BytesDecoded(usize),
-    /// Copied compressed data of the current frame.
-    LzwData(&'a [u8]),
+    /// Copied (or consumed and discarded) compressed data of the current frame. In bytes.
+    LzwDataCopied(usize),
     /// No more data available the current frame.
     DataEnd,
 }
@@ -244,8 +244,15 @@ impl LzwReader {
         self.decoder.as_ref().map_or(true, |e| e.has_ended())
     }
 
-    pub fn decode_bytes(&mut self, lzw_data: &[u8], decode_buffer: &mut [u8]) -> io::Result<(usize, usize)> {
+    pub fn decode_bytes(&mut self, lzw_data: &[u8], decode_buffer: &mut OutputBuffer<'_>) -> io::Result<(usize, usize)> {
         let decoder = self.decoder.as_mut().ok_or_else(|| io::ErrorKind::Unsupported)?;
+
+        let decode_buffer = match decode_buffer {
+            OutputBuffer::Slice(buf) => &mut **buf,
+            OutputBuffer::None => &mut [],
+            OutputBuffer::Vec(_) => return Err(io::Error::from(io::ErrorKind::Unsupported)),
+        };
+
         let decoded = decoder.decode_bytes(lzw_data, decode_buffer);
 
         match decoded.status {
@@ -298,6 +305,15 @@ struct ExtensionData {
     is_block_end: bool,
 }
 
+pub enum OutputBuffer<'a> {
+    /// Overwrite bytes
+    Slice(&'a mut [u8]),
+    /// Append LZW bytes
+    Vec(&'a mut Vec<u8>),
+    /// Discard bytes
+    None,
+}
+
 impl StreamingDecoder {
     /// Creates a new streaming decoder
     pub fn new() -> StreamingDecoder {
@@ -331,16 +347,24 @@ impl StreamingDecoder {
     ///
     /// Returns the number of bytes consumed from the input buffer 
     /// and the last decoding result.
-    pub fn update<'a>(&'a mut self, mut buf: &[u8], mut decode_bytes_into: Option<&mut [u8]>)
+    pub fn update<'a>(&'a mut self, mut buf: &[u8], write_into: &mut OutputBuffer<'_>)
     -> Result<(usize, Decoded<'a>), DecodingError> {
         // NOTE: Do not change the function signature without double-checking the
         //       unsafe block!
         let len = buf.len();
         while buf.len() > 0 {
+            // This dead code is a compile-check for lifetimes that otherwise aren't checked
+            // due to the `mem::transmute` used later.
+            // Keep it in sync with the other call to `next_state`.
+            #[cfg(test)]
+            if false {
+                return self.next_state(buf, write_into);
+            }
+
             // It's not necessary to check here whether state is `Some`,
             // because `next_state` checks it anyway, and will return `DecodeError`
             // if the state has already been set to `None`.
-            match self.next_state(buf, decode_bytes_into.as_deref_mut()) {
+            match self.next_state(buf, write_into) {
                 Ok((bytes, Decoded::Nothing)) => {
                     buf = &buf[bytes..]
                 }
@@ -370,7 +394,6 @@ impl StreamingDecoder {
             }
         }
         Ok((len-buf.len(), Decoded::Nothing))
-        
     }
     
     /// Returns the data of the last extension that has been decoded.
@@ -417,7 +440,7 @@ impl StreamingDecoder {
         }
     }
 
-    fn next_state<'a>(&'a mut self, buf: &'a [u8], decode_bytes_into: Option<&mut [u8]>) -> Result<(usize, Decoded<'a>), DecodingError> {
+    fn next_state(&mut self, buf: &[u8], write_into: &mut OutputBuffer<'_>) -> Result<(usize, Decoded<'_>), DecodingError> {
         macro_rules! goto (
             ($n:expr, $state:expr) => ({
                 self.state = Some($state); 
@@ -685,9 +708,24 @@ impl StreamingDecoder {
             }
             CopySubBlock(left) => {
                 debug_assert!(self.skip_frame_decoding);
-                let n = cmp::min(left, buf.len());
                 if left > 0 {
-                    goto!(n, CopySubBlock(left - n), emit Decoded::LzwData(&buf[..n]))
+                    let n = cmp::min(left, buf.len());
+                    let (consumed, copied) = match write_into {
+                        OutputBuffer::Slice(slice) => {
+                            let len = cmp::min(n, slice.len());
+                            slice[..len].copy_from_slice(&buf[..len]);
+                            (len, len)
+                        },
+                        OutputBuffer::Vec(vec) => {
+                            vec.try_reserve(n).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                            vec.extend_from_slice(&buf[..n]);
+                            (n, n)
+                        },
+                        // It's valid that bytes are discarded. For example,
+                        // when using next_frame_info() with skip_frame_decoding to only get metadata.
+                        OutputBuffer::None => (n, 0),
+                    };
+                    goto!(consumed, CopySubBlock(left - consumed), emit Decoded::LzwDataCopied(copied))
                 } else if b != 0 {
                     goto!(CopySubBlock(b as usize))
                 } else {
@@ -700,11 +738,11 @@ impl StreamingDecoder {
                 debug_assert!(!self.skip_frame_decoding);
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
-                    if self.lzw_reader.has_ended() || decode_bytes_into.is_none() {
+                    if self.lzw_reader.has_ended() || matches!(write_into, OutputBuffer::None) {
                         return goto!(n, DecodeSubBlock(0), emit Decoded::BytesDecoded(0));
                     }
 
-                    let (mut consumed, bytes_len) = self.lzw_reader.decode_bytes(&buf[..n], decode_bytes_into.unwrap())?;
+                    let (mut consumed, bytes_len) = self.lzw_reader.decode_bytes(&buf[..n], write_into)?;
 
                     // skip if can't make progress (decode would fail if check_for_end_code was set)
                     if consumed == 0 && bytes_len == 0 {
@@ -715,7 +753,7 @@ impl StreamingDecoder {
                 }  else if b != 0 { // decode next sub-block
                     goto!(DecodeSubBlock(b as usize))
                 } else {
-                    let (_, bytes_len) = self.lzw_reader.decode_bytes(&[], decode_bytes_into.unwrap_or(&mut []))?;
+                    let (_, bytes_len) = self.lzw_reader.decode_bytes(&[], write_into)?;
 
                     if bytes_len > 0 {
                         goto!(0, DecodeSubBlock(0), emit Decoded::BytesDecoded(bytes_len))
