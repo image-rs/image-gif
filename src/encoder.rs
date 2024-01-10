@@ -350,7 +350,7 @@ impl<W: Write> Encoder<W> {
         self.w.as_mut().unwrap()
     }
 
-    /// Returns writer instance used by this encoder
+    /// Finishes writing, and returns the `io::Write` instance used by this encoder
     pub fn into_inner(mut self) -> io::Result<W> {
         self.write_trailer()?;
         Ok(self.w.take().unwrap())
