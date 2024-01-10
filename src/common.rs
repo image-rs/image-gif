@@ -18,13 +18,14 @@ pub enum DisposalMethod {
 
 impl DisposalMethod {
     /// Converts `u8` to `Option<Self>`
+    #[must_use]
     pub fn from_u8(n: u8) -> Option<DisposalMethod> {
         match n {
             0 => Some(DisposalMethod::Any),
             1 => Some(DisposalMethod::Keep),
             2 => Some(DisposalMethod::Background),
             3 => Some(DisposalMethod::Previous),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -52,12 +53,13 @@ pub enum Block {
 
 impl Block {
     /// Converts `u8` to `Option<Self>`
+    #[must_use]
     pub fn from_u8(n: u8) -> Option<Block> {
         match n {
             0x2C => Some(Block::Image),
             0x21 => Some(Block::Extension),
             0x3B => Some(Block::Trailer),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -102,6 +104,7 @@ pub enum Extension {
 
 impl AnyExtension {
     /// Decode the label as a known extension.
+    #[must_use]
     pub fn into_known(self) -> Option<Extension> {
         Extension::from_u8(self.0)
     }
@@ -115,13 +118,14 @@ impl From<Extension> for AnyExtension {
 
 impl Extension {
     /// Converts `u8` to a `Extension` if it is known.
+    #[must_use]
     pub fn from_u8(n: u8) -> Option<Extension> {
         match n {
             0x01 => Some(Extension::Text),
             0xF9 => Some(Extension::Control),
             0xFE => Some(Extension::Comment),
             0xFF => Some(Extension::Application),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -151,7 +155,7 @@ pub struct Frame<'a> {
     pub palette: Option<Vec<u8>>,
     /// Buffer containing the image data.
     /// Only indices unless configured differently.
-    pub buffer: Cow<'a, [u8]>
+    pub buffer: Cow<'a, [u8]>,
 }
 
 impl<'a> Default for Frame<'a> {
@@ -167,7 +171,7 @@ impl<'a> Default for Frame<'a> {
             height: 0,
             interlaced: false,
             palette: None,
-            buffer: Cow::Borrowed(&[])
+            buffer: Cow::Borrowed(&[]),
         }
     }
 }
@@ -212,7 +216,7 @@ impl Frame<'static> {
             if pix[3] != 0 {
                 pix[3] = 0xFF;
             } else {
-                transparent = Some([pix[0], pix[1], pix[2], pix[3]])
+                transparent = Some([pix[0], pix[1], pix[2], pix[3]]);
             }
         }
 
@@ -251,7 +255,7 @@ impl Frame<'static> {
             palette: Some(palette),
             transparent: transparent.map(|t| index_of(&t)),
             ..Frame::default()
-        }
+        };
     }
 
     /// Creates a frame from a palette and indexed pixels.
@@ -286,7 +290,7 @@ impl Frame<'static> {
         Frame {
             width,
             height,
-            buffer: Cow::Owned(pixels.to_vec()),
+            buffer: Cow::Owned(pixels.clone()),
             palette: None,
             transparent,
             ..Frame::default()
@@ -304,6 +308,7 @@ impl Frame<'static> {
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height * 3`.
     #[cfg(feature = "color_quant")]
+    #[must_use]
     pub fn from_rgb(width: u16, height: u16, pixels: &[u8]) -> Frame<'static> {
         Frame::from_rgb_speed(width, height, pixels, 1)
     }
@@ -323,12 +328,13 @@ impl Frame<'static> {
     /// *   If the length of pixels does not equal `width * height * 3`.
     /// *   If `speed < 1` or `speed > 30`
     #[cfg(feature = "color_quant")]
+    #[must_use]
     pub fn from_rgb_speed(width: u16, height: u16, pixels: &[u8], speed: i32) -> Frame<'static> {
         assert_eq!(width as usize * height as usize * 3, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
         let mut vec: Vec<u8> = Vec::new();
         vec.try_reserve_exact(pixels.len() + width as usize * height as usize).expect("OOM");
         for v in pixels.chunks_exact(3) {
-            vec.extend_from_slice(&[v[0], v[1], v[2], 0xFF])
+            vec.extend_from_slice(&[v[0], v[1], v[2], 0xFF]);
         }
         Frame::from_rgba_speed(width, height, &mut vec, speed)
     }
@@ -342,5 +348,5 @@ impl Frame<'static> {
 fn rgba_speed_avoid_panic_256_colors() {
     let side = 16;
     let pixel_data: Vec<u8> = (0..=255).map(|a| vec![a, a, a]).flatten().collect();
-    Frame::from_rgb(side, side, &pixel_data);
+    let _ = Frame::from_rgb(side, side, &pixel_data);
 }
