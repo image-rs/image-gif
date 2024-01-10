@@ -6,6 +6,7 @@ use std::io::prelude::*;
 use std::num::NonZeroU64;
 use std::convert::{TryFrom, TryInto};
 
+use crate::Repeat;
 use crate::common::{Block, Frame};
 
 mod decoder;
@@ -230,6 +231,7 @@ pub struct Decoder<R: Read> {
     color_output: ColorOutput,
     memory_limit: MemoryLimit,
     bg_color: Option<u8>,
+    repeat: Repeat,
     global_palette: Option<Vec<u8>>,
     current_frame: Frame<'static>,
     current_frame_data_type: FrameDataType,
@@ -258,6 +260,7 @@ impl<R> Decoder<R> where R: Read {
             bg_color: None,
             global_palette: None,
             buffer: vec![],
+            repeat: Repeat::default(),
             color_output: options.color_output,
             memory_limit: options.memory_limit,
             current_frame: Frame::default(),
@@ -277,6 +280,9 @@ impl<R> Decoder<R> where R: Read {
                     } else {
                         None
                     };
+                },
+                Some(Decoded::Repetitions(repeat)) => {
+                    self.repeat = repeat;
                 },
                 Some(Decoded::HeaderEnd | Decoded::Trailer) => {
                     break
@@ -504,6 +510,11 @@ impl<R> Decoder<R> where R: Read {
     /// Index of the background color in the global palette
     pub fn bg_color(&self) -> Option<usize> {
         self.bg_color.map(|v| v as usize)
+    }
+
+    /// Number of loop repetitions
+    pub fn repeat(&self) -> Repeat {
+        self.repeat
     }
 }
 

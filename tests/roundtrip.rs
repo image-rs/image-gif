@@ -7,11 +7,12 @@ fn encode_roundtrip() {
 }
 
 fn round_trip_from_image(original: &[u8]) {
-    let (width, height, global_palette);
+    let (width, height, global_palette, repeat);
     let frames: Vec<_> = {
         let mut decoder = Decoder::new(original).unwrap();
         width = decoder.width();
         height = decoder.height();
+        repeat = decoder.repeat();
         global_palette = decoder
             .global_palette()
             .unwrap_or_default()
@@ -22,6 +23,7 @@ fn round_trip_from_image(original: &[u8]) {
     };
 
     let mut encoder = Encoder::new(vec![], width, height, &global_palette).unwrap();
+    encoder.set_repeat(repeat).unwrap();
     for frame in &frames {
         encoder.write_frame(frame).unwrap();
     }
@@ -31,6 +33,7 @@ fn round_trip_from_image(original: &[u8]) {
         let mut decoder = Decoder::new(&buffer[..]).expect("Invalid info encoded");
         assert_eq!(decoder.width(), width);
         assert_eq!(decoder.height(), height);
+        assert_eq!(decoder.repeat(), repeat);
         assert_eq!(global_palette, decoder.global_palette().unwrap_or_default());
         let new_frames: Vec<_> = core::iter::from_fn(move || {
             decoder.read_next_frame().unwrap().cloned()

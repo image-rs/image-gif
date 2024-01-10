@@ -87,12 +87,18 @@ impl From<FormatErrorKind> for EncodingError {
 
 
 /// Number of repetitions
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Repeat {
     /// Finite number of repetitions
     Finite(u16),
     /// Infinite number of repetitions
     Infinite,
+}
+
+impl Default for Repeat {
+    fn default() -> Self {
+        Self::Finite(0)
+    }
 }
 
 /// Extension data.
