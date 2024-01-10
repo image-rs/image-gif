@@ -161,8 +161,9 @@ enum State {
     BlockStart(u8),
     BlockEnd,
     ExtensionBlock(AnyExtension),
+    /// Collects data in ext.data
+    ExtensionDataBlock(usize),
     ApplicationExtension,
-    SkipBlock(usize),
     LocalPalette(usize),
     LzwInit(u8),
     /// Decompresses LZW
@@ -552,7 +553,7 @@ impl StreamingDecoder {
                         if let Some(ref mut idx) = self.current_frame_mut().transparent {
                             *idx = b;
                         }
-                        goto!(SkipBlock(0))
+                        goto!(ExtensionDataBlock(0))
                     }
                     ImageFlags => {
                         let local_table = (b & 0b1000_0000) != 0;
@@ -623,7 +624,7 @@ impl StreamingDecoder {
                     }
                     None => {
                         if self.allow_unknown_blocks {
-                            goto!(SkipBlock(b as usize))
+                            goto!(ExtensionDataBlock(b as usize))
                         } else {
                             Err(DecodingError::format("unknown block type encountered"))
                         }
@@ -650,20 +651,20 @@ impl StreamingDecoder {
                             goto!(self.read_control_extension(b)?)
                         }
                         Text | Comment | Application => {
-                            goto!(SkipBlock(b as usize))
+                            goto!(ExtensionDataBlock(b as usize))
                         }
                     }
                 } else {
                     Err(DecodingError::format("unknown block type encountered"))
                 }
             }
-            SkipBlock(left) => {
+            ExtensionDataBlock(left) => {
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
                     self.memory_limit.check_size(self.ext.data.len() + n)?;
                     self.ext.data.try_reserve(n).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
                     self.ext.data.extend_from_slice(&buf[..n]);
-                    goto!(n, SkipBlock(left - n))
+                    goto!(n, ExtensionDataBlock(left - n))
                 } else if b == 0 {
                     self.ext.is_block_end = true;
                     if self.ext.id.into_known() == Some(Extension::Application) {
@@ -673,7 +674,7 @@ impl StreamingDecoder {
                     }
                 } else {
                     self.ext.is_block_end = false;
-                    goto!(SkipBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.id, &self.ext.data))
+                    goto!(ExtensionDataBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.id, &self.ext.data))
                 }
             }
             ApplicationExtension => {
