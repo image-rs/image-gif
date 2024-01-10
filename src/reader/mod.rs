@@ -193,9 +193,7 @@ impl<R: Read> ReadDecoder<R> {
             let (consumed, result) = {
                 let buf = self.reader.fill_buf()?;
                 if buf.is_empty() {
-                    return Err(DecodingError::format(
-                        "unexpected EOF"
-                    ))
+                    return Err(io::ErrorKind::UnexpectedEof.into());
                 }
 
                 // Dead code checks the lifetimes that the later mem::transmute can't.
@@ -327,9 +325,7 @@ impl<R> Decoder<R> where R: Read {
             let (width, height) = (frame.width, frame.height);
             let pixel_bytes = self.memory_limit
                 .buffer_size(self.color_output, width, height)
-                .ok_or_else(|| {
-                    DecodingError::format("image is too large to decode")
-                })?;
+                .ok_or_else(|| io::Error::new(io::ErrorKind::OutOfMemory, "image is too large"))?;
 
             debug_assert_eq!(
                 pixel_bytes, self.buffer_size(),
@@ -411,7 +407,7 @@ impl<R> Decoder<R> where R: Read {
                 ColorOutput::RGBA => {
                     let buffer_size = buf.len() / N_CHANNELS;
                     if buffer_size == 0 {
-                        return Err(DecodingError::Io(io::Error::new(io::ErrorKind::InvalidInput, "odd-sized buffer")));
+                        return Err(DecodingError::format("odd-sized buffer"));
                     }
                     if self.buffer.len() < buffer_size {
                         self.buffer.resize(buffer_size, 0);

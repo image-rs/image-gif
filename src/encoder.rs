@@ -18,6 +18,8 @@ pub enum EncodingFormatError {
     TooManyColors,
     /// The image has no color palette which is required.
     MissingColorPalette,
+    /// LZW data is not valid for GIF. This may happen when wrong buffer is given to `write_lzw_pre_encoded_frame`
+    InvalidMinCodeSize,
 }
 
 impl error::Error for EncodingFormatError {}
@@ -27,6 +29,7 @@ impl fmt::Display for EncodingFormatError {
         match self {
             Self::TooManyColors => write!(fmt, "the image has too many colors"),
             Self::MissingColorPalette => write!(fmt, "the GIF format requires a color palette but none was given"),
+            Self::InvalidMinCodeSize => write!(fmt, "LZW data is invalid"),
         }
     }
 }
@@ -314,7 +317,7 @@ impl<W: Write> Encoder<W> {
         // empty data is allowed
         if let Some(&min_code_size) = frame.buffer.get(0) {
             if min_code_size > 11 || min_code_size < 2 {
-                return Err(EncodingError::from(io::Error::new(io::ErrorKind::InvalidInput, "invalid code size")));
+                return Err(EncodingError::Format(EncodingFormatError::InvalidMinCodeSize));
             }
         }
 

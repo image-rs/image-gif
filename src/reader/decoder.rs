@@ -33,21 +33,6 @@ impl error::Error for DecodingFormatError {
     }
 }
 
-impl DecodingFormatError {
-    // Cold hints the optimizer that the error paths are less likely.
-    //
-    // This function isn't inlined to reduce code size
-    // when it's often used with a string literal.
-    #[cold]
-    fn new(
-        err: impl Into<Box<dyn error::Error + Send + Sync>>,
-    ) -> Self {
-        DecodingFormatError {
-            underlying: err.into(),
-        }
-    }
-}
-
 #[derive(Debug)]
 /// Decoding error.
 pub enum DecodingError {
@@ -58,11 +43,11 @@ pub enum DecodingError {
 }
 
 impl DecodingError {
-    #[inline]
-    pub(crate) fn format(
-        err: impl Into<Box<dyn error::Error + Send + Sync>>,
-    ) -> Self {
-        DecodingError::Format(DecodingFormatError::new(err))
+    #[cold]
+    pub(crate) fn format(err: &'static str) -> Self {
+        DecodingError::Format(DecodingFormatError {
+            underlying: err.into(),
+        })
     }
 }
 
@@ -90,6 +75,13 @@ impl From<io::Error> for DecodingError {
     #[inline]
     fn from(err: io::Error) -> Self {
         DecodingError::Io(err)
+    }
+}
+
+impl From<io::ErrorKind> for DecodingError {
+    #[cold]
+    fn from(err: io::ErrorKind) -> Self {
+        DecodingError::Io(io::Error::from(err))
     }
 }
 
@@ -260,11 +252,11 @@ impl LzwReader {
             Ok(LzwStatus::Done) | Ok(LzwStatus::Ok) => {},
             Ok(LzwStatus::NoProgress) => {
                 if self.check_for_end_code {
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, "No end code in lzw stream"));
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, "no end code in lzw stream"));
                 }
             },
-            Err(LzwError::InvalidCode) => {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid code in LZW stream").into());
+            Err(err @ LzwError::InvalidCode) => {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, err).into());
             }
         }
         Ok((decoded.consumed_in, decoded.consumed_out))
@@ -446,7 +438,7 @@ impl StreamingDecoder {
             })
         );
         
-        let b = *buf.get(0).ok_or_else(|| DecodingError::format("empty buf"))?;
+        let b = *buf.get(0).ok_or_else(|| io::ErrorKind::UnexpectedEof)?;
 
         match self.state {
             Magic(i, mut version) => if i < 6 {
@@ -456,7 +448,7 @@ impl StreamingDecoder {
                 self.version = match &version[3..] {
                     b"87a" => Version::V87a,
                     b"89a" => Version::V89a,
-                    _ => return Err(DecodingError::format("unsupported GIF version"))
+                    _ => return Err(DecodingError::format("malformed GIF header"))
                 };
                 goto!(U16Byte1(U16Value::ScreenWidth, b))
             } else {
@@ -515,7 +507,7 @@ impl StreamingDecoder {
                         let global_table = global_flags & 0x80 != 0;
                         let table_size = if global_table {
                             let table_size = PLTE_CHANNELS * (1 << ((global_flags & 0b111) + 1) as usize);
-                            self.global_color_table.try_reserve_exact(table_size).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                            self.global_color_table.try_reserve_exact(table_size).map_err(|_| io::ErrorKind::OutOfMemory)?;
                             table_size
                         } else {
                             0usize
@@ -569,7 +561,7 @@ impl StreamingDecoder {
                         if local_table {
                             let entries = PLTE_CHANNELS * (1 << (table_size + 1));
                             let mut pal = Vec::new();
-                            pal.try_reserve_exact(entries).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                            pal.try_reserve_exact(entries).map_err(|_| io::ErrorKind::OutOfMemory)?;
                             frame.palette = Some(pal);
                             goto!(LocalPalette(entries))
                         } else {
@@ -646,9 +638,7 @@ impl StreamingDecoder {
                         }
                     }
                 } else {
-                    Err(DecodingError::format(
-                        "unknown extention block encountered"
-                    ))
+                    Err(DecodingError::format("unknown block type encountered"))
                 }
             }
             SkipBlock(left) => {
@@ -699,7 +689,7 @@ impl StreamingDecoder {
                             (len, len)
                         },
                         OutputBuffer::Vec(vec) => {
-                            vec.try_reserve(n).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                            vec.try_reserve(n).map_err(|_| io::ErrorKind::OutOfMemory)?;
                             vec.extend_from_slice(&buf[..n]);
                             (n, n)
                         },
@@ -773,5 +763,5 @@ impl StreamingDecoder {
 
 #[test]
 fn error_cast() {
-    let _ : Box<dyn error::Error> = DecodingError::Format(DecodingFormatError::new("testing")).into();
+    let _ : Box<dyn error::Error> = DecodingError::format("testing").into();
 }
