@@ -220,6 +220,10 @@ impl<R: Read> ReadDecoder<R> {
         }
         Ok(None)
     }
+
+    fn into_inner(self) -> io::BufReader<R> {
+        self.reader
+    }
 }
 
 #[allow(dead_code)]
@@ -497,7 +501,7 @@ impl<R> Decoder<R> where R: Read {
         }
     }
 
-    /// Returns the color palette relevant for the current (next) frame
+    /// Returns the color palette relevant for the frame that has been decoded
     pub fn palette(&self) -> Result<&[u8], DecodingError> {
         // TODO prevent planic
         Ok(match self.current_frame.palette {
@@ -523,7 +527,15 @@ impl<R> Decoder<R> where R: Read {
         self.decoder.decoder.height()
     }
 
+    /// Abort decoding and recover the `io::Read` instance
+    pub fn into_inner(self) -> io::BufReader<R> {
+        self.decoder.into_inner()
+    }
+
     /// Index of the background color in the global palette
+    ///
+    /// In practice this is not used, and the background is
+    /// always transparent
     pub fn bg_color(&self) -> Option<usize> {
         self.bg_color.map(|v| v as usize)
     }
