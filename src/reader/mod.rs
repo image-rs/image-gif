@@ -308,9 +308,9 @@ impl<R> Decoder<R> where R: Read {
         loop {
             match self.decoder.decode_next(&mut OutputBuffer::None)? {
                 Some(Decoded::FrameMetadata(frame, frame_data_type)) => {
-                    self.current_frame = frame.clone();
+                    self.current_frame = frame.take();
                     self.current_frame_data_type = frame_data_type;
-                    if frame.palette.is_none() && self.global_palette.is_none() {
+                    if self.current_frame.palette.is_none() && self.global_palette.is_none() {
                         return Err(DecodingError::format(
                             "no color table available for current frame",
                         ));

@@ -338,6 +338,24 @@ impl Frame<'static> {
         }
         Frame::from_rgba_speed(width, height, &mut vec, speed)
     }
+
+    /// Leaves empty buffer and empty palette behind
+    #[inline]
+    pub(crate) fn take(&mut self) -> Self {
+        Frame {
+            delay: self.delay,
+            dispose: self.dispose,
+            transparent: self.transparent,
+            needs_user_input: self.needs_user_input,
+            top: self.top,
+            left: self.left,
+            width: self.width,
+            height: self.height,
+            interlaced: self.interlaced,
+            palette: std::mem::take(&mut self.palette),
+            buffer: std::mem::replace(&mut self.buffer, Cow::Borrowed(&[])),
+        }
+    }
 }
 
 #[test]
