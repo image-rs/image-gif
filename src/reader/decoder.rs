@@ -364,9 +364,6 @@ impl StreamingDecoder {
                 return self.next_state(buf, write_into);
             }
 
-            // It's not necessary to check here whether state is `Some`,
-            // because `next_state` checks it anyway, and will return `DecodeError`
-            // if the state has already been set to `None`.
             match self.next_state(buf, write_into) {
                 Ok((bytes, Decoded::Nothing)) => {
                     buf = &buf[bytes..];
