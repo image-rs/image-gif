@@ -118,6 +118,7 @@ pub enum FrameDataType {
 
 /// Indicates whether a certain object has been decoded
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Decoded<'a> {
     /// Decoded nothing.
     Nothing,
