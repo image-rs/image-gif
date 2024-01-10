@@ -57,6 +57,19 @@ pub enum MemoryLimit {
 }
 
 impl MemoryLimit {
+    fn check_size(&self, size: usize) -> Result<(), DecodingError> {
+        match self {
+            MemoryLimit::Unlimited => Ok(()),
+            MemoryLimit::Bytes(limit) => {
+                if size as u64 <= limit.get() {
+                    Ok(())
+                } else {
+                    Err(DecodingError::format("memory limit reached"))
+                }
+            },
+        }
+    }
+
     fn buffer_size(&self, color: ColorOutput, width: u16, height: u16) -> Option<usize> {
         let pixels = u64::from(width) * u64::from(height);
 
