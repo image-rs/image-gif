@@ -291,7 +291,6 @@ pub struct StreamingDecoder {
 
 /// One version number of the GIF standard.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum Version {
     /// Version 87a, from May 1987.
     V87a,
