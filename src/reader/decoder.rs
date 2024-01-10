@@ -152,7 +152,7 @@ pub enum Decoded<'a> {
 }
 
 /// Internal state of the GIF decoder
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 enum State {
     Magic(u8, [u8; 6]),
     U16Byte1(U16Value, u8),
@@ -272,7 +272,7 @@ impl LzwReader {
 
 /// GIF decoder which supports streaming
 pub struct StreamingDecoder {
-    state: Option<State>,
+    state: State,
     lzw_reader: LzwReader,
     skip_extensions: bool,
     skip_frame_decoding: bool,
@@ -323,7 +323,7 @@ impl StreamingDecoder {
 
     pub(crate) fn with_options(options: &DecodeOptions) -> Self {
         StreamingDecoder {
-            state: Some(Magic(0, [0; 6])),
+            state: Magic(0, [0; 6]),
             lzw_reader: LzwReader::new(options.check_for_end_code),
             skip_extensions: true,
             skip_frame_decoding: options.skip_frame_decoding,
@@ -439,36 +439,26 @@ impl StreamingDecoder {
     fn next_state(&mut self, buf: &[u8], write_into: &mut OutputBuffer<'_>) -> Result<(usize, Decoded<'_>), DecodingError> {
         macro_rules! goto (
             ($n:expr, $state:expr) => ({
-                self.state = Some($state); 
+                self.state = $state;
                 Ok(($n, Decoded::Nothing))
             });
             ($state:expr) => ({
-                self.state = Some($state); 
+                self.state = $state;
                 Ok((1, Decoded::Nothing))
             });
             ($n:expr, $state:expr, emit $res:expr) => ({
-                self.state = Some($state); 
+                self.state = $state;
                 Ok(($n, $res))
             });
             ($state:expr, emit $res:expr) => ({
-                self.state = Some($state); 
+                self.state = $state;
                 Ok((1, $res))
             })
         );
         
-        let b = buf[0];
-        
-        let state = match self.state.take() {
-            Some(state) => state,
-            None => {
-                // This is not expected to happen, unless `update` has been driven
-                // incorrectly past the end of file.
-                return Err(DecodingError::format("unable to recover from previous error"));
-            },
-        };
-        //println!("{:?}", state);
-        
-        match state {
+        let b = *buf.get(0).ok_or_else(|| DecodingError::format("empty buf"))?;
+
+        match self.state {
             Magic(i, mut version) => if i < 6 {
                 version[i as usize] = b;
                 goto!(Magic(i+1, version))
