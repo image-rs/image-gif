@@ -35,7 +35,7 @@ fn round_trip_from_image(original: &[u8]) {
         assert_eq!(decoder.height(), height);
         assert_eq!(decoder.repeat(), repeat);
         assert_eq!(global_palette, decoder.global_palette().unwrap_or_default());
-        let new_frames: Vec<_> = core::iter::from_fn(move || {
+        let new_frames: Vec<_> = core::iter::from_fn(|| {
             decoder.read_next_frame().unwrap().cloned()
         }).collect();
         assert_eq!(new_frames.len(), frames.len(), "Diverging number of frames");
@@ -52,6 +52,7 @@ fn round_trip_from_image(original: &[u8]) {
             assert_eq!(new.palette, reference.palette);
             assert_eq!(new.buffer, reference.buffer);
         }
+        assert_eq!(0, decoder.into_inner().buffer().len());
     }
 }
 
