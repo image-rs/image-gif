@@ -107,10 +107,10 @@ fn rebuild_without_reencode(image: &[u8]) {
     }
 
     let gif = encoder.into_inner().unwrap();
-    let rebuilt = Decoder::new(&gif[..]).unwrap();
-    let orig = Decoder::new(&image[..]).unwrap();
+    let mut rebuilt = Decoder::new(&gif[..]).unwrap().into_iter();
+    let mut orig = Decoder::new(&image[..]).unwrap().into_iter();
 
-    for (orig, rebuilt) in orig.into_iter().zip(rebuilt) {
+    for (orig, rebuilt) in orig.by_ref().zip(rebuilt.by_ref()) {
         num_frames -= 1;
         let orig = orig.unwrap();
         let rebuilt = rebuilt.unwrap();
@@ -123,6 +123,12 @@ fn rebuild_without_reencode(image: &[u8]) {
         assert_eq!(orig.buffer, rebuilt.buffer);
     }
     assert_eq!(num_frames, 0);
+
+    assert!(orig.next().is_none());
+    assert!(orig.next().is_none());
+
+    assert!(rebuilt.next().is_none());
+    assert_eq!(0, rebuilt.into_inner().buffer().len());
 }
 
 #[test]

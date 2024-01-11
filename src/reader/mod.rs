@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::io;
+use std::iter::FusedIterator;
 use std::mem;
 use std::iter;
 use std::io::prelude::*;
@@ -590,6 +591,17 @@ impl<R: Read> IntoIterator for Decoder<R> {
 pub struct DecoderIter<R: Read> {
     inner: Decoder<R>,
 }
+
+impl<R: Read> DecoderIter<R> {
+    /// Abort decoding and recover the `io::Read` instance
+    ///
+    /// Use `for frame in iter.by_ref()` to be able to call this afterwards.
+    pub fn into_inner(self) -> io::BufReader<R> {
+        self.inner.into_inner()
+    }
+}
+
+impl<R: Read> FusedIterator for DecoderIter<R> {}
 
 impl<R: Read> Iterator for DecoderIter<R> {
     type Item = Result<Frame<'static>, DecodingError>;
