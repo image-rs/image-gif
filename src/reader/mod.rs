@@ -15,7 +15,7 @@ mod converter;
 
 pub use self::decoder::{
     PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, DecodingFormatError,
-    Version, FrameDataType, OutputBuffer
+    Version, FrameDataType, OutputBuffer, FrameDecoder
 };
 
 use self::converter::PixelConverter;
@@ -230,9 +230,9 @@ impl<R: Read> ReadDecoder<R> {
 
     fn decode_next_bytes(&mut self, out: &mut OutputBuffer<'_>) -> Result<usize, DecodingError> {
         match self.decode_next(out)? {
-            Some(Decoded::BytesDecoded(len)) => return Ok(len.get()),
-            Some(Decoded::DataEnd) => return Ok(0),
-            _ => return Err(DecodingError::format("unexpected data")),
+            Some(Decoded::BytesDecoded(len)) => Ok(len.get()),
+            Some(Decoded::DataEnd) => Ok(0),
+            _ => Err(DecodingError::format("unexpected data")),
         }
     }
 }

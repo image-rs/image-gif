@@ -128,7 +128,7 @@ pub use crate::encoder::{Encoder, ExtensionData, Repeat, EncodingError};
 /// Low-level, advanced decoder. Prefer [`Decoder`] instead, which can stream frames too.
 pub mod streaming_decoder {
     pub use crate::common::Block;
-    pub use crate::reader::{StreamingDecoder, OutputBuffer, Decoded, FrameDataType};
+    pub use crate::reader::{Decoded, FrameDataType, FrameDecoder, OutputBuffer, StreamingDecoder};
 }
 
 macro_rules! insert_as_doc {

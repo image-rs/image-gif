@@ -45,7 +45,7 @@ impl PixelConverter {
         }
     }
 
-    pub(crate) fn read_frame(&mut self, frame: &mut Frame<'_>, data_callback: FillBufferCallback<'_>) -> Result<(), DecodingError> {
+    pub(crate) fn check_buffer_size(&mut self, frame: &Frame<'_>) -> Result<usize, DecodingError> {
         let pixel_bytes = self.memory_limit
             .buffer_size(self.color_output, frame.width, frame.height)
             .ok_or_else(|| io::Error::new(io::ErrorKind::OutOfMemory, "image is too large"))?;
@@ -54,7 +54,12 @@ impl PixelConverter {
             pixel_bytes, self.buffer_size(frame),
             "Checked computation diverges from required buffer size"
         );
+        Ok(pixel_bytes)
+    }
 
+    #[inline]
+    pub(crate) fn read_frame(&mut self, frame: &mut Frame<'_>, data_callback: FillBufferCallback<'_>) -> Result<(), DecodingError> {
+        let pixel_bytes = self.check_buffer_size(frame)?;
         let mut vec = match mem::replace(&mut frame.buffer, Cow::Borrowed(&[])) {
             // reuse buffer if possible without reallocating
             Cow::Owned(mut vec) if vec.capacity() >= pixel_bytes => {
@@ -82,7 +87,9 @@ impl PixelConverter {
         }
     }
 
-    pub(crate) fn fill_buffer(&mut self, current_frame: &mut Frame<'_>, mut buf: &mut [u8], data_callback: FillBufferCallback<'_>) -> Result<bool, DecodingError> {
+    /// Use `read_into_buffer` to deinterlace
+    #[inline(never)]
+    pub(crate) fn fill_buffer(&mut self, current_frame: &Frame<'_>, mut buf: &mut [u8], data_callback: FillBufferCallback<'_>) -> Result<bool, DecodingError> {
         loop {
             let decode_into = match self.color_output {
                 // When decoding indexed data, LZW can write the pixels directly
@@ -151,7 +158,10 @@ impl PixelConverter {
         };
     }
 
-    pub(crate) fn read_into_buffer(&mut self, frame: &mut Frame<'_>, buf: &mut [u8], data_callback: FillBufferCallback<'_>) -> Result<(), DecodingError> {
+    /// Applies deinterlacing
+    ///
+    /// Set `frame.interlaced = false` afterwards if you're putting the buffer back into the `Frame`
+    pub(crate) fn read_into_buffer(&mut self, frame: &Frame<'_>, buf: &mut [u8], data_callback: FillBufferCallback<'_>) -> Result<(), DecodingError> {
         if frame.interlaced {
             let width = self.line_length(frame);
             let height = frame.height as usize;

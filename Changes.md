@@ -7,6 +7,8 @@ Features:
    It works together with `write_lzw_pre_encoded_frame` for quick rewriting of GIF files.
  - Added support pre-allocated `Vec`s in `from_palette_pixels`
  - Added ability to recover the `io::Read`er after decoding.
+ - Added support for decompressing `Frame.buffer` with LZW data,
+   which enables fully parallel GIF re-encoding (see examples/parallel.rs),
 
 Optimization:
  - Less buffering, copying, and lower peak memory usage.

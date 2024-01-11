@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cmp;
 use std::error;
 use std::fmt;
@@ -95,7 +96,7 @@ impl From<DecodingFormatError> for DecodingError {
     }
 }
 
-/// Varies depending on skip_frame_decoding
+/// Varies depending on `skip_frame_decoding`
 #[derive(Debug, Copy, Clone)]
 pub enum FrameDataType {
     /// `Frame.buffer` will be regular pixel data
@@ -178,6 +179,8 @@ enum State {
 }
 use self::State::*;
 
+use super::converter::PixelConverter;
+
 /// U16 values that may occur in a GIF image
 #[derive(Debug, Copy, Clone)]
 enum U16Value {
@@ -209,6 +212,69 @@ enum ByteValue {
     CodeSize,
 }
 
+/// Decoder for `Frame::make_lzw_pre_encoded`
+pub struct FrameDecoder {
+    lzw_reader: LzwReader,
+    pixel_converter: PixelConverter,
+}
+
+impl FrameDecoder {
+    /// See also `set_global_palette`
+    #[inline]
+    #[must_use]
+    pub fn new(options: DecodeOptions) -> Self {
+        Self {
+            lzw_reader: LzwReader::new(options.check_for_end_code),
+            pixel_converter: PixelConverter::new(options.color_output, options.memory_limit),
+        }
+    }
+
+    /// Palette used for RGBA conversion
+    #[inline]
+    pub fn set_global_palette(&mut self, palette: Vec<u8>) {
+        self.pixel_converter.set_global_palette(palette);
+    }
+
+    /// Converts the frame in-place, replacing its LZW buffer with pixels.
+    ///
+    /// If you get an error about invalid min code size, the buffer was probably pixels, not compressed data.
+    #[inline]
+    pub fn decode_lzw_encoded_frame(&mut self, frame: &mut Frame<'_>) -> Result<(), DecodingError> {
+        let pixel_bytes = self.pixel_converter.check_buffer_size(frame)?;
+        let mut vec = vec![0; pixel_bytes];
+        self.decode_lzw_encoded_frame_into_buffer(frame, &mut vec)?;
+        frame.buffer = Cow::Owned(vec);
+        frame.interlaced = false;
+        Ok(())
+    }
+
+    /// Converts into the given buffer. It must be [`buffer_size()`] bytes large.
+    ///
+    /// Pixels are always deinterlaced, so update `frame.interlaced` afterwards if you're putting the buffer back into the frame.
+    pub fn decode_lzw_encoded_frame_into_buffer(&mut self, frame: &Frame<'_>, buf: &mut [u8]) -> Result<(), DecodingError> {
+        let (&min_code_size, mut data) = frame.buffer.split_first().unwrap_or((&2, &[]));
+        self.lzw_reader.reset(min_code_size)?;
+        let lzw_reader = &mut self.lzw_reader;
+        self.pixel_converter.read_into_buffer(frame, buf, &mut move |out| {
+            loop {
+                let (bytes_read, bytes_written) = lzw_reader.decode_bytes(data, out)?;
+                data = &data.get(bytes_read..).unwrap_or_default();
+                if bytes_written > 0 || bytes_read == 0 || data.is_empty() {
+                    return Ok(bytes_written)
+                }
+            }
+        })?;
+        Ok(())
+    }
+
+    /// Number of bytes required for `decode_lzw_encoded_frame_into_buffer`
+    #[inline]
+    #[must_use]
+    pub fn buffer_size(&self, frame: &Frame<'_>) -> usize {
+        self.pixel_converter.buffer_size(frame)
+    }
+}
+
 struct LzwReader {
     decoder: Option<LzwDecoder>,
     min_code_size: u8,
@@ -225,8 +291,9 @@ impl LzwReader {
     }
 
     pub fn reset(&mut self, min_code_size: u8) -> Result<(), DecodingError> {
-        // LZW spec: max 12 bits per code
-        if min_code_size > 11 {
+        // LZW spec: max 12 bits per code. This check helps catch confusion
+        // between LZW-compressed buffers and raw pixel data
+        if min_code_size > 11 || min_code_size < 1 {
             return Err(DecodingError::format("invalid minimal code size"));
         }
 

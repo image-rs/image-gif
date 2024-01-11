@@ -22,6 +22,7 @@ color_quant = { version = "1.1", optional = true }
 glob = "0.3"
 criterion = "0.5.1"
 png = "0.17.10"
+rayon = "1.8.0" # for parallel reencoding example
 
 [features]
 default = ["raii_no_panic", "std", "color_quant"]
