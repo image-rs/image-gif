@@ -114,7 +114,7 @@ pub enum FrameDataType {
 /// Indicates whether a certain object has been decoded
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum Decoded<'a> {
+pub enum Decoded {
     /// Decoded nothing.
     Nothing,
     /// Global palette.
@@ -133,16 +133,22 @@ pub enum Decoded<'a> {
     ///
     /// Indicates the label of the extension which might be unknown. A label of `0` is used when
     /// the sub block does not belong to an extension.
-    SubBlockFinished(AnyExtension, &'a [u8]),
+    ///
+    /// Call `last_ext()` to get the data
+    SubBlockFinished(AnyExtension),
     /// Decoded the last (or only) sub-block of a block.
     ///
     /// Indicates the label of the extension which might be unknown. A label of `0` is used when
     /// the sub block does not belong to an extension.
-    BlockFinished(AnyExtension, &'a [u8]),
+    ///
+    /// Call `last_ext()` to get the data
+    BlockFinished(AnyExtension),
     /// Decoded all information of the next frame, except the image data.
     ///
     /// The returned frame does **not** contain any owned image data.
-    FrameMetadata(&'a mut Frame<'static>, FrameDataType),
+    ///
+    /// Call `current_frame_mut()` to access the frame info.
+    FrameMetadata(FrameDataType),
     /// Decoded some data of the current frame. Size is in bytes, always > 0
     BytesDecoded(NonZeroUsize),
     /// Copied (or consumed and discarded) compressed data of the current frame. In bytes.
@@ -353,43 +359,19 @@ impl StreamingDecoder {
         &'a mut self,
         mut buf: &[u8],
         write_into: &mut OutputBuffer<'_>,
-    ) -> Result<(usize, Decoded<'a>), DecodingError> {
+    ) -> Result<(usize, Decoded), DecodingError> {
         // NOTE: Do not change the function signature without double-checking the
         //       unsafe block!
         let len = buf.len();
         while !buf.is_empty() {
-            // This dead code is a compile-check for lifetimes that otherwise aren't checked
-            // due to the `mem::transmute` used later.
-            // Keep it in sync with the other call to `next_state`.
-            #[cfg(test)]
-            if false {
-                return self.next_state(buf, write_into);
-            }
-
-            match self.next_state(buf, write_into) {
-                Ok((bytes, Decoded::Nothing)) => {
-                    buf = &buf[bytes..];
-                }
-                Ok((bytes, result)) => {
-                    buf = &buf[bytes..];
-                    return Ok(
-                        (len-buf.len(), 
-                        // This transmute just casts the lifetime away. Since Rust only 
-                        // has SESE regions, this early return cannot be worked out and
-                        // such that the borrow region of self includes the whole block.
-                        // The explixit lifetimes in the function signature ensure that
-                        // this is safe.
-                        // ### NOTE
-                        // To check that everything is sound, return the result without
-                        // the match (e.g. `return Ok(self.next_state(buf)?)`). If
-                        // it compiles the returned lifetime is correct.
-                        unsafe { 
-                            mem::transmute::<Decoded<'_>, Decoded<'a>>(result)
-                        }
-                    ))
-                }
-                Err(err) => return Err(err),
-            }
+            let (bytes, decoded) = self.next_state(buf, write_into)?;
+            buf = &buf[bytes..];
+            match decoded {
+                Decoded::Nothing => {},
+                result => {
+                    return Ok((len-buf.len(), result));
+                },
+            };
         }
         Ok((len - buf.len(), Decoded::Nothing))
     }
@@ -435,7 +417,7 @@ impl StreamingDecoder {
         self.version
     }
 
-    fn next_state(&mut self, buf: &[u8], write_into: &mut OutputBuffer<'_>) -> Result<(usize, Decoded<'_>), DecodingError> {
+    fn next_state(&mut self, buf: &[u8], write_into: &mut OutputBuffer<'_>) -> Result<(usize, Decoded), DecodingError> {
         macro_rules! goto (
             ($n:expr, $state:expr) => ({
                 self.state = $state;
@@ -669,13 +651,13 @@ impl StreamingDecoder {
                 } else if b == 0 {
                     self.ext.is_block_end = true;
                     if self.ext.id.into_known() == Some(Extension::Application) {
-                        goto!(0, ApplicationExtension, emit Decoded::BlockFinished(self.ext.id, &self.ext.data))
+                        goto!(0, ApplicationExtension, emit Decoded::BlockFinished(self.ext.id))
                     } else {
-                        goto!(BlockEnd, emit Decoded::BlockFinished(self.ext.id, &self.ext.data))
+                        goto!(BlockEnd, emit Decoded::BlockFinished(self.ext.id))
                     }
                 } else {
                     self.ext.is_block_end = false;
-                    goto!(ExtensionDataBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.id, &self.ext.data))
+                    goto!(ExtensionDataBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.id))
                 }
             }
             ApplicationExtension => {
@@ -708,9 +690,9 @@ impl StreamingDecoder {
                 if !self.skip_frame_decoding {
                     // Reset validates the min code size
                     self.lzw_reader.reset(min_code_size)?;
-                    goto!(DecodeSubBlock(b as usize), emit Decoded::FrameMetadata(self.current_frame_mut(), FrameDataType::Pixels))
+                    goto!(DecodeSubBlock(b as usize), emit Decoded::FrameMetadata(FrameDataType::Pixels))
                 } else {
-                    goto!(CopySubBlock(b as usize), emit Decoded::FrameMetadata(self.current_frame_mut(), FrameDataType::Lzw { min_code_size }))
+                    goto!(CopySubBlock(b as usize), emit Decoded::FrameMetadata(FrameDataType::Lzw { min_code_size }))
                 }
             }
             CopySubBlock(left) => {
