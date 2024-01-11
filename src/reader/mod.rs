@@ -209,7 +209,7 @@ struct ReadDecoder<R: Read> {
 }
 
 impl<R: Read> ReadDecoder<R> {
-    fn decode_next(&mut self, write_into: &mut OutputBuffer<'_>) -> Result<Option<Decoded<'_>>, DecodingError> {
+    fn decode_next(&mut self, write_into: &mut OutputBuffer<'_>) -> Result<Option<Decoded>, DecodingError> {
         while !self.at_eof {
             let (consumed, result) = {
                 let buf = self.reader.fill_buf()?;
@@ -231,10 +231,7 @@ impl<R: Read> ReadDecoder<R> {
                 Decoded::BlockStart(Block::Trailer) => {
                     self.at_eof = true;
                 },
-                result => return Ok(unsafe{
-                    // FIXME: #6393
-                    Some(mem::transmute::<Decoded<'_>, Decoded<'_>>(result))
-                }),
+                result => return Ok(Some(result))
             }
         }
         Ok(None)
@@ -330,8 +327,8 @@ impl<R> Decoder<R> where R: Read {
     pub fn next_frame_info(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
         loop {
             match self.decoder.decode_next(&mut OutputBuffer::None)? {
-                Some(Decoded::FrameMetadata(frame, frame_data_type)) => {
-                    self.current_frame = frame.take();
+                Some(Decoded::FrameMetadata(frame_data_type)) => {
+                    self.current_frame = self.decoder.decoder.current_frame_mut().take();
                     self.current_frame_data_type = frame_data_type;
                     if self.current_frame.palette.is_none() && self.global_palette.is_none() {
                         return Err(DecodingError::format(
