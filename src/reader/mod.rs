@@ -366,20 +366,15 @@ impl<R> Decoder<R> where R: Read {
             );
             match self.current_frame_data_type {
                 FrameDataType::Pixels => {
-                    let can_reuse_existing_buffer = matches!(self.current_frame.buffer, Cow::Owned(_)) &&
-                        self.current_frame.buffer.to_mut().capacity() >= pixel_bytes;
-
-                    let mut vec = if can_reuse_existing_buffer {
-                        let mut vec = mem::replace(&mut self.current_frame.buffer, Cow::Borrowed(&[])).into_owned();
-                        vec.resize(pixel_bytes, 0);
-                        vec
-                    } else {
-                        // free mem of the previous buffer, if any
-                        self.current_frame.buffer = Cow::Borrowed(&[]);
+                    let mut vec = match mem::replace(&mut self.current_frame.buffer, Cow::Borrowed(&[])) {
+                        // reuse buffer if possible without reallocating
+                        Cow::Owned(mut vec) if vec.capacity() >= pixel_bytes => {
+                            vec.resize(pixel_bytes, 0);
+                            vec
+                        },
                         // resizing would realloc anyway, and 0-init is faster than a copy
-                        vec![0; pixel_bytes]
+                        _ => vec![0; pixel_bytes],
                     };
-
                     self.read_into_buffer(&mut vec)?;
                     self.current_frame.buffer = Cow::Owned(vec);
                     self.current_frame.interlaced = false;
