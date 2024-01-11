@@ -1,3 +1,22 @@
+# v0.13.0
+
+Features:
+ - Added `Iterator` interface for the `Decoder`
+ - Added reading number of loop repetitions `Decoder::repeat`.
+ - Added `skip_frame_decoding` option to read `Frame.buffer` as LZW data.
+   It works together with `write_lzw_pre_encoded_frame` for quick rewriting of GIF files.
+ - Added support pre-allocated `Vec`s in `from_palette_pixels`
+ - Added ability to recover the `io::Read`er after decoding.
+
+Optimization:
+ - Less buffering, copying, and lower peak memory usage.
+
+Other changes:
+ - Removed `unsafe {}` code.
+ - Enforced memory limit also on metadata extension blocks, and added out-of-memory checks where possible.
+ - `EncodingFormatError` enum is public.
+ - Removed defunct `skip_extensions`
+
 # v0.12.0
 
 Features:
