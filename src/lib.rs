@@ -117,14 +117,19 @@ mod common;
 mod reader;
 mod encoder;
 
-pub use crate::common::{AnyExtension, Block, Extension, DisposalMethod, Frame};
+pub use crate::common::{AnyExtension, Extension, DisposalMethod, Frame};
 
-pub use crate::reader::{StreamingDecoder, Decoded, DecodingError, DecodingFormatError};
-/// `StreamingDecoder` configuration parameters
-pub use crate::reader::{ColorOutput, MemoryLimit, Extensions};
+pub use crate::reader::{DecodingError, DecodingFormatError};
+pub use crate::reader::{ColorOutput, MemoryLimit};
 pub use crate::reader::{DecodeOptions, Decoder, Version};
 
 pub use crate::encoder::{Encoder, ExtensionData, Repeat, EncodingError};
+
+/// Low-level, advanced decoder. Prefer [`Decoder`] instead, which can stream frames too.
+pub mod streaming_decoder {
+    pub use crate::common::Block;
+    pub use crate::reader::{StreamingDecoder, OutputBuffer, Decoded, FrameDataType};
+}
 
 #[cfg(test)]
 #[test]

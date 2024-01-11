@@ -11,7 +11,7 @@ use crate::common::{Block, Frame};
 
 mod decoder;
 pub use self::decoder::{
-    PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, DecodingFormatError, Extensions,
+    PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, DecodingFormatError,
     Version, FrameDataType, OutputBuffer
 };
 
@@ -24,7 +24,7 @@ pub enum ColorOutput {
     /// The decoder expands the image data to 32bit RGBA.
     /// This affects:
     ///
-    ///  - The buffer buffer of the `Frame` returned by `Decoder::read_next_frame`.
+    ///  - The buffer buffer of the `Frame` returned by [`Decoder::read_next_frame`].
     ///  - `Decoder::fill_buffer`, `Decoder::buffer_size` and `Decoder::line_length`.
     RGBA = 0,
     /// The decoder returns the raw indexed data.
@@ -97,7 +97,7 @@ impl MemoryLimit {
     }
 }
 
-/// Options for opening a GIF decoder.
+/// Options for opening a GIF decoder. [`DecodeOptions::read_info`] will start the decoder.
 #[derive(Clone, Debug)]
 pub struct DecodeOptions {
     memory_limit: MemoryLimit,
@@ -156,9 +156,9 @@ impl DecodeOptions {
     ///
     /// The default is false.
     ///
-    /// When turned on, LZW decoding is skipped. `Decoder::read_next_frame` will return
+    /// When turned on, LZW decoding is skipped. [`Decoder::read_next_frame`] will return
     /// compressed LZW bytes in frame's data.
-    /// `Decoder::next_frame_info` will return the metadata of the next frame as usual.
+    /// [`Decoder::next_frame_info`] will return the metadata of the next frame as usual.
     /// This is useful to count frames without incurring the overhead of decoding.
     pub fn skip_frame_decoding(&mut self, skip: bool) {
         self.skip_frame_decoding = skip;
@@ -196,7 +196,7 @@ impl DecodeOptions {
 
     /// Reads the logical screen descriptor including the global color palette
     ///
-    /// Returns a `Decoder`. All decoder configuration has to be done beforehand.
+    /// Returns a [`Decoder`]. All decoder configuration has to be done beforehand.
     pub fn read_info<R: Read>(self, r: R) -> Result<Decoder<R>, DecodingError> {
         Decoder::with_no_init(r, StreamingDecoder::with_options(&self), self).init()
     }
@@ -243,7 +243,7 @@ impl<R: Read> ReadDecoder<R> {
 }
 
 #[allow(dead_code)]
-/// GIF decoder
+/// GIF decoder. Create [`DecodeOptions`] to get started, and call [`DecodeOptions::read_info`].
 pub struct Decoder<R: Read> {
     decoder: ReadDecoder<R>,
     color_output: ColorOutput,

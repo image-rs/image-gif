@@ -95,20 +95,16 @@ impl From<DecodingFormatError> for DecodingError {
     }
 }
 
-/// Configures how extensions should be handled
-#[derive(PartialEq, Debug)]
-pub enum Extensions {
-    /// Saves all extention data
-    Save,
-    /// Skips the data of unknown extensions
-    /// and extracts the data from known ones
-    Skip,
-}
-
+/// Varies depending on skip_frame_decoding
 #[derive(Debug, Copy, Clone)]
 pub enum FrameDataType {
+    /// `Frame.buffer` will be regular pixel data
     Pixels,
-    Lzw { min_code_size: u8 },
+    /// Raw LZW data
+    Lzw {
+        /// Needed for decoding
+        min_code_size: u8,
+    },
 }
 
 /// Indicates whether a certain object has been decoded
@@ -275,7 +271,9 @@ impl LzwReader {
     }
 }
 
-/// GIF decoder which supports streaming
+/// GIF decoder which emits [low-level events](Decoded) for items in the GIF file
+///
+/// To just get GIF frames, use [`crate::Decoder`] instead.
 pub struct StreamingDecoder {
     state: State,
     lzw_reader: LzwReader,
@@ -311,6 +309,7 @@ struct ExtensionData {
     is_block_end: bool,
 }
 
+/// Destination to write to for `StreamingDecoder::update`
 pub enum OutputBuffer<'a> {
     /// Overwrite bytes
     Slice(&'a mut [u8]),
