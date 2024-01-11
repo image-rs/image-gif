@@ -4,6 +4,7 @@ use std::fmt;
 use std::io;
 use std::mem;
 use std::default::Default;
+use std::num::NonZeroUsize;
 
 use crate::Repeat;
 use crate::MemoryLimit;
@@ -142,8 +143,8 @@ pub enum Decoded<'a> {
     ///
     /// The returned frame does **not** contain any owned image data.
     FrameMetadata(&'a mut Frame<'static>, FrameDataType),
-    /// Decoded some data of the current frame.
-    BytesDecoded(usize),
+    /// Decoded some data of the current frame. Size is in bytes, always > 0
+    BytesDecoded(NonZeroUsize),
     /// Copied (or consumed and discarded) compressed data of the current frame. In bytes.
     LzwDataCopied(usize),
     /// No more data available the current frame.
@@ -744,7 +745,7 @@ impl StreamingDecoder {
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
                     if self.lzw_reader.has_ended() || matches!(write_into, OutputBuffer::None) {
-                        return goto!(n, DecodeSubBlock(0), emit Decoded::BytesDecoded(0));
+                        return goto!(n, DecodeSubBlock(0), emit Decoded::Nothing);
                     }
 
                     let (mut consumed, bytes_len) = self.lzw_reader.decode_bytes(&buf[..n], write_into)?;
@@ -754,13 +755,18 @@ impl StreamingDecoder {
                         consumed = n;
                     }
 
-                    goto!(consumed, DecodeSubBlock(left - consumed), emit Decoded::BytesDecoded(bytes_len))
+                    let decoded = if let Some(bytes_len) = NonZeroUsize::new(bytes_len) {
+                        Decoded::BytesDecoded(bytes_len)
+                    } else {
+                        Decoded::Nothing
+                    };
+                    goto!(consumed, DecodeSubBlock(left - consumed), emit decoded)
                 }  else if b != 0 { // decode next sub-block
                     goto!(DecodeSubBlock(b as usize))
                 } else {
                     let (_, bytes_len) = self.lzw_reader.decode_bytes(&[], write_into)?;
 
-                    if bytes_len > 0 {
+                    if let Some(bytes_len) = NonZeroUsize::new(bytes_len) {
                         goto!(0, DecodeSubBlock(0), emit Decoded::BytesDecoded(bytes_len))
                     } else {
                         goto!(0, FrameDecoded)

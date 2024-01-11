@@ -478,6 +478,7 @@ impl<R> Decoder<R> where R: Read {
             };
             match self.decoder.decode_next(&mut OutputBuffer::Slice(decode_into))? {
                 Some(Decoded::BytesDecoded(bytes_decoded)) => {
+                    let bytes_decoded = bytes_decoded.get();
                     match self.color_output {
                         ColorOutput::RGBA => {
                             let transparent = self.current_frame.transparent;
