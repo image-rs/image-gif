@@ -117,7 +117,7 @@ pub enum Decoded<'a> {
     /// Decoded nothing.
     Nothing,
     /// Global palette.
-    GlobalPalette(Vec<u8>),
+    GlobalPalette(Box<[u8]>),
     /// Index of the background color in the global palette.
     BackgroundColor(u8),
     /// Loop count is known
@@ -600,7 +600,7 @@ impl StreamingDecoder {
                         None => self.background_color[0] = 0
                     }
                     goto!(BlockStart(b), emit Decoded::GlobalPalette(
-                        mem::take(&mut self.global_color_table)
+                        mem::take(&mut self.global_color_table).into_boxed_slice()
                     ))
                 }
             }

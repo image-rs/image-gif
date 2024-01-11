@@ -297,7 +297,7 @@ impl<R> Decoder<R> where R: Read {
                 }
                 Some(Decoded::GlobalPalette(palette)) => {
                     self.global_palette = if !palette.is_empty() {
-                        Some(palette)
+                        Some(palette.into())
                     } else {
                         None
                     };
