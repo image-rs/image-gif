@@ -1,3 +1,5 @@
+#![cfg(feature = "std")]
+
 use std::{fs, sync::mpsc, thread, time::Duration};
 
 #[test]

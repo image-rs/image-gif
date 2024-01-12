@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 
 use std::collections::HashMap;
 use std::fs::File;

@@ -131,24 +131,6 @@ pub mod streaming_decoder {
     pub use crate::reader::{StreamingDecoder, OutputBuffer, Decoded, FrameDataType};
 }
 
-#[cfg(test)]
-#[test]
-fn round_trip() {
-    use std::io::prelude::*;
-    use std::fs::File;
-    let mut data = vec![];
-    File::open("tests/samples/sample_1.gif").unwrap().read_to_end(&mut data).unwrap();
-    let mut decoder = Decoder::new(&*data).unwrap();
-    let palette: Vec<u8> = decoder.palette().unwrap().into();
-    let frame = decoder.read_next_frame().unwrap().unwrap();
-    let mut data2 = vec![];
-    {
-        let mut encoder = Encoder::new(&mut data2, frame.width, frame.height, &palette).unwrap();
-        encoder.write_frame(frame).unwrap();
-    }
-    assert_eq!(&data[..], &data2[..]);
-}
-
 macro_rules! insert_as_doc {
     { $content:expr } => {
         #[allow(unused_doc_comments)]

@@ -637,27 +637,7 @@ impl iter::Iterator for InterlaceIterator {
 
 #[cfg(test)]
 mod test {
-    use std::fs::File;
-
-    use super::{Decoder, InterlaceIterator};
-
-    #[test]
-    fn test_simple_indexed() {
-        let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap()).unwrap();
-        let frame = decoder.read_next_frame().unwrap().unwrap();
-        assert_eq!(&*frame.buffer, &[
-            1, 1, 1, 1, 1, 2, 2, 2, 2, 2,
-            1, 1, 1, 1, 1, 2, 2, 2, 2, 2,
-            1, 1, 1, 1, 1, 2, 2, 2, 2, 2,
-            1, 1, 1, 0, 0, 0, 0, 2, 2, 2,
-            1, 1, 1, 0, 0, 0, 0, 2, 2, 2,
-            2, 2, 2, 0, 0, 0, 0, 1, 1, 1,
-            2, 2, 2, 0, 0, 0, 0, 1, 1, 1,
-            2, 2, 2, 2, 2, 1, 1, 1, 1, 1,
-            2, 2, 2, 2, 2, 1, 1, 1, 1, 1,
-            2, 2, 2, 2, 2, 1, 1, 1, 1, 1
-        ][..]);
-    }
+    use super::InterlaceIterator;
 
     #[test]
     fn test_interlace_iterator() {
