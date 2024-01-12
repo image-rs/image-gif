@@ -175,6 +175,7 @@ impl<W: Write> Encoder<W> {
         if frame.buffer.len() < usize::from(frame.width) * usize::from(frame.height) {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "frame.buffer is too small for its width/height").into());
         }
+        debug_assert!((frame.width > 0 && frame.height > 0) || frame.buffer.is_empty(), "the frame has 0 pixels, but non-empty buffer");
         self.write_frame_header(frame)?;
         self.write_image_block(&frame.buffer)
     }
