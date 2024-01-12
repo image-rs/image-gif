@@ -1,3 +1,5 @@
+#![cfg(feature = "std")]
+
 use std::{fs, io};
 use gif::DecodeOptions;
 
