@@ -16,6 +16,8 @@ Other changes:
  - Enforced memory limit also on metadata extension blocks, and added out-of-memory checks where possible.
  - `EncodingFormatError` enum is public.
  - Removed defunct `skip_extensions`
+ - Added validation of frame dimensions. The buffer must be large enough for all pixels,
+   and if the width or height is 0, the buffer must be empty.
 
 # v0.12.0
 
