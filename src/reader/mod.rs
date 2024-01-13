@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::io;
 use std::iter::FusedIterator;
 use std::mem;
-use std::iter;
+
 use std::io::prelude::*;
 use std::num::NonZeroU64;
 use std::convert::{TryFrom, TryInto};
@@ -11,26 +11,15 @@ use crate::Repeat;
 use crate::common::{Block, Frame};
 
 mod decoder;
+mod converter;
+
 pub use self::decoder::{
     PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, DecodingFormatError,
-    Version, FrameDataType, OutputBuffer
+    Version, FrameDataType, OutputBuffer, FrameDecoder
 };
 
-const N_CHANNELS: usize = 4;
-
-/// Output mode for the image data
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[repr(u8)]
-pub enum ColorOutput {
-    /// The decoder expands the image data to 32bit RGBA.
-    /// This affects:
-    ///
-    ///  - The buffer buffer of the `Frame` returned by [`Decoder::read_next_frame`].
-    ///  - `Decoder::fill_buffer`, `Decoder::buffer_size` and `Decoder::line_length`.
-    RGBA = 0,
-    /// The decoder returns the raw indexed data.
-    Indexed = 1,
-}
+use self::converter::PixelConverter;
+pub use self::converter::ColorOutput;
 
 #[derive(Clone, Debug)]
 /// The maximum amount of memory the decoder is allowed to use for each frame
@@ -118,6 +107,7 @@ impl Default for DecodeOptions {
 impl DecodeOptions {
     /// Creates a new decoder builder
     #[must_use]
+    #[inline]
     pub fn new() -> DecodeOptions {
         DecodeOptions {
             memory_limit: MemoryLimit::Bytes(50_000_000.try_into().unwrap()), // 50 MB
@@ -130,6 +120,7 @@ impl DecodeOptions {
     }
 
     /// Configure how color data is decoded.
+    #[inline]
     pub fn set_color_output(&mut self, color: ColorOutput) {
         self.color_output = color;
     }
@@ -210,18 +201,13 @@ struct ReadDecoder<R: Read> {
 }
 
 impl<R: Read> ReadDecoder<R> {
+    #[inline(never)]
     fn decode_next(&mut self, write_into: &mut OutputBuffer<'_>) -> Result<Option<Decoded>, DecodingError> {
         while !self.at_eof {
             let (consumed, result) = {
                 let buf = self.reader.fill_buf()?;
                 if buf.is_empty() {
                     return Err(io::ErrorKind::UnexpectedEof.into());
-                }
-
-                // Dead code checks the lifetimes that the later mem::transmute can't.
-                #[cfg(test)]
-                if false {
-                    return self.decoder.update(buf, write_into).map(|(_, res)| Some(res));
                 }
 
                 self.decoder.update(buf, write_into)?
@@ -241,30 +227,37 @@ impl<R: Read> ReadDecoder<R> {
     fn into_inner(self) -> io::BufReader<R> {
         self.reader
     }
+
+    fn decode_next_bytes(&mut self, out: &mut OutputBuffer<'_>) -> Result<usize, DecodingError> {
+        match self.decode_next(out)? {
+            Some(Decoded::BytesDecoded(len)) => Ok(len.get()),
+            Some(Decoded::DataEnd) => Ok(0),
+            _ => Err(DecodingError::format("unexpected data")),
+        }
+    }
 }
 
 #[allow(dead_code)]
 /// GIF decoder. Create [`DecodeOptions`] to get started, and call [`DecodeOptions::read_info`].
 pub struct Decoder<R: Read> {
     decoder: ReadDecoder<R>,
-    color_output: ColorOutput,
-    memory_limit: MemoryLimit,
+    pixel_converter: PixelConverter,
     bg_color: Option<u8>,
     repeat: Repeat,
-    global_palette: Option<Vec<u8>>,
     current_frame: Frame<'static>,
     current_frame_data_type: FrameDataType,
-    buffer: Vec<u8>,
 }
 
 impl<R> Decoder<R> where R: Read {
     /// Create a new decoder with default options.
+    #[inline]
     pub fn new(reader: R) -> Result<Self, DecodingError> {
         DecodeOptions::new().read_info(reader)
     }
 
     /// Return a builder that allows configuring limits etc.
     #[must_use]
+    #[inline]
     pub fn build() -> DecodeOptions {
         DecodeOptions::new()
     }
@@ -277,11 +270,8 @@ impl<R> Decoder<R> where R: Read {
                 at_eof: false,
             },
             bg_color: None,
-            global_palette: None,
-            buffer: vec![],
+            pixel_converter: PixelConverter::new(options.color_output, options.memory_limit),
             repeat: Repeat::default(),
-            color_output: options.color_output,
-            memory_limit: options.memory_limit,
             current_frame: Frame::default(),
             current_frame_data_type: FrameDataType::Pixels,
         }
@@ -294,11 +284,7 @@ impl<R> Decoder<R> where R: Read {
                     self.bg_color = Some(bg_color);
                 }
                 Some(Decoded::GlobalPalette(palette)) => {
-                    self.global_palette = if !palette.is_empty() {
-                        Some(palette.into())
-                    } else {
-                        None
-                    };
+                    self.pixel_converter.set_global_palette(palette.into());
                 },
                 Some(Decoded::Repetitions(repeat)) => {
                     self.repeat = repeat;
@@ -316,7 +302,7 @@ impl<R> Decoder<R> where R: Read {
             }
         }
         // If the background color is invalid, ignore it
-        if let Some(ref palette) = self.global_palette {
+        if let Some(palette) = self.pixel_converter.global_palette() {
             if self.bg_color.unwrap_or(0) as usize >= (palette.len() / PLTE_CHANNELS) {
                 self.bg_color = None;
             }
@@ -331,7 +317,7 @@ impl<R> Decoder<R> where R: Read {
                 Some(Decoded::FrameMetadata(frame_data_type)) => {
                     self.current_frame = self.decoder.decoder.current_frame_mut().take();
                     self.current_frame_data_type = frame_data_type;
-                    if self.current_frame.palette.is_none() && self.global_palette.is_none() {
+                    if self.current_frame.palette.is_none() && self.global_palette().is_none() {
                         return Err(DecodingError::format(
                             "no color table available for current frame",
                         ));
@@ -352,31 +338,11 @@ impl<R> Decoder<R> where R: Read {
     ///
     /// You can also call `.into_iter()` on the decoder to use it as a regular iterator.
     pub fn read_next_frame(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
-        if let Some(frame) = self.next_frame_info()? {
-            let (width, height) = (frame.width, frame.height);
-            let pixel_bytes = self.memory_limit
-                .buffer_size(self.color_output, width, height)
-                .ok_or_else(|| io::Error::new(io::ErrorKind::OutOfMemory, "image is too large"))?;
-
-            debug_assert_eq!(
-                pixel_bytes, self.buffer_size(),
-                "Checked computation diverges from required buffer size"
-            );
+        if let Some(_) = self.next_frame_info()? {
             match self.current_frame_data_type {
                 FrameDataType::Pixels => {
-                    let mut vec = match mem::replace(&mut self.current_frame.buffer, Cow::Borrowed(&[])) {
-                        // reuse buffer if possible without reallocating
-                        Cow::Owned(mut vec) if vec.capacity() >= pixel_bytes => {
-                            vec.resize(pixel_bytes, 0);
-                            vec
-                        },
-                        // resizing would realloc anyway, and 0-init is faster than a copy
-                        _ => vec![0; pixel_bytes],
-                    };
-                    self.read_into_buffer(&mut vec)?;
-                    self.current_frame.buffer = Cow::Owned(vec);
-                    self.current_frame.interlaced = false;
-                }
+                    self.pixel_converter.read_frame(&mut self.current_frame, &mut |out| self.decoder.decode_next_bytes(out))?;
+                },
                 FrameDataType::Lzw { min_code_size } => {
                     let mut vec = if matches!(self.current_frame.buffer, Cow::Owned(_)) {
                         let mut vec = mem::replace(&mut self.current_frame.buffer, Cow::Borrowed(&[])).into_owned();
@@ -386,7 +352,7 @@ impl<R> Decoder<R> where R: Read {
                         Vec::new()
                     };
                     // Guesstimate 2bpp
-                    vec.try_reserve(usize::from(width) * usize::from(height) / 4)
+                    vec.try_reserve(usize::from(self.current_frame.width) * usize::from(self.current_frame.height) / 4)
                         .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
                     self.copy_lzw_into_buffer(min_code_size, &mut vec)?;
                     self.current_frame.buffer = Cow::Owned(vec);
@@ -412,24 +378,7 @@ impl<R> Decoder<R> where R: Read {
     /// The length of `buf` must be at least `Self::buffer_size`.
     /// Deinterlaces the result.
     pub fn read_into_buffer(&mut self, buf: &mut [u8]) -> Result<(), DecodingError> {
-        if self.current_frame.interlaced {
-            let width = self.line_length();
-            let height = self.current_frame.height as usize;
-            for row in (InterlaceIterator { len: height, next: 0, pass: 0 }) {
-                let start = row * width;
-                // Handle a too-small buffer without panicking
-                let line = buf.get_mut(start .. start + width).ok_or_else(|| DecodingError::format("buffer too small"))?;
-                if !self.fill_buffer(line)? {
-                    return Err(DecodingError::format("image truncated"));
-                }
-            }
-        } else {
-            let buf = buf.get_mut(..self.buffer_size()).ok_or_else(|| DecodingError::format("buffer too small"))?;
-            if !self.fill_buffer(buf)? {
-                return Err(DecodingError::format("image truncated"));
-            }
-        };
-        Ok(())
+        self.pixel_converter.read_into_buffer(&mut self.current_frame, buf, &mut |out| self.decoder.decode_next_bytes(out))
     }
 
     fn copy_lzw_into_buffer(&mut self, min_code_size: u8, buf: &mut Vec<u8>) -> Result<(), DecodingError> {
@@ -451,84 +400,26 @@ impl<R> Decoder<R> where R: Read {
     ///
     /// `Self::next_frame_info` needs to be called beforehand. Returns `true` if the supplied
     /// buffer could be filled completely. Should not be called after `false` had been returned.
-    pub fn fill_buffer(&mut self, mut buf: &mut [u8]) -> Result<bool, DecodingError> {
-        loop {
-            let decode_into = match self.color_output {
-                // When decoding indexed data, LZW can write the pixels directly
-                ColorOutput::Indexed => &mut buf[..],
-                // When decoding RGBA, the pixel data will be expanded by a factor of 4,
-                // and it's simpler to decode indexed pixels to another buffer first
-                ColorOutput::RGBA => {
-                    let buffer_size = buf.len() / N_CHANNELS;
-                    if buffer_size == 0 {
-                        return Err(DecodingError::format("odd-sized buffer"));
-                    }
-                    if self.buffer.len() < buffer_size {
-                        self.buffer.resize(buffer_size, 0);
-                    }
-                    &mut self.buffer[..buffer_size]
-                }
-            };
-            match self.decoder.decode_next(&mut OutputBuffer::Slice(decode_into))? {
-                Some(Decoded::BytesDecoded(bytes_decoded)) => {
-                    let bytes_decoded = bytes_decoded.get();
-                    match self.color_output {
-                        ColorOutput::RGBA => {
-                            let transparent = self.current_frame.transparent;
-                            let palette: &[u8] = self.current_frame.palette.as_deref()
-                                .or(self.global_palette.as_deref())
-                                .unwrap_or_default(); // next_frame_info already checked it won't happen
-
-                            let (pixels, rest) = buf.split_at_mut(bytes_decoded * N_CHANNELS);
-                            buf = rest;
-
-                            for (rgba, idx) in pixels.chunks_exact_mut(N_CHANNELS).zip(self.buffer.iter().copied().take(bytes_decoded)) {
-                                let plte_offset = PLTE_CHANNELS * idx as usize;
-                                if let Some(colors) = palette.get(plte_offset..plte_offset+PLTE_CHANNELS) {
-                                    rgba[0] = colors[0];
-                                    rgba[1] = colors[1];
-                                    rgba[2] = colors[2];
-                                    rgba[3] = if let Some(t) = transparent {
-                                        if t == idx { 0x00 } else { 0xFF }
-                                    } else {
-                                        0xFF
-                                    };
-                                }
-                            }
-                        },
-                        ColorOutput::Indexed => {
-                            buf = &mut buf[bytes_decoded..];
-                        }
-                    }
-                    if buf.is_empty() {
-                        return Ok(true);
-                    }
-                }
-                Some(_) => return Ok(false), // make sure that no important result is missed
-                None => return Ok(false),
-            }
-        }
+    pub fn fill_buffer(&mut self, buf: &mut [u8]) -> Result<bool, DecodingError> {
+        self.pixel_converter.fill_buffer(&mut self.current_frame, buf, &mut |out| self.decoder.decode_next_bytes(out))
     }
 
     /// Output buffer size
     pub fn buffer_size(&self) -> usize {
-        self.line_length() * self.current_frame.height as usize
+        self.pixel_converter.buffer_size(&self.current_frame)
     }
 
     /// Line length of the current frame
     pub fn line_length(&self) -> usize {
-        use self::ColorOutput::*;
-        match self.color_output {
-            RGBA => self.current_frame.width as usize * N_CHANNELS,
-            Indexed => self.current_frame.width as usize,
-        }
+        self.pixel_converter.line_length(&self.current_frame)
     }
 
     /// Returns the color palette relevant for the frame that has been decoded
+    #[inline]
     pub fn palette(&self) -> Result<&[u8], DecodingError> {
         Ok(match self.current_frame.palette {
             Some(ref table) => table,
-            None => self.global_palette.as_ref().ok_or(DecodingError::format(
+            None => self.global_palette().ok_or(DecodingError::format(
                 "no color table available for current frame",
             ))?,
         })
@@ -536,15 +427,17 @@ impl<R> Decoder<R> where R: Read {
 
     /// The global color palette
     pub fn global_palette(&self) -> Option<&[u8]> {
-        self.global_palette.as_deref()
+        self.pixel_converter.global_palette()
     }
 
     /// Width of the image
+    #[inline]
     pub fn width(&self) -> u16 {
         self.decoder.decoder.width()
     }
 
     /// Height of the image
+    #[inline]
     pub fn height(&self) -> u16 {
         self.decoder.decoder.height()
     }
@@ -563,6 +456,7 @@ impl<R> Decoder<R> where R: Read {
     }
 
     /// Number of loop repetitions
+    #[inline]
     pub fn repeat(&self) -> Repeat {
         self.repeat
     }
@@ -604,66 +498,6 @@ impl<R: Read> Iterator for DecoderIter<R> {
             Ok(Some(_)) => self.inner.take_current_frame().map(Ok),
             Ok(None) => None,
             Err(err) => Some(Err(err)),
-        }
-    }
-}
-
-struct InterlaceIterator {
-    len: usize,
-    next: usize,
-    pass: usize,
-}
-
-impl iter::Iterator for InterlaceIterator {
-    type Item = usize;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.len == 0 {
-            return None;
-        }
-        // although the pass never goes out of bounds thanks to len==0,
-        // the optimizer doesn't see it. get()? avoids costlier panicking code.
-        let mut next = self.next + *[8, 8, 4, 2].get(self.pass)?;
-        while next >= self.len {
-            debug_assert!(self.pass < 4);
-            next = *[4, 2, 1, 0].get(self.pass)?;
-            self.pass += 1;
-        }
-        mem::swap(&mut next, &mut self.next);
-        Some(next)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::InterlaceIterator;
-
-    #[test]
-    fn test_interlace_iterator() {
-        for &(len, expect) in &[
-            (0, &[][..]),
-            (1, &[0][..]),
-            (2, &[0, 1][..]),
-            (3, &[0, 2, 1][..]),
-            (4, &[0, 2, 1, 3][..]),
-            (5, &[0, 4, 2, 1, 3][..]),
-            (6, &[0, 4, 2, 1, 3, 5][..]),
-            (7, &[0, 4, 2, 6, 1, 3, 5][..]),
-            (8, &[0, 4, 2, 6, 1, 3, 5, 7][..]),
-            (9, &[0, 8, 4, 2, 6, 1, 3, 5, 7][..]),
-            (10, &[0, 8, 4, 2, 6, 1, 3, 5, 7, 9][..]),
-            (11, &[0, 8, 4, 2, 6, 10, 1, 3, 5, 7, 9][..]),
-            (12, &[0, 8, 4, 2, 6, 10, 1, 3, 5, 7, 9, 11][..]),
-            (13, &[0, 8, 4, 12, 2, 6, 10, 1, 3, 5, 7, 9, 11][..]),
-            (14, &[0, 8, 4, 12, 2, 6, 10, 1, 3, 5, 7, 9, 11, 13][..]),
-            (15, &[0, 8, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13][..]),
-            (16, &[0, 8, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..]),
-            (17, &[0, 8, 16, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..]),
-        ] {
-            let iter = InterlaceIterator { len, next: 0, pass: 0 };
-            let lines = iter.collect::<Vec<_>>();
-            assert_eq!(lines, expect);
         }
     }
 }
