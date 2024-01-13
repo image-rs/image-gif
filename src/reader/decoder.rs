@@ -414,6 +414,7 @@ impl StreamingDecoder {
         self.version
     }
 
+    #[inline]
     fn next_state(&mut self, buf: &[u8], write_into: &mut OutputBuffer<'_>) -> Result<(usize, Decoded), DecodingError> {
         macro_rules! goto (
             ($n:expr, $state:expr) => ({

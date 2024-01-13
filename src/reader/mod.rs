@@ -118,6 +118,7 @@ impl Default for DecodeOptions {
 impl DecodeOptions {
     /// Creates a new decoder builder
     #[must_use]
+    #[inline]
     pub fn new() -> DecodeOptions {
         DecodeOptions {
             memory_limit: MemoryLimit::Bytes(50_000_000.try_into().unwrap()), // 50 MB
@@ -130,6 +131,7 @@ impl DecodeOptions {
     }
 
     /// Configure how color data is decoded.
+    #[inline]
     pub fn set_color_output(&mut self, color: ColorOutput) {
         self.color_output = color;
     }
@@ -210,6 +212,7 @@ struct ReadDecoder<R: Read> {
 }
 
 impl<R: Read> ReadDecoder<R> {
+    #[inline(never)]
     fn decode_next(&mut self, write_into: &mut OutputBuffer<'_>) -> Result<Option<Decoded>, DecodingError> {
         while !self.at_eof {
             let (consumed, result) = {
@@ -253,12 +256,14 @@ pub struct Decoder<R: Read> {
 
 impl<R> Decoder<R> where R: Read {
     /// Create a new decoder with default options.
+    #[inline]
     pub fn new(reader: R) -> Result<Self, DecodingError> {
         DecodeOptions::new().read_info(reader)
     }
 
     /// Return a builder that allows configuring limits etc.
     #[must_use]
+    #[inline]
     pub fn build() -> DecodeOptions {
         DecodeOptions::new()
     }
@@ -519,6 +524,7 @@ impl<R> Decoder<R> where R: Read {
     }
 
     /// Returns the color palette relevant for the frame that has been decoded
+    #[inline]
     pub fn palette(&self) -> Result<&[u8], DecodingError> {
         Ok(match self.current_frame.palette {
             Some(ref table) => table,
@@ -534,11 +540,13 @@ impl<R> Decoder<R> where R: Read {
     }
 
     /// Width of the image
+    #[inline]
     pub fn width(&self) -> u16 {
         self.decoder.decoder.width()
     }
 
     /// Height of the image
+    #[inline]
     pub fn height(&self) -> u16 {
         self.decoder.decoder.height()
     }
@@ -557,6 +565,7 @@ impl<R> Decoder<R> where R: Read {
     }
 
     /// Number of loop repetitions
+    #[inline]
     pub fn repeat(&self) -> Repeat {
         self.repeat
     }
