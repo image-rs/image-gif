@@ -359,8 +359,6 @@ impl StreamingDecoder {
         mut buf: &[u8],
         write_into: &mut OutputBuffer<'_>,
     ) -> Result<(usize, Decoded), DecodingError> {
-        // NOTE: Do not change the function signature without double-checking the
-        //       unsafe block!
         let len = buf.len();
         while !buf.is_empty() {
             let (bytes, decoded) = self.next_state(buf, write_into)?;
