@@ -21,7 +21,7 @@ fn round_trip() {
 
 #[test]
 fn max_frame_size() {
-    let mut encoder = Encoder::new(vec![], 0xFFFF, 0xFFFF, &[]).unwrap();
+    let mut encoder = Encoder::new(vec![], 0xFFFF, 0xFFFF, &[1,2,3]).unwrap();
     let mut f = Frame::default();
     f.width = 0xFFFF;
     f.height = 0xFFFF;
@@ -148,4 +148,15 @@ fn encode_roundtrip_few_colors() {
         assert_eq!(new_frames[0].buffer, pixels);
         assert_eq!(new_frames[1].buffer, pixels);
     }
+}
+
+
+#[test]
+fn palette_fail() {
+    let mut encoder = Encoder::new(vec![], 0xFFFF, 0xFFFF, &[]).unwrap();
+    let mut f = Frame::default();
+    f.width = 1;
+    f.height = 1;
+    f.buffer = [1][..].into();
+    assert!(matches!(encoder.write_frame(&f), Err(gif::EncodingError::Format(gif::EncodingFormatError::MissingColorPalette))));
 }

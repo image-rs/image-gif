@@ -123,7 +123,7 @@ pub use crate::reader::{DecodingError, DecodingFormatError};
 pub use crate::reader::{ColorOutput, MemoryLimit};
 pub use crate::reader::{DecodeOptions, Decoder, Version};
 
-pub use crate::encoder::{Encoder, ExtensionData, Repeat, EncodingError};
+pub use crate::encoder::{Encoder, ExtensionData, Repeat, EncodingError, EncodingFormatError};
 
 /// Low-level, advanced decoder. Prefer [`Decoder`] instead, which can stream frames too.
 pub mod streaming_decoder {
