@@ -302,7 +302,7 @@ impl LzwReader {
             self.min_code_size = min_code_size;
             self.decoder = Some(LzwDecoder::new(BitOrder::Lsb, min_code_size));
         } else {
-            self.decoder.as_mut().unwrap().reset();
+            self.decoder.as_mut().ok_or_else(|| DecodingError::format("bad state"))?.reset();
         }
 
         Ok(())
@@ -455,7 +455,7 @@ impl StreamingDecoder {
         let len = buf.len();
         while !buf.is_empty() {
             let (bytes, decoded) = self.next_state(buf, write_into)?;
-            buf = &buf[bytes..];
+            buf = buf.get(bytes..).unwrap_or_default();
             match decoded {
                 Decoded::Nothing => {},
                 result => {
@@ -472,18 +472,24 @@ impl StreamingDecoder {
         (self.ext.id, &self.ext.data, self.ext.is_block_end)
     }
 
-    #[inline(always)]
     /// Current frame info as a mutable ref.
+    #[must_use]
+    #[track_caller]
     pub fn current_frame_mut(&mut self) -> &mut Frame<'static> {
         self.current.as_mut().unwrap()
     }
 
     /// Current frame info as a ref.
-    #[inline(always)]
     #[track_caller]
     #[must_use]
     pub fn current_frame(&self) -> &Frame<'static> {
         self.current.as_ref().unwrap()
+    }
+
+    /// Current frame info as a mutable ref.
+    #[inline(always)]
+    fn try_current_frame(&mut self) -> Result<&mut Frame<'static>, DecodingError> {
+        self.current.as_mut().ok_or_else(|| DecodingError::format("bad state"))
     }
 
     /// Width of the image
@@ -558,25 +564,25 @@ impl StreamingDecoder {
                         goto!(Byte(ByteValue::GlobalFlags))
                     },
                     (Delay, delay) => {
-                        self.current_frame_mut().delay = delay;
+                        self.try_current_frame()?.delay = delay;
                         self.ext.data.push(value as u8);
                         self.ext.data.push(b);
                         goto!(Byte(ByteValue::TransparentIdx))
                     },
                     (ImageLeft, left) => {
-                        self.current_frame_mut().left = left;
+                        self.try_current_frame()?.left = left;
                         goto!(U16(U16Value::ImageTop))
                     },
                     (ImageTop, top) => {
-                        self.current_frame_mut().top = top;
+                        self.try_current_frame()?.top = top;
                         goto!(U16(U16Value::ImageWidth))
                     },
                     (ImageWidth, width) => {
-                        self.current_frame_mut().width = width;
+                        self.try_current_frame()?.width = width;
                         goto!(U16(U16Value::ImageHeight))
                     },
                     (ImageHeight, height) => {
-                        self.current_frame_mut().height = height;
+                        self.try_current_frame()?.height = height;
                         goto!(Byte(ByteValue::ImageFlags))
                     }
                 }
@@ -606,7 +612,7 @@ impl StreamingDecoder {
                     },
                     ControlFlags => {
                         self.ext.data.push(b);
-                        let frame = self.current_frame_mut();
+                        let frame = self.try_current_frame()?;
                         let control_flags = b;
                         if control_flags & 1 != 0 {
                             // Set to Some(...), gets overwritten later
@@ -624,7 +630,7 @@ impl StreamingDecoder {
                     }
                     TransparentIdx => {
                         self.ext.data.push(b);
-                        if let Some(ref mut idx) = self.current_frame_mut().transparent {
+                        if let Some(ref mut idx) = self.try_current_frame()?.transparent {
                             *idx = b;
                         }
                         goto!(ExtensionDataBlock(0))
@@ -636,7 +642,7 @@ impl StreamingDecoder {
                         let check_frame_consistency = self.check_frame_consistency;
                         let (width, height) = (self.width, self.height);
 
-                        let frame = self.current_frame_mut();
+                        let frame = self.try_current_frame()?;
 
                         frame.interlaced = interlaced;
                         if check_frame_consistency {
@@ -766,7 +772,7 @@ impl StreamingDecoder {
                 let n = cmp::min(left, buf.len());
                 if left > 0 {
                     let src = &buf[..n];
-                    if let Some(pal) = self.current_frame_mut().palette.as_mut() {
+                    if let Some(pal) = self.try_current_frame()?.palette.as_mut() {
                         // capacity has already been reserved in ImageFlags
                         if pal.capacity() - pal.len() >= src.len() {
                             pal.extend_from_slice(src);
