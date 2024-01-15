@@ -148,13 +148,13 @@ impl<W: Write> Encoder<W> {
 
     /// Writes the global color palette.
     fn write_global_palette(mut self, palette: &[u8]) -> Result<Self, EncodingError> {
-        self.global_palette = true;
         let mut flags = 0;
         flags |= 0b1000_0000;
         let num_colors = palette.len() / 3;
         if num_colors > 256 {
             return Err(EncodingError::from(EncodingFormatError::TooManyColors));
         }
+        self.global_palette = num_colors > 0;
         // Size of global color table.
         flags |= flag_size(num_colors);
         // Color resolution .. FIXME. This is mostly ignored (by ImageMagick at least) but hey, we
