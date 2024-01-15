@@ -406,7 +406,7 @@ impl<R> Decoder<R> where R: Read {
 
     /// Output buffer size
     pub fn buffer_size(&self) -> usize {
-        self.pixel_converter.buffer_size(&self.current_frame)
+        self.pixel_converter.buffer_size(&self.current_frame).unwrap()
     }
 
     /// Line length of the current frame

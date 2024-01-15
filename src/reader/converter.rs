@@ -51,7 +51,7 @@ impl PixelConverter {
             .ok_or_else(|| io::Error::new(io::ErrorKind::OutOfMemory, "image is too large"))?;
 
         debug_assert_eq!(
-            pixel_bytes, self.buffer_size(frame),
+            pixel_bytes, self.buffer_size(frame).unwrap(),
             "Checked computation diverges from required buffer size"
         );
         Ok(pixel_bytes)
@@ -75,10 +75,12 @@ impl PixelConverter {
         Ok(())
     }
 
-    pub(crate) fn buffer_size(&self, frame: &Frame<'_>) -> usize {
-        self.line_length(frame) * frame.height as usize
+    #[inline]
+    pub(crate) fn buffer_size(&self, frame: &Frame<'_>) -> Option<usize> {
+        self.line_length(frame).checked_mul(frame.height as usize)
     }
 
+    #[inline]
     pub(crate) fn line_length(&self, frame: &Frame<'_>) -> usize {
         use self::ColorOutput::*;
         match self.color_output {
@@ -164,17 +166,19 @@ impl PixelConverter {
     pub(crate) fn read_into_buffer(&mut self, frame: &Frame<'_>, buf: &mut [u8], data_callback: FillBufferCallback<'_>) -> Result<(), DecodingError> {
         if frame.interlaced {
             let width = self.line_length(frame);
-            let height = frame.height as usize;
-            for row in (InterlaceIterator { len: height, next: 0, pass: 0 }) {
+            for row in (InterlaceIterator { len: frame.height, next: 0, pass: 0 }) {
+                // this can't overflow 32-bit, because row never equals (maximum) height
                 let start = row * width;
-                // Handle a too-small buffer without panicking
-                let line = buf.get_mut(start .. start + width).ok_or_else(|| DecodingError::format("buffer too small"))?;
+                // Handle a too-small buffer and 32-bit usize overflow without panicking
+                let line = buf.get_mut(start..).and_then(|b| b.get_mut(..width))
+                    .ok_or_else(|| DecodingError::format("buffer too small"))?;
                 if !self.fill_buffer(frame, line, data_callback)? {
                     return Err(DecodingError::format("image truncated"));
                 }
             }
         } else {
-            let buf = buf.get_mut(..self.buffer_size(frame)).ok_or_else(|| DecodingError::format("buffer too small"))?;
+            let buf = self.buffer_size(frame).and_then(|buffer_size| buf.get_mut(..buffer_size))
+                .ok_or_else(|| DecodingError::format("buffer too small"))?;
             if !self.fill_buffer(frame, buf, data_callback)? {
                 return Err(DecodingError::format("image truncated"));
             }
@@ -184,7 +188,7 @@ impl PixelConverter {
 }
 
 struct InterlaceIterator {
-    len: usize,
+    len: u16,
     next: usize,
     pass: usize,
 }
@@ -200,7 +204,7 @@ impl iter::Iterator for InterlaceIterator {
         // although the pass never goes out of bounds thanks to len==0,
         // the optimizer doesn't see it. get()? avoids costlier panicking code.
         let mut next = self.next + *[8, 8, 4, 2].get(self.pass)?;
-        while next >= self.len {
+        while next >= self.len as usize {
             debug_assert!(self.pass < 4);
             next = *[4, 2, 1, 0].get(self.pass)?;
             self.pass += 1;
@@ -240,5 +244,11 @@ mod test {
             let lines = iter.collect::<Vec<_>>();
             assert_eq!(lines, expect);
         }
+    }
+
+    #[test]
+    fn interlace_max() {
+        let iter = InterlaceIterator { len: 0xFFFF, next: 0, pass: 0 };
+        assert_eq!(65533, iter.last().unwrap());
     }
 }
