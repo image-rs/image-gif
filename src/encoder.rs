@@ -133,14 +133,11 @@ impl<W: Write> Encoder<W> {
     /// `global_palette` gives the global color palette in the format `[r, g, b, ...]`,
     /// if no global palette shall be used an empty slice may be supplied.
     pub fn new(w: W, width: u16, height: u16, global_palette: &[u8]) -> Result<Self, EncodingError> {
-        let buffer_size = (width as usize) * (height as usize);
-        let mut buffer = Vec::new();
-        buffer.try_reserve_exact(buffer_size).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
         Encoder {
             w: Some(w),
             global_palette: false,
             width, height,
-            buffer,
+            buffer: Vec::new(),
         }.write_global_palette(global_palette)
     }
 
@@ -218,6 +215,8 @@ impl<W: Write> Encoder<W> {
 
     fn write_image_block(&mut self, data: &[u8]) -> Result<(), EncodingError> {
         self.buffer.clear();
+        self.buffer.try_reserve(data.len() / 4)
+            .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
         lzw_encode(data, &mut self.buffer);
 
         let writer = self.w.as_mut().unwrap();
