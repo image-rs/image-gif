@@ -147,7 +147,7 @@ impl<W: Write> Encoder<W> {
     }
 
     /// Writes the global color palette.
-    pub fn write_global_palette(mut self, palette: &[u8]) -> Result<Self, EncodingError> {
+    fn write_global_palette(mut self, palette: &[u8]) -> Result<Self, EncodingError> {
         self.global_palette = true;
         let mut flags = 0;
         flags |= 0b1000_0000;
