@@ -386,6 +386,32 @@ pub enum OutputBuffer<'a> {
     None,
 }
 
+impl<'a> OutputBuffer<'a> {
+    fn append(&mut self, buf: &[u8], memory_limit: &MemoryLimit) -> Result<(usize, usize), DecodingError> {
+        let (consumed, copied) = match self {
+            OutputBuffer::Slice(slice) => {
+                let len = cmp::min(buf.len(), slice.len());
+                slice[..len].copy_from_slice(&buf[..len]);
+                (len, len)
+            },
+            OutputBuffer::Vec(vec) => {
+                let vec: &mut Vec<u8> = vec;
+                let len = buf.len();
+                memory_limit.check_size(vec.len() + len)?;
+                vec.try_reserve(len).map_err(|_| io::ErrorKind::OutOfMemory)?;
+                if vec.capacity() - vec.len() >= len {
+                    vec.extend_from_slice(buf);
+                }
+                (len, len)
+            },
+            // It's valid that bytes are discarded. For example,
+            // when using next_frame_info() with skip_frame_decoding to only get metadata.
+            OutputBuffer::None => (buf.len(), 0),
+        };
+        Ok((consumed, copied))
+    }
+}
+
 impl StreamingDecoder {
     /// Creates a new streaming decoder
     #[must_use]
@@ -764,22 +790,7 @@ impl StreamingDecoder {
                 debug_assert!(self.skip_frame_decoding);
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
-                    let (consumed, copied) = match write_into {
-                        OutputBuffer::Slice(slice) => {
-                            let len = cmp::min(n, slice.len());
-                            slice[..len].copy_from_slice(&buf[..len]);
-                            (len, len)
-                        },
-                        OutputBuffer::Vec(vec) => {
-                            self.memory_limit.check_size(vec.len() + n)?;
-                            vec.try_reserve(n).map_err(|_| io::ErrorKind::OutOfMemory)?;
-                            vec.extend_from_slice(&buf[..n]);
-                            (n, n)
-                        },
-                        // It's valid that bytes are discarded. For example,
-                        // when using next_frame_info() with skip_frame_decoding to only get metadata.
-                        OutputBuffer::None => (n, 0),
-                    };
+                    let (consumed, copied) = write_into.append(&buf[..n], &self.memory_limit)?;
                     goto!(consumed, CopySubBlock(left - consumed), emit Decoded::LzwDataCopied(copied))
                 } else if b != 0 {
                     goto!(CopySubBlock(b as usize))
