@@ -271,7 +271,7 @@ impl FrameDecoder {
     #[inline]
     #[must_use]
     pub fn buffer_size(&self, frame: &Frame<'_>) -> usize {
-        self.pixel_converter.buffer_size(frame)
+        self.pixel_converter.buffer_size(frame).unwrap()
     }
 }
 

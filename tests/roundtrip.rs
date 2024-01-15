@@ -20,6 +20,25 @@ fn round_trip() {
 }
 
 #[test]
+fn max_frame_size() {
+    let mut encoder = Encoder::new(vec![], 0xFFFF, 0xFFFF, &[]).unwrap();
+    let mut f = Frame::default();
+    f.width = 0xFFFF;
+    f.height = 0xFFFF;
+    f.buffer = [5][..].into();
+    encoder.write_lzw_pre_encoded_frame(&f).unwrap();
+    let res = encoder.into_inner().unwrap();
+    let mut decoder = Decoder::new(&res[..]).unwrap();
+    let f = decoder.next_frame_info().unwrap().unwrap();
+    assert_eq!(f.width, 0xFFFF);
+    assert_eq!(f.height, 0xFFFF);
+    assert_eq!(decoder.line_length(), 0xFFFF);
+
+    #[cfg(target_pointer_width = "64")]
+    assert_eq!(decoder.buffer_size(), 0xFFFF * 0xFFFF);
+}
+
+#[test]
 fn encode_roundtrip() {
     const ORIGINAL: &[u8] = include_bytes!("samples/2x2.gif");
     round_trip_from_image(ORIGINAL);
