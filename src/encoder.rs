@@ -172,7 +172,7 @@ impl<W: Write> Encoder<W> {
     ///
     /// Note: This function also writes a control extension if necessary.
     pub fn write_frame(&mut self, frame: &Frame<'_>) -> Result<(), EncodingError> {
-        if frame.buffer.len() < usize::from(frame.width) * usize::from(frame.height) {
+        if usize::from(frame.width).checked_mul(usize::from(frame.height)).map_or(true, |size| frame.buffer.len() < size) {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "frame.buffer is too small for its width/height").into());
         }
         debug_assert!((frame.width > 0 && frame.height > 0) || frame.buffer.is_empty(), "the frame has 0 pixels, but non-empty buffer");
