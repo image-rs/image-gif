@@ -550,43 +550,6 @@ impl StreamingDecoder {
             } else {
                 Err(DecodingError::format("malformed GIF header"))
             },
-            U16(next) => goto!(U16Byte1(next, b)),
-            U16Byte1(next, value) => {
-                use self::U16Value::*;
-                let value = (u16::from(b) << 8) | u16::from(value);
-                match (next, value) {
-                    (ScreenWidth, width) => {
-                        self.width = width;
-                        goto!(U16(U16Value::ScreenHeight))
-                    },
-                    (ScreenHeight, height) => {
-                        self.height = height;
-                        goto!(Byte(ByteValue::GlobalFlags))
-                    },
-                    (Delay, delay) => {
-                        self.try_current_frame()?.delay = delay;
-                        self.ext.data.push(value as u8);
-                        self.ext.data.push(b);
-                        goto!(Byte(ByteValue::TransparentIdx))
-                    },
-                    (ImageLeft, left) => {
-                        self.try_current_frame()?.left = left;
-                        goto!(U16(U16Value::ImageTop))
-                    },
-                    (ImageTop, top) => {
-                        self.try_current_frame()?.top = top;
-                        goto!(U16(U16Value::ImageWidth))
-                    },
-                    (ImageWidth, width) => {
-                        self.try_current_frame()?.width = width;
-                        goto!(U16(U16Value::ImageHeight))
-                    },
-                    (ImageHeight, height) => {
-                        self.try_current_frame()?.height = height;
-                        goto!(Byte(ByteValue::ImageFlags))
-                    }
-                }
-            }
             Byte(value) => {
                 use self::ByteValue::*;
                 match value {
@@ -837,6 +800,10 @@ impl StreamingDecoder {
                     }
                 }
             }
+            U16(next) => goto!(U16Byte1(next, b)),
+            U16Byte1(next, value) => {
+                goto!(self.read_second_byte(next, value, b)?)
+            }
             FrameDecoded => {
                 // end of image data reached
                 self.current = None;
@@ -845,6 +812,43 @@ impl StreamingDecoder {
             }
             Trailer => goto!(0, Trailer, emit Decoded::Nothing),
         }
+    }
+
+    fn read_second_byte(&mut self, next: U16Value, value: u8, b: u8) -> Result<State, DecodingError> {
+        use self::U16Value::*;
+        let value = (u16::from(b) << 8) | u16::from(value);
+        Ok(match (next, value) {
+            (ScreenWidth, width) => {
+                self.width = width;
+                U16(U16Value::ScreenHeight)
+            },
+            (ScreenHeight, height) => {
+                self.height = height;
+                Byte(ByteValue::GlobalFlags)
+            },
+            (Delay, delay) => {
+                self.try_current_frame()?.delay = delay;
+                self.ext.data.push(value as u8);
+                self.ext.data.push(b);
+                Byte(ByteValue::TransparentIdx)
+            },
+            (ImageLeft, left) => {
+                self.try_current_frame()?.left = left;
+                U16(U16Value::ImageTop)
+            },
+            (ImageTop, top) => {
+                self.try_current_frame()?.top = top;
+                U16(U16Value::ImageWidth)
+            },
+            (ImageWidth, width) => {
+                self.try_current_frame()?.width = width;
+                U16(U16Value::ImageHeight)
+            },
+            (ImageHeight, height) => {
+                self.try_current_frame()?.height = height;
+                Byte(ByteValue::ImageFlags)
+            }
+        })
     }
 
     fn read_control_extension(&mut self, b: u8) -> Result<State, DecodingError> {
