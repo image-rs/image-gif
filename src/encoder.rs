@@ -366,7 +366,17 @@ impl<W: Write> Encoder<W> {
 ///
 /// The first byte is the minimum code size, followed by LZW data.
 fn lzw_encode(data: &[u8], buffer: &mut Vec<u8>) {
-    let min_code_size = match flag_size(1 + data.iter().copied().max().unwrap_or(0) as usize) + 1 {
+    let mut max_byte = 0;
+    for &byte in data {
+        if byte > max_byte {
+            max_byte = byte;
+            // code size is the same after that
+            if byte > 128 {
+                break;
+            }
+        }
+    }
+    let min_code_size = match flag_size(1 + max_byte as usize) + 1 {
         1 => 2, // As per gif spec: The minimal code size has to be >= 2
         n => n,
     };
