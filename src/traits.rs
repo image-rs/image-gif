@@ -15,7 +15,7 @@ pub trait WriteBytesExt<T> {
 }
 
 impl<W: io::Write + ?Sized> WriteBytesExt<u8> for W {
-    #[inline]
+    #[inline(always)]
     fn write_le(&mut self, n: u8) -> io::Result<()> {
         self.write_all(&[n])
     }
