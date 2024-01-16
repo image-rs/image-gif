@@ -184,17 +184,11 @@ impl<W: Write> Encoder<W> {
             frame.needs_user_input,
             frame.transparent,
         ))?;
-        let writer = self.w.as_mut().unwrap();
-        writer.write_le(Block::Image as u8)?;
-        writer.write_le(frame.left)?;
-        writer.write_le(frame.top)?;
-        writer.write_le(frame.width)?;
-        writer.write_le(frame.height)?;
         let mut flags = 0;
         if frame.interlaced {
             flags |= 0b0100_0000;
         }
-        match frame.palette {
+        let palette = match frame.palette {
             Some(ref palette) => {
                 flags |= 0b1000_0000;
                 let num_colors = palette.len() / 3;
@@ -202,15 +196,24 @@ impl<W: Write> Encoder<W> {
                     return Err(EncodingError::from(EncodingFormatError::TooManyColors));
                 }
                 flags |= flag_size(num_colors);
-                writer.write_le(flags)?;
-                self.write_color_table(palette)
+                Some(palette)
             },
-            None => if !self.global_palette {
-                Err(EncodingError::from(EncodingFormatError::MissingColorPalette))
-            } else {
-                writer.write_le(flags).map_err(Into::into)
-            }
+            None if self.global_palette => None,
+            _ => return Err(EncodingError::from(EncodingFormatError::MissingColorPalette))
+        };
+        let mut tmp = tmp_buf::<10>();
+        tmp.write_le(Block::Image as u8)?;
+        tmp.write_le(frame.left)?;
+        tmp.write_le(frame.top)?;
+        tmp.write_le(frame.width)?;
+        tmp.write_le(frame.height)?;
+        tmp.write_le(flags)?;
+        let writer = self.writer()?;
+        tmp.finish(&mut *writer)?;
+        if let Some(palette) = palette {
+            writer.write_all(palette)?;
         }
+        Ok(())
     }
 
     fn write_image_block(&mut self, data: &[u8]) -> Result<(), EncodingError> {
@@ -219,7 +222,7 @@ impl<W: Write> Encoder<W> {
             .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
         lzw_encode(data, &mut self.buffer);
 
-        let writer = self.w.as_mut().unwrap();
+        let writer = self.w.as_mut().ok_or(io::Error::from(io::ErrorKind::Unsupported))?;
         Self::write_encoded_image_block(writer, &self.buffer)
     }
 
@@ -243,13 +246,13 @@ impl<W: Write> Encoder<W> {
     }
 
     fn write_color_table(&mut self, table: &[u8]) -> Result<(), EncodingError> {
-        let writer = self.w.as_mut().unwrap();
+        let writer = self.writer()?;
         let num_colors = table.len() / 3;
         if num_colors > 256 {
             return Err(EncodingError::from(EncodingFormatError::TooManyColors));
         }
-        let size = flag_size(num_colors);
         writer.write_all(&table[..num_colors * 3])?;
+        let size = flag_size(num_colors);
         // Waste some space as of gif spec
         for _ in 0..((2 << size) - num_colors) {
             writer.write_all(&[0, 0, 0])?;
@@ -267,26 +270,30 @@ impl<W: Write> Encoder<W> {
         if let Repetitions(Repeat::Finite(0)) = extension {
             return Ok(());
         }
-        let writer = self.w.as_mut().unwrap();
+        let writer = self.writer()?;
         writer.write_le(Block::Extension as u8)?;
         match extension {
             Control { flags, delay, trns } => {
-                writer.write_le(Extension::Control as u8)?;
-                writer.write_le(4u8)?;
-                writer.write_le(flags)?;
-                writer.write_le(delay)?;
-                writer.write_le(trns)?;
+                let mut tmp = tmp_buf::<6>();
+                tmp.write_le(Extension::Control as u8)?;
+                tmp.write_le(4u8)?;
+                tmp.write_le(flags)?;
+                tmp.write_le(delay)?;
+                tmp.write_le(trns)?;
+                tmp.finish(&mut *writer)?;
             }
             Repetitions(repeat) => {
-                writer.write_le(Extension::Application as u8)?;
-                writer.write_le(11u8)?;
-                writer.write_all(b"NETSCAPE2.0")?;
-                writer.write_le(3u8)?;
-                writer.write_le(1u8)?;
-                match repeat {
-                    Repeat::Finite(no) => writer.write_le(no)?,
-                    Repeat::Infinite => writer.write_le(0u16)?,
-                }
+                let mut tmp = tmp_buf::<17>();
+                tmp.write_le(Extension::Application as u8)?;
+                tmp.write_le(11u8)?;
+                tmp.write_all(b"NETSCAPE2.0")?;
+                tmp.write_le(3u8)?;
+                tmp.write_le(1u8)?;
+                tmp.write_le(match repeat {
+                    Repeat::Finite(no) => no,
+                    Repeat::Infinite => 0u16,
+                })?;
+                tmp.finish(&mut *writer)?;
             }
         }
         writer.write_le(0u8).map_err(Into::into)
@@ -298,7 +305,7 @@ impl<W: Write> Encoder<W> {
     /// identifier (e.g. `Extension::Application as u8`). `data` are the extension payload blocks. If any
     /// contained slice has a lenght > 255 it is automatically divided into sub-blocks.
     pub fn write_raw_extension(&mut self, func: AnyExtension, data: &[&[u8]]) -> io::Result<()> {
-        let writer = self.w.as_mut().unwrap();
+        let writer = self.writer()?;
         writer.write_le(Block::Extension as u8)?;
         writer.write_le(func.0)?;
         for block in data {
@@ -323,19 +330,20 @@ impl<W: Write> Encoder<W> {
         }
 
         self.write_frame_header(frame)?;
-        let writer = self.w.as_mut().unwrap();
+        let writer = self.writer()?;
         Self::write_encoded_image_block(writer, &frame.buffer)
     }
 
     /// Writes the logical screen desriptor
     fn write_screen_desc(&mut self, flags: u8) -> io::Result<()> {
-        let writer = self.w.as_mut().unwrap();
-        writer.write_all(b"GIF89a")?;
-        writer.write_le(self.width)?;
-        writer.write_le(self.height)?;
-        writer.write_le(flags)?; // packed field
-        writer.write_le(0u8)?; // bg index
-        writer.write_le(0u8) // aspect ratio
+        let mut tmp = tmp_buf::<13>();
+        tmp.write_all(b"GIF89a")?;
+        tmp.write_le(self.width)?;
+        tmp.write_le(self.height)?;
+        tmp.write_le(flags)?; // packed field
+        tmp.write_le(0u8)?; // bg index
+        tmp.write_le(0u8)?; // aspect ratio
+        tmp.finish(self.writer()?)
     }
 
     /// Gets a reference to the writer instance used by this encoder.
@@ -353,12 +361,17 @@ impl<W: Write> Encoder<W> {
     /// Finishes writing, and returns the `io::Write` instance used by this encoder
     pub fn into_inner(mut self) -> io::Result<W> {
         self.write_trailer()?;
-        Ok(self.w.take().unwrap())
+        self.w.take().ok_or(io::Error::from(io::ErrorKind::Unsupported))
     }
 
     /// Write the final tailer.
     fn write_trailer(&mut self) -> io::Result<()> {
-        self.w.as_mut().unwrap().write_le(Block::Trailer as u8)
+        self.writer()?.write_le(Block::Trailer as u8)
+    }
+
+    #[inline]
+    fn writer(&mut self) -> io::Result<&mut W> {
+        self.w.as_mut().ok_or(io::Error::from(io::ErrorKind::Unsupported))
     }
 }
 
@@ -435,6 +448,35 @@ fn flag_size(size: usize) -> u8 {
         65 ..=128 => 6,
         129..=256 => 7,
         _ => 7
+    }
+}
+
+struct Buf<const N: usize> {
+    buf: [u8; N], pos: usize
+}
+
+impl<const N: usize> Write for Buf<N> {
+    #[inline(always)]
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let len = buf.len();
+        let pos = self.pos;
+        self.buf[pos.. pos + len].copy_from_slice(buf);
+        self.pos += len;
+        Ok(len)
+    }
+
+    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+}
+
+fn tmp_buf<const N: usize>() -> Buf<N> {
+    Buf { buf: [0; N], pos: 0 }
+}
+
+impl<const N: usize> Buf<N> {
+    #[inline(always)]
+    fn finish(&mut self, mut w: impl Write) -> io::Result<()> {
+        debug_assert_eq!(self.pos, N);
+        w.write_all(&self.buf)
     }
 }
 
