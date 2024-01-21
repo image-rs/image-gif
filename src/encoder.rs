@@ -384,15 +384,14 @@ fn lzw_encode(data: &[u8], buffer: &mut Vec<u8>) {
         if byte > max_byte {
             max_byte = byte;
             // code size is the same after that
-            if byte > 128 {
+            if byte > 127 {
                 break;
             }
         }
     }
-    let min_code_size = match flag_size(1 + max_byte as usize) + 1 {
-        1 => 2, // As per gif spec: The minimal code size has to be >= 2
-        n => n,
-    };
+    let palette_min_len = max_byte as u32 + 1;
+    // As per gif spec: The minimal code size has to be >= 2
+    let min_code_size = palette_min_len.max(4).next_power_of_two().trailing_zeros() as u8;
     buffer.push(min_code_size);
     let mut enc = LzwEncoder::new(BitOrder::Lsb, min_code_size);
     let len = enc.into_vec(buffer).encode_all(data).consumed_out;
@@ -438,16 +437,35 @@ impl<W: Write> Drop for Encoder<W> {
 
 // Color table size converted to flag bits
 fn flag_size(size: usize) -> u8 {
-    match size {
-        0  ..=2   => 0,
-        3  ..=4   => 1,
-        5  ..=8   => 2,
-        9  ..=16  => 3,
-        17 ..=32  => 4,
-        33 ..=64  => 5,
-        65 ..=128 => 6,
-        129..=256 => 7,
-        _ => 7
+    (size.max(2).min(255).next_power_of_two().trailing_zeros()-1) as u8
+}
+
+#[test]
+fn test_flag_size() {
+    fn expected(size: usize) -> u8 {
+        match size {
+            0  ..=2   => 0,
+            3  ..=4   => 1,
+            5  ..=8   => 2,
+            9  ..=16  => 3,
+            17 ..=32  => 4,
+            33 ..=64  => 5,
+            65 ..=128 => 6,
+            129..=256 => 7,
+            _ => 7
+        }
+    }
+
+    for i in 0..300 {
+        assert_eq!(flag_size(i), expected(i));
+    }
+    for i in 4..=255u8 {
+        let expected = match flag_size(1 + i as usize) + 1 {
+            1 => 2,
+            n => n,
+        };
+        let actual = (i as u32 + 1).max(4).next_power_of_two().trailing_zeros() as u8;
+        assert_eq!(actual, expected);
     }
 }
 
