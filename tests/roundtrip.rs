@@ -1,6 +1,6 @@
 #![cfg(feature = "std")]
 
-use gif::{ColorOutput, Decoder, Encoder, Frame};
+use gif::{ColorOutput, Decoder, Encoder, Frame, AnyExtension};
 
 #[test]
 fn round_trip() {
@@ -68,6 +68,7 @@ fn round_trip_from_image(original: &[u8]) {
 
     let mut encoder = Encoder::new(vec![], width, height, &global_palette).unwrap();
     encoder.set_repeat(repeat).unwrap();
+    encoder.write_raw_extension(AnyExtension(gif::Extension::Comment as _), &[b"hello"]).unwrap();
     for frame in &frames {
         encoder.write_frame(frame).unwrap();
     }
