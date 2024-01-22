@@ -1,6 +1,6 @@
 #![cfg(feature = "std")]
 
-use gif::{ColorOutput, Decoder, Encoder, Frame, AnyExtension};
+use gif::{ColorOutput, Decoder, Encoder, Frame, AnyExtension, DecodeOptions};
 
 #[test]
 fn round_trip() {
@@ -148,6 +148,49 @@ fn encode_roundtrip_few_colors() {
         // NB: reference.buffer can't be used as it contains the palette version.
         assert_eq!(new_frames[0].buffer, pixels);
         assert_eq!(new_frames[1].buffer, pixels);
+    }
+}
+
+
+#[test]
+fn palette_sizes() {
+    let global_pal = (0..=255u8).flat_map(|i| [i, i/2, i.wrapping_add(13)]).collect::<Vec<_>>();
+    let local_pal = (0..=255u8).flat_map(|i| [i^0x55, i, i.wrapping_add(7)]).collect::<Vec<_>>();
+
+    for size in 1..=256 {
+        let global = &global_pal[..size * 3];
+        let local = &local_pal[..size * 3];
+
+        let mut encoder = Encoder::new(vec![], 1, 1, global).unwrap();
+        let mut f = Frame::default();
+        f.width = 1;
+        f.height = 1;
+        f.buffer = [1][..].into();
+        encoder.write_frame(&f).unwrap();
+
+        let mut f = Frame::default();
+        f.width = 1;
+        f.height = 1;
+        f.buffer = [1][..].into();
+        f.palette = Some(local.to_vec());
+        encoder.write_frame(&f).unwrap();
+        let gif = encoder.into_inner().unwrap();
+        let gif = &mut gif.as_slice();
+
+        let mut d = DecodeOptions::new().read_info(gif).unwrap();
+        let (decoded_global_pal, padding) = d.global_palette().unwrap().split_at(global.len());
+        assert_eq!(global, decoded_global_pal);
+        assert_eq!(padding.len(), 3 * (size.max(2).next_power_of_two() - size));
+        assert!(padding.iter().all(|&b| b == 0));
+
+        assert!(d.read_next_frame().unwrap().unwrap().palette.is_none());
+        let decoded_local_pal = d.read_next_frame().unwrap().unwrap().palette.as_deref().unwrap();
+        let (decoded_local_pal, padding) = decoded_local_pal.split_at(local.len());
+        assert_eq!(local, decoded_local_pal);
+        assert_eq!(padding.len(), 3 * (size.max(2).next_power_of_two() - size));
+        assert!(padding.iter().all(|&b| b == 0));
+
+        assert!(d.read_next_frame().unwrap().is_none());
     }
 }
 
