@@ -470,6 +470,7 @@ impl<R: Read> IntoIterator for Decoder<R> {
     fn into_iter(self) -> Self::IntoIter {
         DecoderIter {
             inner: self,
+            ended: false,
         }
     }
 }
@@ -477,6 +478,7 @@ impl<R: Read> IntoIterator for Decoder<R> {
 /// Use `decoder.into_iter()` to iterate over the frames
 pub struct DecoderIter<R: Read> {
     inner: Decoder<R>,
+    ended: bool,
 }
 
 impl<R: Read> DecoderIter<R> {
@@ -494,10 +496,20 @@ impl<R: Read> Iterator for DecoderIter<R> {
     type Item = Result<Frame<'static>, DecodingError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.inner.read_next_frame() {
-            Ok(Some(_)) => self.inner.take_current_frame().map(Ok),
-            Ok(None) => None,
-            Err(err) => Some(Err(err)),
+        if !self.ended {
+            match self.inner.read_next_frame() {
+                Ok(Some(_)) => self.inner.take_current_frame().map(Ok),
+                Ok(None) => {
+                    self.ended = true;
+                    None
+                },
+                Err(err) => {
+                    self.ended = true;
+                    Some(Err(err))
+                },
+            }
+        } else {
+            None
         }
     }
 }
