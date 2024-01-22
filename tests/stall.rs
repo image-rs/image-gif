@@ -51,7 +51,7 @@ fn test_truncated_file() {
         let truncated = &data[..len];
         // it's expected to fail often, but should not stall or panic
         if let Ok(d) = gif::DecodeOptions::new().read_info(truncated) {
-            let _ = d.into_iter().take_while(|f| f.is_ok()).count();
+            let _ = d.into_iter().count();
         }
     }
 }
