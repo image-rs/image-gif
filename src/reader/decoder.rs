@@ -772,7 +772,7 @@ impl StreamingDecoder {
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
                     if self.lzw_reader.has_ended() || matches!(write_into, OutputBuffer::None) {
-                        return goto!(n, DecodeSubBlock(0), emit Decoded::Nothing);
+                        return goto!(n, DecodeSubBlock(left - n), emit Decoded::Nothing);
                     }
 
                     let (mut consumed, bytes_len) = self.lzw_reader.decode_bytes(&buf[..n], write_into)?;
