@@ -151,18 +151,15 @@ impl<W: Write> Encoder<W> {
     fn write_global_palette(mut self, palette: &[u8]) -> Result<Self, EncodingError> {
         let mut flags = 0;
         flags |= 0b1000_0000;
-        let num_colors = palette.len() / 3;
-        if num_colors > 256 {
-            return Err(EncodingError::from(EncodingFormatError::TooManyColors));
-        }
-        self.global_palette = num_colors > 0;
+        let (palette, padding, table_size) = Self::check_color_table(palette)?;
+        self.global_palette = !palette.is_empty();
         // Size of global color table.
-        flags |= flag_size(num_colors);
+        flags |= table_size;
         // Color resolution .. FIXME. This is mostly ignored (by ImageMagick at least) but hey, we
         // should use some sensible value here or even allow configuring it?
-        flags |= flag_size(num_colors) << 4; // wtf flag
+        flags |= table_size << 4; // wtf flag
         self.write_screen_desc(flags)?;
-        self.write_color_table(palette)?;
+        Self::write_color_table(self.writer()?, palette, padding)?;
         Ok(self)
     }
 
@@ -192,12 +189,9 @@ impl<W: Write> Encoder<W> {
         let palette = match frame.palette {
             Some(ref palette) => {
                 flags |= 0b1000_0000;
-                let num_colors = palette.len() / 3;
-                if num_colors > 256 {
-                    return Err(EncodingError::from(EncodingFormatError::TooManyColors));
-                }
-                flags |= flag_size(num_colors);
-                Some(palette)
+                let (palette, padding, table_size) = Self::check_color_table(&palette)?;
+                flags |= table_size;
+                Some((palette, padding))
             },
             None if self.global_palette => None,
             _ => return Err(EncodingError::from(EncodingFormatError::MissingColorPalette))
@@ -211,8 +205,8 @@ impl<W: Write> Encoder<W> {
         tmp.write_le(flags)?;
         let writer = self.writer()?;
         tmp.finish(&mut *writer)?;
-        if let Some(palette) = palette {
-            writer.write_all(palette)?;
+        if let Some((palette, padding)) = palette {
+            Self::write_color_table(writer, palette, padding)?;
         }
         Ok(())
     }
@@ -246,19 +240,24 @@ impl<W: Write> Encoder<W> {
         writer.write_le(0u8).map_err(Into::into)
     }
 
-    fn write_color_table(&mut self, table: &[u8]) -> Result<(), EncodingError> {
-        let writer = self.writer()?;
+    fn write_color_table(writer: &mut W, table: &[u8], padding: usize) -> Result<(), EncodingError> {
+        writer.write_all(&table)?;
+        // Waste some space as of gif spec
+        for _ in 0..padding {
+            writer.write_all(&[0, 0, 0])?;
+        }
+        Ok(())
+    }
+
+    /// returns rounded palette size, number of missing colors, and table size flag
+    fn check_color_table(table: &[u8]) -> Result<(&[u8], usize, u8), EncodingError> {
         let num_colors = table.len() / 3;
         if num_colors > 256 {
             return Err(EncodingError::from(EncodingFormatError::TooManyColors));
         }
-        writer.write_all(&table[..num_colors * 3])?;
-        let size = flag_size(num_colors);
-        // Waste some space as of gif spec
-        for _ in 0..((2 << size) - num_colors) {
-            writer.write_all(&[0, 0, 0])?;
-        }
-        Ok(())
+        let table_size = flag_size(num_colors);
+        let padding = (2 << table_size) - num_colors;
+        Ok((&table[..num_colors * 3], padding, table_size))
     }
 
     /// Writes an extension to the image.

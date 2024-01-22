@@ -290,12 +290,17 @@ impl LzwReader {
         }
     }
 
-    pub fn reset(&mut self, min_code_size: u8) -> Result<(), DecodingError> {
+    pub fn check_code_size(min_code_size: u8) -> Result<(), DecodingError> {
         // LZW spec: max 12 bits per code. This check helps catch confusion
         // between LZW-compressed buffers and raw pixel data
         if min_code_size > 11 || min_code_size < 1 {
             return Err(DecodingError::format("invalid minimal code size"));
         }
+        Ok(())
+    }
+
+    pub fn reset(&mut self, min_code_size: u8) -> Result<(), DecodingError> {
+        Self::check_code_size(min_code_size)?;
 
         // The decoder can be reused if the code size stayed the same
         if self.min_code_size != min_code_size || self.decoder.is_none() {
@@ -752,6 +757,7 @@ impl StreamingDecoder {
                     self.lzw_reader.reset(min_code_size)?;
                     goto!(DecodeSubBlock(b as usize), emit Decoded::FrameMetadata(FrameDataType::Pixels))
                 } else {
+                    LzwReader::check_code_size(min_code_size)?;
                     goto!(CopySubBlock(b as usize), emit Decoded::FrameMetadata(FrameDataType::Lzw { min_code_size }))
                 }
             }
