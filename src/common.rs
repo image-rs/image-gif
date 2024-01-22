@@ -1,6 +1,6 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
-use std::collections::HashSet;
+#[cfg(feature = "color_quant")]
+use std::collections::{HashMap, HashSet};
 
 /// Disposal method
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

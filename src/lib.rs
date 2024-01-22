@@ -131,6 +131,7 @@ pub mod streaming_decoder {
     pub use crate::reader::{Decoded, FrameDataType, FrameDecoder, OutputBuffer, StreamingDecoder};
 }
 
+#[cfg(feature = "color_quant")]
 macro_rules! insert_as_doc {
     { $content:expr } => {
         #[allow(unused_doc_comments)]
