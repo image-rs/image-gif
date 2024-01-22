@@ -93,6 +93,7 @@ impl Default for Repeat {
 }
 
 /// Extension data.
+#[non_exhaustive]
 pub enum ExtensionData {
     /// Control extension. Use `ExtensionData::new_control_ext` to construct.
     Control {
