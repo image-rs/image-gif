@@ -44,6 +44,19 @@ fn decode(data: &[u8]) -> Result<(), gif::DecodingError> {
 }
 
 #[test]
+fn test_truncated_file() {
+    let data = include_bytes!("../tests/samples/anim-gr.gif");
+    for len in 0..data.len()-1 {
+
+        let truncated = &data[..len];
+        // it's expected to fail often, but should not stall or panic
+        if let Ok(d) = gif::DecodeOptions::new().read_info(truncated) {
+            let _ = d.into_iter().take_while(|f| f.is_ok()).count();
+        }
+    }
+}
+
+#[test]
 fn one_byte_at_a_time() {
     let r = OneByte {
         data: include_bytes!("../tests/samples/moon_impact.gif"),
