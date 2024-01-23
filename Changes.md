@@ -1,3 +1,8 @@
+# v0.13.1
+
+Bugfixes:
+ - Fixed writing palettes with non-power-of-two sizes
+
 # v0.13.0
 
 Features:
