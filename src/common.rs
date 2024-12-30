@@ -290,7 +290,7 @@ impl Frame<'static> {
         Frame {
             width,
             height,
-            buffer: Cow::Owned(pixels.clone()),
+            buffer: Cow::Owned(pixels),
             palette: None,
             transparent,
             ..Frame::default()
