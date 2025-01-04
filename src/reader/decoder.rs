@@ -357,7 +357,6 @@ pub struct StreamingDecoder {
     width: u16,
     height: u16,
     global_color_table: Vec<u8>,
-    background_color: [u8; 4],
     /// ext buffer
     ext: ExtensionData,
     /// Frame data
@@ -437,7 +436,6 @@ impl StreamingDecoder {
             width: 0,
             height: 0,
             global_color_table: Vec::new(),
-            background_color: [0, 0, 0, 0xFF],
             ext: ExtensionData {
                 id: AnyExtension(0),
                 data: Vec::with_capacity(256), // 0xFF + 1 byte length
@@ -641,12 +639,6 @@ impl StreamingDecoder {
                     self.global_color_table.extend_from_slice(&buf[..n]);
                     goto!(n, GlobalPalette(left - n))
                 } else {
-                    let idx = self.background_color[0];
-                    match self.global_color_table.chunks_exact(PLTE_CHANNELS).nth(idx as usize) {
-                        Some(chunk) => self.background_color[..PLTE_CHANNELS]
-                            .copy_from_slice(&chunk[..PLTE_CHANNELS]),
-                        None => self.background_color[0] = 0
-                    }
                     goto!(BlockStart(b), emit Decoded::GlobalPalette(
                         mem::take(&mut self.global_color_table).into_boxed_slice()
                     ))
