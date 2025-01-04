@@ -157,7 +157,8 @@ pub enum Decoded {
 /// Internal state of the GIF decoder
 #[derive(Debug, Copy, Clone)]
 enum State {
-    Magic(u8, [u8; 6]),
+    Magic,
+    ScreenDescriptor,
     U16Byte1(U16Value, u8),
     U16(U16Value),
     Byte(ByteValue),
@@ -184,10 +185,6 @@ use super::converter::PixelConverter;
 /// U16 values that may occur in a GIF image
 #[derive(Debug, Copy, Clone)]
 enum U16Value {
-    /// Logical screen descriptor width
-    ScreenWidth,
-    /// Logical screen descriptor height
-    ScreenHeight,
     /// Left frame offset
     ImageLeft,
     /// Top frame offset
@@ -201,9 +198,6 @@ enum U16Value {
 /// Single byte screen descriptor values
 #[derive(Debug, Copy, Clone)]
 enum ByteValue {
-    GlobalFlags,
-    Background { global_flags: u8 },
-    AspectRatio { global_flags: u8 },
     ImageFlags,
 }
 
@@ -343,6 +337,11 @@ impl LzwReader {
 /// To just get GIF frames, use [`crate::Decoder`] instead.
 pub struct StreamingDecoder {
     state: State,
+    /// `next_state` will not advance unless it gets a buf this long
+    minimum_input_size_required: u8,
+    /// Input bytes are collected here if `update` got `buf` smaller than `minimum_input_size_required`
+    internal_buffer: [u8; 16],
+    internal_buffer_len: u8,
     lzw_reader: LzwReader,
     skip_frame_decoding: bool,
     check_frame_consistency: bool,
@@ -421,7 +420,10 @@ impl StreamingDecoder {
 
     pub(crate) fn with_options(options: &DecodeOptions) -> Self {
         Self {
-            state: Magic(0, [0; 6]),
+            minimum_input_size_required: 0,
+            internal_buffer: [0; 16],
+            internal_buffer_len: 0,
+            state: Magic,
             lzw_reader: LzwReader::new(options.check_for_end_code),
             skip_frame_decoding: options.skip_frame_decoding,
             check_frame_consistency: options.check_frame_consistency,
@@ -445,23 +447,54 @@ impl StreamingDecoder {
     ///
     /// Returns the number of bytes consumed from the input buffer
     /// and the last decoding result.
+    ///
+    /// Longer `buf` slices improve performance.
     pub fn update(
         &mut self,
         mut buf: &[u8],
         write_into: &mut OutputBuffer<'_>,
     ) -> Result<(usize, Decoded), DecodingError> {
-        let len = buf.len();
-        while !buf.is_empty() {
+        let input_buffer_length = buf.len();
+
+        loop {
+            let has_buffered = usize::from(self.internal_buffer_len);
+            let needed = usize::from(self.minimum_input_size_required);
+            if has_buffered > 0 || buf.len() < needed {
+                if has_buffered < needed {
+                    // copy only as much as needed for the next state, so that the internal buffer will
+                    // be consumed entirely in one go, which makes it possible to switch back to reading
+                    // from the buf argument without copying.
+                    let (to_copy, remaining_buf) = buf.split_at(buf.len().min(needed - has_buffered));
+                    buf = remaining_buf;
+                    self.internal_buffer[has_buffered .. has_buffered + to_copy.len()]
+                        .copy_from_slice(to_copy);
+                    self.internal_buffer_len += to_copy.len() as u8;
+                    if self.internal_buffer_len < self.minimum_input_size_required {
+                        return Ok((to_copy.len(), Decoded::Nothing));
+                    }
+                }
+
+                let tmp = self.internal_buffer; // small copy for the borrow checker
+                let len = usize::from(self.internal_buffer_len);
+                let (bytes, decoded) = self.next_state(&tmp[..len], write_into)?;
+                if bytes != 0 {
+                    // by design, next_state() MUST consume the entire minimum_input_size_required
+                    // at once, so that the internal buffer doesn't need to move data.
+                    // The only exception is 0 bytes, which can be retried.
+                    debug_assert_eq!(bytes, usize::from(self.internal_buffer_len));
+                    self.internal_buffer_len = 0;
+                }
+                if !matches!(decoded, Decoded::Nothing) || buf.is_empty() {
+                    return Ok((input_buffer_length - buf.len(), decoded));
+                }
+            }
+
             let (bytes, decoded) = self.next_state(buf, write_into)?;
             buf = buf.get(bytes..).unwrap_or_default();
-            match decoded {
-                Decoded::Nothing => {},
-                result => {
-                    return Ok((len-buf.len(), result));
-                },
-            };
+            if !matches!(decoded, Decoded::Nothing) || buf.is_empty() {
+                return Ok((input_buffer_length - buf.len(), decoded));
+            }
         }
-        Ok((len - buf.len(), Decoded::Nothing))
     }
 
     /// Returns the data of the last extension that has been decoded.
@@ -511,7 +544,6 @@ impl StreamingDecoder {
         self.version
     }
 
-    #[inline]
     fn next_state(&mut self, buf: &[u8], write_into: &mut OutputBuffer<'_>) -> Result<(usize, Decoded), DecodingError> {
         macro_rules! goto (
             ($n:expr, $state:expr) => ({
@@ -535,42 +567,51 @@ impl StreamingDecoder {
         let b = *buf.first().ok_or(io::ErrorKind::UnexpectedEof)?;
 
         match self.state {
-            Magic(i, mut version) => if i < 6 {
-                version[i as usize] = b;
-                goto!(Magic(i+1, version))
-            } else if &version[..3] == b"GIF" {
-                self.version = match &version[3..] {
-                    b"87a" => Version::V87a,
-                    b"89a" => Version::V89a,
-                    _ => return Err(DecodingError::format("malformed GIF header"))
+            Magic => {
+                let Some(version) = buf.get(..6) else {
+                    self.minimum_input_size_required = 6;
+                    return Ok((0, Decoded::Nothing));
                 };
-                goto!(U16Byte1(U16Value::ScreenWidth, b))
-            } else {
-                Err(DecodingError::format("malformed GIF header"))
+
+                self.version = match version {
+                    b"GIF87a" => Version::V87a,
+                    b"GIF89a" => Version::V89a,
+                    _ => return Err(DecodingError::format("malformed GIF header")),
+                };
+
+                self.minimum_input_size_required = 7;
+                goto!(version.len(), ScreenDescriptor)
+            },
+            ScreenDescriptor => {
+                let Some(desc) = buf.get(..7) else {
+                    self.minimum_input_size_required = 7;
+                    return Ok((0, Decoded::Nothing));
+                };
+                self.minimum_input_size_required = 0;
+
+                self.width = u16::from_le_bytes(desc[..2].try_into().unwrap());
+                self.height = u16::from_le_bytes(desc[2..4].try_into().unwrap());
+                let global_flags = desc[4];
+                let background_color = desc[5];
+
+                let global_table = global_flags & 0x80 != 0;
+                let table_size = if global_table {
+                    let table_size = PLTE_CHANNELS * (1 << ((global_flags & 0b111) + 1) as usize);
+                    self.global_color_table.try_reserve_exact(table_size).map_err(|_| io::ErrorKind::OutOfMemory)?;
+                    table_size
+                } else {
+                    0usize
+                };
+
+                goto!(
+                    desc.len(),
+                    GlobalPalette(table_size),
+                    emit Decoded::BackgroundColor(background_color)
+                )
             },
             Byte(value) => {
                 use self::ByteValue::*;
                 match value {
-                    GlobalFlags => {
-                        goto!(Byte(Background { global_flags: b }))
-                    },
-                    Background { global_flags } => {
-                        goto!(
-                            Byte(AspectRatio { global_flags }),
-                            emit Decoded::BackgroundColor(b)
-                        )
-                    },
-                    AspectRatio { global_flags } => {
-                        let global_table = global_flags & 0x80 != 0;
-                        let table_size = if global_table {
-                            let table_size = PLTE_CHANNELS * (1 << ((global_flags & 0b111) + 1) as usize);
-                            self.global_color_table.try_reserve_exact(table_size).map_err(|_| io::ErrorKind::OutOfMemory)?;
-                            table_size
-                        } else {
-                            0usize
-                        };
-                        goto!(GlobalPalette(table_size))
-                    },
                     ImageFlags => {
                         let local_table = (b & 0b1000_0000) != 0;
                         let interlaced = (b & 0b0100_0000) != 0;
@@ -786,14 +827,6 @@ impl StreamingDecoder {
         use self::U16Value::*;
         let value = (u16::from(b) << 8) | u16::from(value);
         Ok(match (next, value) {
-            (ScreenWidth, width) => {
-                self.width = width;
-                U16(U16Value::ScreenHeight)
-            },
-            (ScreenHeight, height) => {
-                self.height = height;
-                Byte(ByteValue::GlobalFlags)
-            },
             (ImageLeft, left) => {
                 self.try_current_frame()?.left = left;
                 U16(U16Value::ImageTop)
