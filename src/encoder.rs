@@ -479,7 +479,9 @@ impl<const N: usize> Write for Buf<N> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let len = buf.len();
         let pos = self.pos;
-        self.buf[pos.. pos + len].copy_from_slice(buf);
+        self.buf.get_mut(pos..pos + len)
+            .ok_or(io::ErrorKind::WriteZero)?
+            .copy_from_slice(buf);
         self.pos += len;
         Ok(len)
     }
