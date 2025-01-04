@@ -209,7 +209,6 @@ enum ByteValue {
     ControlFlags,
     ImageFlags,
     TransparentIdx,
-    CodeSize,
 }
 
 /// Decoder for `Frame::make_lzw_pre_encoded`
@@ -627,10 +626,9 @@ impl StreamingDecoder {
                             frame.palette = Some(pal);
                             goto!(LocalPalette(entries))
                         } else {
-                            goto!(Byte(CodeSize))
+                            goto!(LocalPalette(0))
                         }
                     }
-                    CodeSize => goto!(LzwInit(b)),
                 }
             }
             GlobalPalette(left) => {
