@@ -159,9 +159,7 @@ pub enum Decoded {
 enum State {
     Magic,
     ScreenDescriptor,
-    U16Byte1(U16Value, u8),
-    U16(U16Value),
-    Byte(ByteValue),
+    ImageBlockStart,
     GlobalPalette(usize),
     BlockStart(u8),
     BlockEnd,
@@ -181,25 +179,6 @@ enum State {
 use self::State::*;
 
 use super::converter::PixelConverter;
-
-/// U16 values that may occur in a GIF image
-#[derive(Debug, Copy, Clone)]
-enum U16Value {
-    /// Left frame offset
-    ImageLeft,
-    /// Top frame offset
-    ImageTop,
-    /// Frame width
-    ImageWidth,
-    /// Frame height
-    ImageHeight,
-}
-
-/// Single byte screen descriptor values
-#[derive(Debug, Copy, Clone)]
-enum ByteValue {
-    ImageFlags,
-}
 
 /// Decoder for `Frame::make_lzw_pre_encoded`
 pub struct FrameDecoder {
@@ -609,39 +588,45 @@ impl StreamingDecoder {
                     emit Decoded::BackgroundColor(background_color)
                 )
             },
-            Byte(value) => {
-                use self::ByteValue::*;
-                match value {
-                    ImageFlags => {
-                        let local_table = (b & 0b1000_0000) != 0;
-                        let interlaced = (b & 0b0100_0000) != 0;
-                        let table_size = b & 0b0000_0111;
-                        let check_frame_consistency = self.check_frame_consistency;
-                        let (width, height) = (self.width, self.height);
+            ImageBlockStart => {
+                let Some(header) = buf.get(..9) else {
+                    self.minimum_input_size_required = 9;
+                    return Ok((0, Decoded::Nothing));
+                };
+                self.minimum_input_size_required = 0;
 
-                        let frame = self.try_current_frame()?;
+                let check_frame_consistency = self.check_frame_consistency;
+                let (width, height) = (self.width, self.height);
 
-                        frame.interlaced = interlaced;
-                        if check_frame_consistency {
-                            // Consistency checks.
-                            if width.checked_sub(frame.width) < Some(frame.left)
-                                || height.checked_sub(frame.height) < Some(frame.top)
-                            {
-                                return Err(DecodingError::format("frame descriptor is out-of-bounds"))
-                            }
-                        }
+                let frame = self.try_current_frame()?;
+                frame.left = u16::from_le_bytes(header[..2].try_into().unwrap());
+                frame.top = u16::from_le_bytes(header[2..4].try_into().unwrap());
+                frame.width = u16::from_le_bytes(header[4..6].try_into().unwrap());
+                frame.height = u16::from_le_bytes(header[6..8].try_into().unwrap());
 
-                        if local_table {
-                            let pal_len = PLTE_CHANNELS * (1 << (table_size + 1));
-                            frame.palette.get_or_insert_with(Vec::new)
-                                .try_reserve_exact(pal_len).map_err(|_| io::ErrorKind::OutOfMemory)?;
-                            goto!(LocalPalette(pal_len))
-                        } else {
-                            goto!(LocalPalette(0))
-                        }
+                let flags = header[8];
+                frame.interlaced = (flags & 0b0100_0000) != 0;
+
+                if check_frame_consistency {
+                    // Consistency checks.
+                    if width.checked_sub(frame.width) < Some(frame.left)
+                        || height.checked_sub(frame.height) < Some(frame.top)
+                    {
+                        return Err(DecodingError::format("frame descriptor is out-of-bounds"));
                     }
                 }
-            }
+
+                let local_table = (flags & 0b1000_0000) != 0;
+                if local_table {
+                    let table_size = flags & 0b0000_0111;
+                    let pal_len = PLTE_CHANNELS * (1 << (table_size + 1));
+                    frame.palette.get_or_insert_with(Vec::new)
+                        .try_reserve_exact(pal_len).map_err(|_| io::ErrorKind::OutOfMemory)?;
+                    goto!(header.len(), LocalPalette(pal_len))
+                } else {
+                    goto!(header.len(), LocalPalette(0))
+                }
+            },
             GlobalPalette(left) => {
                 // the global_color_table is guaranteed to have the exact capacity required
                 if left > 0 {
@@ -665,7 +650,8 @@ impl StreamingDecoder {
                 match Block::from_u8(type_) {
                     Some(Block::Image) => {
                         self.add_frame();
-                        goto!(U16Byte1(U16Value::ImageLeft, b), emit Decoded::BlockStart(Block::Image))
+                        self.minimum_input_size_required = 9;
+                        goto!(0, ImageBlockStart, emit Decoded::BlockStart(Block::Image))
                     }
                     Some(Block::Extension) => {
                         self.ext.data.clear();
@@ -739,11 +725,11 @@ impl StreamingDecoder {
                 }
             }
             LocalPalette(left) => {
-                let n = cmp::min(left, buf.len());
                 if left > 0 {
+                    let n = cmp::min(left, buf.len());
                     let src = &buf[..n];
                     if let Some(pal) = self.try_current_frame()?.palette.as_mut() {
-                        // capacity has already been reserved in ImageFlags
+                        // capacity has already been reserved in ImageBlockStart
                         if pal.capacity() - pal.len() >= src.len() {
                             pal.extend_from_slice(src);
                         }
@@ -809,10 +795,6 @@ impl StreamingDecoder {
                     }
                 }
             }
-            U16(next) => goto!(U16Byte1(next, b)),
-            U16Byte1(next, value) => {
-                goto!(self.read_second_byte(next, value, b)?)
-            }
             FrameDecoded => {
                 // end of image data reached
                 self.current = None;
@@ -821,29 +803,6 @@ impl StreamingDecoder {
             }
             Trailer => goto!(0, Trailer, emit Decoded::Nothing),
         }
-    }
-
-    fn read_second_byte(&mut self, next: U16Value, value: u8, b: u8) -> Result<State, DecodingError> {
-        use self::U16Value::*;
-        let value = (u16::from(b) << 8) | u16::from(value);
-        Ok(match (next, value) {
-            (ImageLeft, left) => {
-                self.try_current_frame()?.left = left;
-                U16(U16Value::ImageTop)
-            },
-            (ImageTop, top) => {
-                self.try_current_frame()?.top = top;
-                U16(U16Value::ImageWidth)
-            },
-            (ImageWidth, width) => {
-                self.try_current_frame()?.width = width;
-                U16(U16Value::ImageHeight)
-            },
-            (ImageHeight, height) => {
-                self.try_current_frame()?.height = height;
-                Byte(ByteValue::ImageFlags)
-            }
-        })
     }
 
     fn read_control_extension(&mut self) -> Result<(), DecodingError> {
