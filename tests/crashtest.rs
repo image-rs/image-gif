@@ -11,9 +11,7 @@ fn try_decode_crash_regression() {
     for entry in files {
         let entry = entry.unwrap();
         if let Some(ext) = entry.path().extension() {
-            if ext.to_str() != Some("gif") {
-                panic!("Unexpected file {} in crashtests, should end with .gif", entry.path().display());
-            }
+            assert_eq!(ext.to_str(), Some("gif"), "Unexpected file {} in crashtests, should end with .gif", entry.path().display());
         } else {
             panic!("Unexpected file {} in crashtests, should end with .gif", entry.path().display());
         }

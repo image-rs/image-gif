@@ -21,7 +21,7 @@ fn round_trip() {
 
 #[test]
 fn max_frame_size() {
-    let mut encoder = Encoder::new(vec![], 0xFFFF, 0xFFFF, &[1,2,3]).unwrap();
+    let mut encoder = Encoder::new(vec![], 0xFFFF, 0xFFFF, &[1, 2, 3]).unwrap();
     let mut f = Frame::default();
     f.width = 0xFFFF;
     f.height = 0xFFFF;
@@ -151,7 +151,6 @@ fn encode_roundtrip_few_colors() {
     }
 }
 
-
 #[test]
 fn palette_sizes() {
     let global_pal = (0..=255u8).flat_map(|i| [i, i/2, i.wrapping_add(13)]).collect::<Vec<_>>();
@@ -193,7 +192,6 @@ fn palette_sizes() {
         assert!(d.read_next_frame().unwrap().is_none());
     }
 }
-
 
 #[test]
 fn palette_fail() {

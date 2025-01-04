@@ -2,12 +2,10 @@ use std::fs;
 
 use criterion::{Criterion, Throughput};
 use gif::{Encoder, Frame, Repeat};
-use png;
 
 const DIR: &str = "benches/samples";
 
-fn main()
-{
+fn main() {
     let mut c = Criterion::default().configure_from_args();
     let mut group = c.benchmark_group("rgb_frame");
 
@@ -47,7 +45,7 @@ fn main()
                         Frame::from_rgba_speed(w, h, &mut buf[..size], 30)
                     }),
                     c => {
-                        println!("Image has wrong color type: {:?}", c);
+                        println!("Image has wrong color type: {c:?}");
                     }
                 }
             });

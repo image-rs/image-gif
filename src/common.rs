@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum DisposalMethod {
-    /// StreamingDecoder is not required to take any action.
+    /// `StreamingDecoder` is not required to take any action.
     Any = 0,
     /// Do not dispose.
     Keep = 1,
@@ -19,12 +19,12 @@ pub enum DisposalMethod {
 impl DisposalMethod {
     /// Converts `u8` to `Option<Self>`
     #[must_use]
-    pub fn from_u8(n: u8) -> Option<DisposalMethod> {
+    pub const fn from_u8(n: u8) -> Option<Self> {
         match n {
-            0 => Some(DisposalMethod::Any),
-            1 => Some(DisposalMethod::Keep),
-            2 => Some(DisposalMethod::Background),
-            3 => Some(DisposalMethod::Previous),
+            0 => Some(Self::Any),
+            1 => Some(Self::Keep),
+            2 => Some(Self::Background),
+            3 => Some(Self::Previous),
             _ => None,
         }
     }
@@ -54,11 +54,11 @@ pub enum Block {
 impl Block {
     /// Converts `u8` to `Option<Self>`
     #[must_use]
-    pub fn from_u8(n: u8) -> Option<Block> {
+    pub const fn from_u8(n: u8) -> Option<Self> {
         match n {
-            0x2C => Some(Block::Image),
-            0x21 => Some(Block::Extension),
-            0x3B => Some(Block::Trailer),
+            0x2C => Some(Self::Image),
+            0x21 => Some(Self::Extension),
+            0x3B => Some(Self::Trailer),
             _ => None,
         }
     }
@@ -105,26 +105,26 @@ pub enum Extension {
 impl AnyExtension {
     /// Decode the label as a known extension.
     #[must_use]
-    pub fn into_known(self) -> Option<Extension> {
+    pub const fn into_known(self) -> Option<Extension> {
         Extension::from_u8(self.0)
     }
 }
 
 impl From<Extension> for AnyExtension {
     fn from(ext: Extension) -> Self {
-        AnyExtension(ext as u8)
+        Self(ext as u8)
     }
 }
 
 impl Extension {
     /// Converts `u8` to a `Extension` if it is known.
     #[must_use]
-    pub fn from_u8(n: u8) -> Option<Extension> {
+    pub const fn from_u8(n: u8) -> Option<Self> {
         match n {
-            0x01 => Some(Extension::Text),
-            0xF9 => Some(Extension::Control),
-            0xFE => Some(Extension::Comment),
-            0xFF => Some(Extension::Application),
+            0x01 => Some(Self::Text),
+            0xF9 => Some(Self::Control),
+            0xFE => Some(Self::Comment),
+            0xFF => Some(Self::Application),
             _ => None,
         }
     }
@@ -158,8 +158,8 @@ pub struct Frame<'a> {
     pub buffer: Cow<'a, [u8]>,
 }
 
-impl<'a> Default for Frame<'a> {
-    fn default() -> Frame<'a> {
+impl Default for Frame<'_> {
+    fn default() -> Self {
         Frame {
             delay: 0,
             dispose: DisposalMethod::Keep,
@@ -189,7 +189,7 @@ impl Frame<'static> {
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height * 4`.
     #[cfg(feature = "color_quant")]
-    pub fn from_rgba(width: u16, height: u16, pixels: &mut [u8]) -> Frame<'static> {
+    pub fn from_rgba(width: u16, height: u16, pixels: &mut [u8]) -> Self {
         Frame::from_rgba_speed(width, height, pixels, 1)
     }
 
@@ -208,7 +208,7 @@ impl Frame<'static> {
     /// *   If the length of pixels does not equal `width * height * 4`.
     /// *   If `speed < 1` or `speed > 30`
     #[cfg(feature = "color_quant")]
-    pub fn from_rgba_speed(width: u16, height: u16, pixels: &mut [u8], speed: i32) -> Frame<'static> {
+    pub fn from_rgba_speed(width: u16, height: u16, pixels: &mut [u8], speed: i32) -> Self {
         assert_eq!(width as usize * height as usize * 4, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
         assert!(speed >= 1 && speed <= 30, "speed needs to be in the range [1, 30]");
         let mut transparent = None;
@@ -248,14 +248,14 @@ impl Frame<'static> {
         let index_of = | pixel: &[u8] |
             colors_lookup.get(&(pixel[0], pixel[1], pixel[2], pixel[3])).copied().unwrap_or(0);
 
-        return Frame {
+        Frame {
             width,
             height,
             buffer: Cow::Owned(pixels.chunks_exact(4).map(index_of).collect()),
             palette: Some(palette),
             transparent: transparent.map(|t| index_of(&t)),
             ..Frame::default()
-        };
+        }
     }
 
     /// Creates a frame from a palette and indexed pixels.
@@ -263,7 +263,7 @@ impl Frame<'static> {
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height`.
     /// *   If the length of palette > `256 * 3`.
-    pub fn from_palette_pixels(width: u16, height: u16, pixels: impl Into<Vec<u8>>, palette: impl Into<Vec<u8>>, transparent: Option<u8>) -> Frame<'static> {
+    pub fn from_palette_pixels(width: u16, height: u16, pixels: impl Into<Vec<u8>>, palette: impl Into<Vec<u8>>, transparent: Option<u8>) -> Self {
         let pixels = pixels.into();
         let palette = palette.into();
         assert_eq!(width as usize * height as usize, pixels.len(), "Too many or too little pixels for the given width and height to create a GIF Frame");
@@ -283,7 +283,7 @@ impl Frame<'static> {
     ///
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height`.
-    pub fn from_indexed_pixels(width: u16, height: u16, pixels: impl Into<Vec<u8>>, transparent: Option<u8>) -> Frame<'static> {
+    pub fn from_indexed_pixels(width: u16, height: u16, pixels: impl Into<Vec<u8>>, transparent: Option<u8>) -> Self {
         let pixels = pixels.into();
         assert_eq!(width as usize * height as usize, pixels.len(), "Too many or too little pixels for the given width and height to create a GIF Frame");
 
@@ -309,7 +309,7 @@ impl Frame<'static> {
     /// *   If the length of pixels does not equal `width * height * 3`.
     #[cfg(feature = "color_quant")]
     #[must_use]
-    pub fn from_rgb(width: u16, height: u16, pixels: &[u8]) -> Frame<'static> {
+    pub fn from_rgb(width: u16, height: u16, pixels: &[u8]) -> Self {
         Frame::from_rgb_speed(width, height, pixels, 1)
     }
 
@@ -329,7 +329,7 @@ impl Frame<'static> {
     /// *   If `speed < 1` or `speed > 30`
     #[cfg(feature = "color_quant")]
     #[must_use]
-    pub fn from_rgb_speed(width: u16, height: u16, pixels: &[u8], speed: i32) -> Frame<'static> {
+    pub fn from_rgb_speed(width: u16, height: u16, pixels: &[u8], speed: i32) -> Self {
         assert_eq!(width as usize * height as usize * 3, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
         let mut vec: Vec<u8> = Vec::new();
         vec.try_reserve_exact(pixels.len() + width as usize * height as usize).expect("OOM");
@@ -365,6 +365,6 @@ impl Frame<'static> {
 // Changing .zip(0_u8..) to .zip(0_u8..=255) fixes this issue.
 fn rgba_speed_avoid_panic_256_colors() {
     let side = 16;
-    let pixel_data: Vec<u8> = (0..=255).map(|a| vec![a, a, a]).flatten().collect();
+    let pixel_data: Vec<u8> = (0..=255).flat_map(|a| [a, a, a]).collect();
     let _ = Frame::from_rgb(side, side, &pixel_data);
 }

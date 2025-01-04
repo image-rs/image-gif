@@ -5,9 +5,7 @@ use std::iter;
 use crate::common::Frame;
 use crate::MemoryLimit;
 
-use super::decoder::{
-    PLTE_CHANNELS, DecodingError, OutputBuffer
-};
+use super::decoder::{DecodingError, OutputBuffer, PLTE_CHANNELS};
 
 pub(crate) const N_CHANNELS: usize = 4;
 
