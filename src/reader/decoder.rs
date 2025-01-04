@@ -164,7 +164,7 @@ enum State {
     GlobalPalette(usize),
     BlockStart(u8),
     BlockEnd,
-    ExtensionBlock(AnyExtension),
+    ExtensionBlockStart,
     /// Collects data in ext.data
     ExtensionDataBlock(usize),
     ApplicationExtension,
@@ -188,8 +188,6 @@ enum U16Value {
     ScreenWidth,
     /// Logical screen descriptor height
     ScreenHeight,
-    /// Delay time
-    Delay,
     /// Left frame offset
     ImageLeft,
     /// Top frame offset
@@ -206,9 +204,7 @@ enum ByteValue {
     GlobalFlags,
     Background { global_flags: u8 },
     AspectRatio { global_flags: u8 },
-    ControlFlags,
     ImageFlags,
-    TransparentIdx,
 }
 
 /// Decoder for `Frame::make_lzw_pre_encoded`
@@ -575,31 +571,6 @@ impl StreamingDecoder {
                         };
                         goto!(GlobalPalette(table_size))
                     },
-                    ControlFlags => {
-                        self.ext.data.push(b);
-                        let frame = self.try_current_frame()?;
-                        let control_flags = b;
-                        if control_flags & 1 != 0 {
-                            // Set to Some(...), gets overwritten later
-                            frame.transparent = Some(0);
-                        }
-                        frame.needs_user_input =
-                            control_flags & 0b10 != 0;
-                        frame.dispose = match DisposalMethod::from_u8(
-                            (control_flags & 0b11100) >> 2
-                        ) {
-                            Some(method) => method,
-                            None => DisposalMethod::Any
-                        };
-                        goto!(U16(U16Value::Delay))
-                    }
-                    TransparentIdx => {
-                        self.ext.data.push(b);
-                        if let Some(ref mut idx) = self.try_current_frame()?.transparent {
-                            *idx = b;
-                        }
-                        goto!(ExtensionDataBlock(0))
-                    }
                     ImageFlags => {
                         let local_table = (b & 0b1000_0000) != 0;
                         let interlaced = (b & 0b0100_0000) != 0;
@@ -656,7 +627,12 @@ impl StreamingDecoder {
                         goto!(U16Byte1(U16Value::ImageLeft, b), emit Decoded::BlockStart(Block::Image))
                     }
                     Some(Block::Extension) => {
-                        goto!(ExtensionBlock(AnyExtension(b)), emit Decoded::BlockStart(Block::Extension))
+                        self.ext.data.clear();
+                        self.ext.id = AnyExtension(b);
+                        if self.ext.id.into_known().is_none() {
+                            return Err(DecodingError::format("unknown block type encountered"));
+                        }
+                        goto!(ExtensionBlockStart, emit Decoded::BlockStart(Block::Extension))
                     }
                     Some(Block::Trailer) => {
                         // The `Trailer` is the final state, and isn't reachable without extraneous data after the end of file
@@ -680,23 +656,9 @@ impl StreamingDecoder {
                     goto!(BlockStart(b))
                 }
             }
-            ExtensionBlock(id) => {
-                use Extension::*;
-                self.ext.id = id;
-                self.ext.data.clear();
+            ExtensionBlockStart => {
                 self.ext.data.push(b);
-                if let Some(ext) = Extension::from_u8(id.0) {
-                    match ext {
-                        Control => {
-                            goto!(self.read_control_extension(b)?)
-                        }
-                        Text | Comment | Application => {
-                            goto!(ExtensionDataBlock(b as usize))
-                        }
-                    }
-                } else {
-                    Err(DecodingError::format("unknown block type encountered"))
-                }
+                goto!(ExtensionDataBlock(b as usize))
             }
             ExtensionDataBlock(left) => {
                 if left > 0 {
@@ -707,10 +669,17 @@ impl StreamingDecoder {
                     goto!(n, ExtensionDataBlock(left - n))
                 } else if b == 0 {
                     self.ext.is_block_end = true;
-                    if self.ext.id.into_known() == Some(Extension::Application) {
-                        goto!(0, ApplicationExtension, emit Decoded::BlockFinished(self.ext.id))
-                    } else {
-                        goto!(BlockEnd, emit Decoded::BlockFinished(self.ext.id))
+                    match self.ext.id.into_known() {
+                        Some(Extension::Application) => {
+                            goto!(0, ApplicationExtension, emit Decoded::BlockFinished(self.ext.id))
+                        }
+                        Some(Extension::Control) => {
+                            self.read_control_extension()?;
+                            goto!(BlockEnd, emit Decoded::BlockFinished(self.ext.id))
+                        },
+                        _ => {
+                            goto!(BlockEnd, emit Decoded::BlockFinished(self.ext.id))
+                        }
                     }
                 } else {
                     self.ext.is_block_end = false;
@@ -825,12 +794,6 @@ impl StreamingDecoder {
                 self.height = height;
                 Byte(ByteValue::GlobalFlags)
             },
-            (Delay, delay) => {
-                self.try_current_frame()?.delay = delay;
-                self.ext.data.push(value as u8);
-                self.ext.data.push(b);
-                Byte(ByteValue::TransparentIdx)
-            },
             (ImageLeft, left) => {
                 self.try_current_frame()?.left = left;
                 U16(U16Value::ImageTop)
@@ -850,13 +813,22 @@ impl StreamingDecoder {
         })
     }
 
-    fn read_control_extension(&mut self, b: u8) -> Result<State, DecodingError> {
-        self.add_frame();
-        self.ext.data.push(b);
-        if b != 4 {
+    fn read_control_extension(&mut self) -> Result<(), DecodingError> {
+        if self.ext.data.len() != 5 {
             return Err(DecodingError::format("control extension has wrong length"));
         }
-        Ok(Byte(ByteValue::ControlFlags))
+        let control = &self.ext.data[1..];
+
+        let frame = self.current.get_or_insert_with(Frame::default);
+        let control_flags = control[0];
+        frame.needs_user_input = control_flags & 0b10 != 0;
+        frame.dispose = match DisposalMethod::from_u8((control_flags & 0b11100) >> 2) {
+            Some(method) => method,
+            None => DisposalMethod::Any,
+        };
+        frame.delay = u16::from_le_bytes(control[1..3].try_into().unwrap());
+        frame.transparent = (control_flags & 1 != 0).then_some(control[3]);
+        Ok(())
     }
 
     fn add_frame(&mut self) {
