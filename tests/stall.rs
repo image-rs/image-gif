@@ -53,35 +53,58 @@ fn test_truncated_file() {
     }
 }
 
-#[test]
-fn one_byte_at_a_time() {
-    let r = OneByte {
-        data: include_bytes!("../tests/samples/moon_impact.gif"),
-    };
+#[track_caller]
+fn decode_chopped_anim(r: ChoppedReader) {
     let frames = gif::DecodeOptions::new().read_info(r).unwrap()
-        .into_iter().enumerate().map(|(n, f)| {
-            f.expect(&n.to_string())
-        }).count();
+        .into_iter().enumerate()
+        .map(|(n, f)| f.expect(&n.to_string()))
+        .count();
     assert_eq!(frames, 14);
 }
 
-struct OneByte<'a> {
+#[test]
+fn one_byte_at_a_time() {
+    decode_chopped_anim(ChoppedReader {
+        chunk_len: 1,
+        data: include_bytes!("../tests/samples/moon_impact.gif"),
+    });
+}
+
+#[test]
+fn two_bytes_at_a_time() {
+    decode_chopped_anim(ChoppedReader {
+        chunk_len: 2,
+        data: include_bytes!("../tests/samples/moon_impact.gif"),
+    });
+}
+
+#[test]
+fn three_bytes_at_a_time() {
+    decode_chopped_anim(ChoppedReader {
+        chunk_len: 3,
+        data: include_bytes!("../tests/samples/moon_impact.gif"),
+    });
+}
+
+struct ChoppedReader<'a> {
+    chunk_len: usize,
     data: &'a [u8],
 }
 
-impl io::BufRead for OneByte<'_> {
+impl io::BufRead for ChoppedReader<'_> {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
-        Ok(&self.data[..self.data.len().min(1)])
+        Ok(&self.data[..self.data.len().min(self.chunk_len)])
     }
+
     fn consume(&mut self, n: usize) {
-        debug_assert!(n <= 1);
+        debug_assert!(n <= self.chunk_len);
         self.data = &self.data[n..];
     }
 }
 
-impl io::Read for OneByte<'_> {
+impl io::Read for ChoppedReader<'_> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let n = self.data.len().min(buf.len()).min(1);
+        let n = self.data.len().min(buf.len()).min(self.chunk_len);
         buf[..n].copy_from_slice(&self.data[..n]);
         self.data = &self.data[n..];
         Ok(n)
