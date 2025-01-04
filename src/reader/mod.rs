@@ -49,8 +49,8 @@ pub enum MemoryLimit {
 impl MemoryLimit {
     fn check_size(&self, size: usize) -> Result<(), DecodingError> {
         match self {
-            MemoryLimit::Unlimited => Ok(()),
-            MemoryLimit::Bytes(limit) => {
+            Self::Unlimited => Ok(()),
+            Self::Bytes(limit) => {
                 if size as u64 <= limit.get() {
                     Ok(())
                 } else {
@@ -75,8 +75,8 @@ impl MemoryLimit {
         let usize_bytes = usize::try_from(total_bytes).ok()?;
 
         match self {
-            MemoryLimit::Unlimited => Some(usize_bytes),
-            MemoryLimit::Bytes(limit) => {
+            Self::Unlimited => Some(usize_bytes),
+            Self::Bytes(limit) => {
                 if total_bytes > limit.get() {
                     None
                 } else {
@@ -108,8 +108,8 @@ impl DecodeOptions {
     /// Creates a new decoder builder
     #[must_use]
     #[inline]
-    pub fn new() -> DecodeOptions {
-        DecodeOptions {
+    pub fn new() -> Self {
+        Self {
             memory_limit: MemoryLimit::Bytes(50_000_000.try_into().unwrap()), // 50 MB
             color_output: ColorOutput::Indexed,
             check_frame_consistency: false,
@@ -218,7 +218,7 @@ impl<R: Read> ReadDecoder<R> {
                 Decoded::BlockStart(Block::Trailer) => {
                     self.at_eof = true;
                 },
-                result => return Ok(Some(result))
+                result => return Ok(Some(result)),
             }
         }
         Ok(None)
@@ -262,8 +262,8 @@ impl<R> Decoder<R> where R: Read {
         DecodeOptions::new()
     }
 
-    fn with_no_init(reader: R, decoder: StreamingDecoder, options: DecodeOptions) -> Decoder<R> {
-        Decoder {
+    fn with_no_init(reader: R, decoder: StreamingDecoder, options: DecodeOptions) -> Self {
+        Self {
             decoder: ReadDecoder {
                 reader: io::BufReader::new(reader),
                 decoder,
@@ -289,12 +289,10 @@ impl<R> Decoder<R> where R: Read {
                 Some(Decoded::Repetitions(repeat)) => {
                     self.repeat = repeat;
                 },
-                Some(Decoded::HeaderEnd) => {
-                    break
-                },
+                Some(Decoded::HeaderEnd) => break,
                 Some(_) => {
                     // There will be extra events when parsing application extension
-                    continue
+                    continue;
                 },
                 None => return Err(DecodingError::format(
                     "file does not contain any image data"

@@ -49,7 +49,7 @@ pub enum DecodingError {
 impl DecodingError {
     #[cold]
     pub(crate) fn format(err: &'static str) -> Self {
-        DecodingError::Format(DecodingFormatError {
+        Self::Format(DecodingFormatError {
             underlying: err.into(),
         })
     }
@@ -59,8 +59,8 @@ impl fmt::Display for DecodingError {
     #[cold]
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            DecodingError::Format(ref d) => d.fmt(fmt),
-            DecodingError::Io(ref err) => err.fmt(fmt),
+            Self::Format(ref d) => d.fmt(fmt),
+            Self::Io(ref err) => err.fmt(fmt),
         }
     }
 }
@@ -69,8 +69,8 @@ impl error::Error for DecodingError {
     #[cold]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
-            DecodingError::Format(ref err) => Some(err),
-            DecodingError::Io(ref err) => Some(err),
+            Self::Format(ref err) => Some(err),
+            Self::Io(ref err) => Some(err),
         }
     }
 }
@@ -78,21 +78,21 @@ impl error::Error for DecodingError {
 impl From<io::Error> for DecodingError {
     #[inline]
     fn from(err: io::Error) -> Self {
-        DecodingError::Io(err)
+        Self::Io(err)
     }
 }
 
 impl From<io::ErrorKind> for DecodingError {
     #[cold]
     fn from(err: io::ErrorKind) -> Self {
-        DecodingError::Io(io::Error::from(err))
+        Self::Io(io::Error::from(err))
     }
 }
 
 impl From<DecodingFormatError> for DecodingError {
     #[inline]
     fn from(err: DecodingFormatError) -> Self {
-        DecodingError::Format(err)
+        Self::Format(err)
     }
 }
 
@@ -258,7 +258,7 @@ impl FrameDecoder {
         self.pixel_converter.read_into_buffer(frame, buf, &mut move |out| {
             loop {
                 let (bytes_read, bytes_written) = lzw_reader.decode_bytes(data, out)?;
-                data = &data.get(bytes_read..).unwrap_or_default();
+                data = data.get(bytes_read..).unwrap_or_default();
                 if bytes_written > 0 || bytes_read == 0 || data.is_empty() {
                     return Ok(bytes_written)
                 }
@@ -391,7 +391,7 @@ pub enum OutputBuffer<'a> {
     None,
 }
 
-impl<'a> OutputBuffer<'a> {
+impl OutputBuffer<'_> {
     fn append(&mut self, buf: &[u8], memory_limit: &MemoryLimit) -> Result<(usize, usize), DecodingError> {
         let (consumed, copied) = match self {
             OutputBuffer::Slice(slice) => {
@@ -420,13 +420,13 @@ impl<'a> OutputBuffer<'a> {
 impl StreamingDecoder {
     /// Creates a new streaming decoder
     #[must_use]
-    pub fn new() -> StreamingDecoder {
+    pub fn new() -> Self {
         let options = DecodeOptions::new();
         Self::with_options(&options)
     }
 
     pub(crate) fn with_options(options: &DecodeOptions) -> Self {
-        StreamingDecoder {
+        Self {
             state: Magic(0, [0; 6]),
             lzw_reader: LzwReader::new(options.check_for_end_code),
             skip_frame_decoding: options.skip_frame_decoding,
@@ -452,8 +452,8 @@ impl StreamingDecoder {
     ///
     /// Returns the number of bytes consumed from the input buffer
     /// and the last decoding result.
-    pub fn update<'a>(
-        &'a mut self,
+    pub fn update(
+        &mut self,
         mut buf: &[u8],
         write_into: &mut OutputBuffer<'_>,
     ) -> Result<(usize, Decoded), DecodingError> {
@@ -539,7 +539,7 @@ impl StreamingDecoder {
             })
         );
 
-        let b = *buf.get(0).ok_or(io::ErrorKind::UnexpectedEof)?;
+        let b = *buf.first().ok_or(io::ErrorKind::UnexpectedEof)?;
 
         match self.state {
             Magic(i, mut version) => if i < 6 {
@@ -794,7 +794,8 @@ impl StreamingDecoder {
                         Decoded::Nothing
                     };
                     goto!(consumed, DecodeSubBlock(left - consumed), emit decoded)
-                }  else if b != 0 { // decode next sub-block
+                } else if b != 0 {
+                    // decode next sub-block
                     goto!(DecodeSubBlock(b as usize))
                 } else {
                     let (_, bytes_len) = self.lzw_reader.decode_bytes(&[], write_into)?;

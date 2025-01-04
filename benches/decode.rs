@@ -34,8 +34,8 @@ fn main() {
                 BenchmarkId::new(def.id, def.data.len()),
                 def.data,
                 |b, input| {
-                    b.iter(|| read_image(input))
-                }
+                    b.iter(|| read_image(input));
+                },
             );
     }
 
@@ -71,7 +71,7 @@ fn main() {
             "extract-metadata-note",
             include_bytes!("note.gif"),
             |b, input| {
-                b.iter(|| read_metadata(input))
+                b.iter(|| read_metadata(input));
             }
         );
 

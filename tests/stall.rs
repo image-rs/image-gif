@@ -9,15 +9,13 @@ fn try_decode_crash_regression() {
     for entry in files {
         let entry = entry.unwrap();
         if let Some(ext) = entry.path().extension() {
-            if ext.to_str() != Some("gif") {
-                panic!("Unexpected file {} in crashtests, should end with .gif", entry.path().display());
-            }
+            assert_eq!(ext.to_str(), Some("gif"), "Unexpected file {} in crashtests, should end with .gif", entry.path().display());
         } else {
             panic!("Unexpected file {} in crashtests, should end with .gif", entry.path().display());
         }
 
         let file_data = fs::read(entry.path()).unwrap();
-        let _ = decode_on_timer(file_data);
+        decode_on_timer(file_data);
     }
 }
 
@@ -46,8 +44,7 @@ fn decode(data: &[u8]) -> Result<(), gif::DecodingError> {
 #[test]
 fn test_truncated_file() {
     let data = include_bytes!("../tests/samples/anim-gr.gif");
-    for len in 0..data.len()-1 {
-
+    for len in 0..data.len() - 1 {
         let truncated = &data[..len];
         // it's expected to fail often, but should not stall or panic
         if let Ok(d) = gif::DecodeOptions::new().read_info(truncated) {

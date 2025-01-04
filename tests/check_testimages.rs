@@ -24,18 +24,18 @@ where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
             print!("{}: ", path.to_string_lossy());
             match func(path.clone()) {
                 Ok(crc) => {
-                    results.insert(path, format!("{}", crc));
-                    println!("{}", crc)
+                    results.insert(path, format!("{crc}"));
+                    println!("{crc}");
                 },
-                Err(_) if path.file_name().unwrap().to_str().unwrap().starts_with("x") => {
+                Err(_) if path.file_name().unwrap().to_str().unwrap().starts_with('x') => {
                     expected_failures += 1;
-                    println!("Expected failure")
-                },   
-                err => panic!("{:?}", err)
+                    println!("Expected failure");
+                },
+                err => panic!("{err:?}"),
             }
         }
     }
-    let mut path = base.clone();
+    let mut path = base;
     path.push("results.txt");
     let mut ref_results = HashMap::new();
     let mut failures = 0;
@@ -49,11 +49,11 @@ where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
         }
     }
     assert_eq!(expected_failures, failures);
-    for (path, crc) in results.iter() {
+    for (path, crc) in &results {
         assert_eq!(
-            ref_results.get(path).expect(&format!("reference for {:?} is missing", path)), 
+            ref_results.get(path).unwrap_or_else(|| panic!("reference for {path:?} is missing")), 
             crc
-        )
+        );
     }
 }
 
@@ -68,10 +68,8 @@ fn render_images() {
         while let Some(frame) = decoder.read_next_frame()? {
             // First sanity check:
             assert_eq!(
-                frame.buffer.len(), 
-                frame.width as usize
-                * frame.height as usize
-                * 4
+                frame.buffer.len(),
+                frame.width as usize * frame.height as usize * 4
             );
             crc.update(&frame.buffer);
         }
@@ -144,18 +142,18 @@ pub struct Crc32 {
 impl Crc32 {
     /// Create a new hasher.
     pub fn new() -> Crc32 {
-        Crc32 {crc: 0xFFFFFFFF}
+        Crc32 { crc: 0xFFFFFFFF }
     }
-    
+
     /// Resets the hasher.
     pub fn reset(&mut self) {
-        *self = Self::new()
+        *self = Self::new();
     }
 
     /// Update the internal hasher with the bytes from ```buf```
     pub fn update(&mut self, buf: &[u8]) {
         for &byte in buf {
-            let a = (self.crc ^ byte as u32) & 0xFF;
+            let a = (self.crc ^ u32::from(byte)) & 0xFF;
             let b = self.crc >> 8;
 
             self.crc = CRC_TABLE[a as usize] ^ b;

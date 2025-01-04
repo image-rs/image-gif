@@ -16,7 +16,7 @@ fn main() {
             Ok(Some(frame)) => frame,
             Ok(None) => break,
             Err(error) => {
-                println!("Error: {:?}", error);
+                println!("Error: {error:?}");
                 break;
             }
         };
