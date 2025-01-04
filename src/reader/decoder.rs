@@ -620,11 +620,10 @@ impl StreamingDecoder {
                         }
 
                         if local_table {
-                            let entries = PLTE_CHANNELS * (1 << (table_size + 1));
-                            let mut pal = Vec::new();
-                            pal.try_reserve_exact(entries).map_err(|_| io::ErrorKind::OutOfMemory)?;
-                            frame.palette = Some(pal);
-                            goto!(LocalPalette(entries))
+                            let pal_len = PLTE_CHANNELS * (1 << (table_size + 1));
+                            frame.palette.get_or_insert_with(Vec::new)
+                                .try_reserve_exact(pal_len).map_err(|_| io::ErrorKind::OutOfMemory)?;
+                            goto!(LocalPalette(pal_len))
                         } else {
                             goto!(LocalPalette(0))
                         }
@@ -632,9 +631,12 @@ impl StreamingDecoder {
                 }
             }
             GlobalPalette(left) => {
-                let n = cmp::min(left, buf.len());
+                // the global_color_table is guaranteed to have the exact capacity required
                 if left > 0 {
-                    self.global_color_table.extend_from_slice(&buf[..n]);
+                    let n = cmp::min(left, buf.len());
+                    if n <= self.global_color_table.capacity() - self.global_color_table.len() {
+                        self.global_color_table.extend_from_slice(&buf[..n]);
+                    }
                     goto!(n, GlobalPalette(left - n))
                 } else {
                     goto!(BlockStart(b), emit Decoded::GlobalPalette(
