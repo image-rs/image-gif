@@ -189,6 +189,7 @@ impl Frame<'static> {
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height * 4`.
     #[cfg(feature = "color_quant")]
+    #[track_caller]
     pub fn from_rgba(width: u16, height: u16, pixels: &mut [u8]) -> Self {
         Frame::from_rgba_speed(width, height, pixels, 1)
     }
@@ -208,6 +209,7 @@ impl Frame<'static> {
     /// *   If the length of pixels does not equal `width * height * 4`.
     /// *   If `speed < 1` or `speed > 30`
     #[cfg(feature = "color_quant")]
+    #[track_caller]
     pub fn from_rgba_speed(width: u16, height: u16, pixels: &mut [u8], speed: i32) -> Self {
         assert_eq!(width as usize * height as usize * 4, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
         assert!(speed >= 1 && speed <= 30, "speed needs to be in the range [1, 30]");
@@ -263,6 +265,7 @@ impl Frame<'static> {
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height`.
     /// *   If the length of palette > `256 * 3`.
+    #[track_caller]
     pub fn from_palette_pixels(width: u16, height: u16, pixels: impl Into<Vec<u8>>, palette: impl Into<Vec<u8>>, transparent: Option<u8>) -> Self {
         let pixels = pixels.into();
         let palette = palette.into();
@@ -283,6 +286,7 @@ impl Frame<'static> {
     ///
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height`.
+    #[track_caller]
     pub fn from_indexed_pixels(width: u16, height: u16, pixels: impl Into<Vec<u8>>, transparent: Option<u8>) -> Self {
         let pixels = pixels.into();
         assert_eq!(width as usize * height as usize, pixels.len(), "Too many or too little pixels for the given width and height to create a GIF Frame");
@@ -309,6 +313,7 @@ impl Frame<'static> {
     /// *   If the length of pixels does not equal `width * height * 3`.
     #[cfg(feature = "color_quant")]
     #[must_use]
+    #[track_caller]
     pub fn from_rgb(width: u16, height: u16, pixels: &[u8]) -> Self {
         Frame::from_rgb_speed(width, height, pixels, 1)
     }
@@ -329,6 +334,7 @@ impl Frame<'static> {
     /// *   If `speed < 1` or `speed > 30`
     #[cfg(feature = "color_quant")]
     #[must_use]
+    #[track_caller]
     pub fn from_rgb_speed(width: u16, height: u16, pixels: &[u8], speed: i32) -> Self {
         assert_eq!(width as usize * height as usize * 3, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
         let mut vec: Vec<u8> = Vec::new();
