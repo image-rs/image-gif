@@ -336,7 +336,7 @@ impl<R> Decoder<R> where R: Read {
     ///
     /// You can also call `.into_iter()` on the decoder to use it as a regular iterator.
     pub fn read_next_frame(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
-        if let Some(_) = self.next_frame_info()? {
+        if self.next_frame_info()?.is_some() {
             match self.current_frame_data_type {
                 FrameDataType::Pixels => {
                     self.pixel_converter.read_frame(&mut self.current_frame, &mut |out| self.decoder.decode_next_bytes(out))?;
@@ -376,7 +376,7 @@ impl<R> Decoder<R> where R: Read {
     /// The length of `buf` must be at least `Self::buffer_size`.
     /// Deinterlaces the result.
     pub fn read_into_buffer(&mut self, buf: &mut [u8]) -> Result<(), DecodingError> {
-        self.pixel_converter.read_into_buffer(&mut self.current_frame, buf, &mut |out| self.decoder.decode_next_bytes(out))
+        self.pixel_converter.read_into_buffer(&self.current_frame, buf, &mut |out| self.decoder.decode_next_bytes(out))
     }
 
     fn copy_lzw_into_buffer(&mut self, min_code_size: u8, buf: &mut Vec<u8>) -> Result<(), DecodingError> {
@@ -399,7 +399,7 @@ impl<R> Decoder<R> where R: Read {
     /// `Self::next_frame_info` needs to be called beforehand. Returns `true` if the supplied
     /// buffer could be filled completely. Should not be called after `false` had been returned.
     pub fn fill_buffer(&mut self, buf: &mut [u8]) -> Result<bool, DecodingError> {
-        self.pixel_converter.fill_buffer(&mut self.current_frame, buf, &mut |out| self.decoder.decode_next_bytes(out))
+        self.pixel_converter.fill_buffer(&self.current_frame, buf, &mut |out| self.decoder.decode_next_bytes(out))
     }
 
     /// Output buffer size

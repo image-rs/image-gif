@@ -228,7 +228,7 @@ impl FrameDecoder {
                 let (bytes_read, bytes_written) = lzw_reader.decode_bytes(data, out)?;
                 data = data.get(bytes_read..).unwrap_or_default();
                 if bytes_written > 0 || bytes_read == 0 || data.is_empty() {
-                    return Ok(bytes_written)
+                    return Ok(bytes_written);
                 }
             }
         })?;

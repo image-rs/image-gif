@@ -437,7 +437,7 @@ impl<W: Write> Drop for Encoder<W> {
 
 // Color table size converted to flag bits
 fn flag_size(size: usize) -> u8 {
-    (size.max(2).min(255).next_power_of_two().trailing_zeros() - 1) as u8
+    (size.clamp(2, 255).next_power_of_two().trailing_zeros() - 1) as u8
 }
 
 #[test]
@@ -495,7 +495,7 @@ fn tmp_buf<const N: usize>() -> Buf<N> {
 
 impl<const N: usize> Buf<N> {
     #[inline(always)]
-    fn finish(&mut self, mut w: impl Write) -> io::Result<()> {
+    fn finish(&self, mut w: impl Write) -> io::Result<()> {
         debug_assert_eq!(self.pos, N);
         w.write_all(&self.buf)
     }
