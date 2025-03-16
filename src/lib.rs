@@ -111,6 +111,8 @@
 // ```
 #![deny(missing_docs)]
 #![cfg(feature = "std")]
+#![allow(clippy::manual_range_contains)]
+#![allow(clippy::new_without_default)]
 
 mod traits;
 mod common;
@@ -135,7 +137,7 @@ pub mod streaming_decoder {
 macro_rules! insert_as_doc {
     { $content:expr } => {
         #[allow(unused_doc_comments)]
-        #[doc = $content] extern { }
+        #[doc = $content] extern "C" { }
     }
 }
 

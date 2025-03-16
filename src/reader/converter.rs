@@ -34,7 +34,7 @@ pub(crate) struct PixelConverter {
 }
 
 impl PixelConverter {
-    pub(crate) fn new(color_output: ColorOutput, memory_limit: MemoryLimit) -> Self {
+    pub(crate) const fn new(color_output: ColorOutput, memory_limit: MemoryLimit) -> Self {
         Self {
             memory_limit,
             color_output,
@@ -43,7 +43,7 @@ impl PixelConverter {
         }
     }
 
-    pub(crate) fn check_buffer_size(&mut self, frame: &Frame<'_>) -> Result<usize, DecodingError> {
+    pub(crate) fn check_buffer_size(&self, frame: &Frame<'_>) -> Result<usize, DecodingError> {
         let pixel_bytes = self.memory_limit
             .buffer_size(self.color_output, frame.width, frame.height)
             .ok_or_else(|| io::Error::new(io::ErrorKind::OutOfMemory, "image is too large"))?;
@@ -74,13 +74,13 @@ impl PixelConverter {
     }
 
     #[inline]
-    pub(crate) fn buffer_size(&self, frame: &Frame<'_>) -> Option<usize> {
+    pub(crate) const fn buffer_size(&self, frame: &Frame<'_>) -> Option<usize> {
         self.line_length(frame).checked_mul(frame.height as usize)
     }
 
     #[inline]
-    pub(crate) fn line_length(&self, frame: &Frame<'_>) -> usize {
-        use self::ColorOutput::*;
+    pub(crate) const fn line_length(&self, frame: &Frame<'_>) -> usize {
+        use self::ColorOutput::{Indexed, RGBA};
         match self.color_output {
             RGBA => frame.width as usize * N_CHANNELS,
             Indexed => frame.width as usize,

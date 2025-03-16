@@ -59,8 +59,8 @@ fn main() {
         encoder.set_repeat(Repeat::Finite(0)).unwrap();
 
         let frame = match info.color_type {
-            png::ColorType::Rgb => Frame::from_rgb(w, h, &mut buf[..size]),
-            png::ColorType::Rgba => Frame::from_rgba(w, h, &mut buf[..size]),
+            png::ColorType::Rgb => Frame::from_rgb(w, h, &buf[..size]),
+            png::ColorType::Rgba => Frame::from_rgba(w, h, &buf[..size]),
             _ => continue,
         };
 
