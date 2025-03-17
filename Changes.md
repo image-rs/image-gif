@@ -1,3 +1,7 @@
+# v0.13.2
+
+- Simplified internal decoder size
+
 # v0.13.1
 
 Bugfixes:
