@@ -210,7 +210,7 @@ impl<R: Read> ReadDecoder<R> {
             let (consumed, result) = {
                 let buf = self.reader.fill_buf()?;
                 if buf.is_empty() {
-                    return Err(io::ErrorKind::UnexpectedEof.into());
+                    return Err(DecodingError::UnexpectedEof);
                 }
 
                 self.decoder.update(buf, write_into)?
@@ -368,7 +368,7 @@ where
                             * usize::from(self.current_frame.height)
                             / 4,
                     )
-                    .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                    .map_err(|_| DecodingError::OutOfMemory)?;
                     self.copy_lzw_into_buffer(min_code_size, &mut vec)?;
                     self.current_frame.buffer = Cow::Owned(vec);
                 }
