@@ -1,9 +1,9 @@
-use alloc::borrow::Cow;
-use alloc::vec::Vec;
-use core::mem;
-use core::iter;
 use crate::common::Frame;
 use crate::MemoryLimit;
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
+use core::iter;
+use core::mem;
 
 use super::decoder::{DecodingError, OutputBuffer, PLTE_CHANNELS};
 
@@ -23,7 +23,8 @@ pub enum ColorOutput {
     Indexed = 1,
 }
 
-pub(crate) type FillBufferCallback<'a> = &'a mut dyn FnMut(&mut OutputBuffer<'_>) -> Result<usize, DecodingError>;
+pub(crate) type FillBufferCallback<'a> =
+    &'a mut dyn FnMut(&mut OutputBuffer<'_>) -> Result<usize, DecodingError>;
 
 /// Deinterlaces and expands to RGBA if needed
 pub(crate) struct PixelConverter {
@@ -44,26 +45,32 @@ impl PixelConverter {
     }
 
     pub(crate) fn check_buffer_size(&self, frame: &Frame<'_>) -> Result<usize, DecodingError> {
-        let pixel_bytes = self.memory_limit
+        let pixel_bytes = self
+            .memory_limit
             .buffer_size(self.color_output, frame.width, frame.height)
             .ok_or_else(|| DecodingError::InsufficientBuffer)?;
 
         debug_assert_eq!(
-            pixel_bytes, self.buffer_size(frame).unwrap(),
+            pixel_bytes,
+            self.buffer_size(frame).unwrap(),
             "Checked computation diverges from required buffer size"
         );
         Ok(pixel_bytes)
     }
 
     #[inline]
-    pub(crate) fn read_frame(&mut self, frame: &mut Frame<'_>, data_callback: FillBufferCallback<'_>) -> Result<(), DecodingError> {
+    pub(crate) fn read_frame(
+        &mut self,
+        frame: &mut Frame<'_>,
+        data_callback: FillBufferCallback<'_>,
+    ) -> Result<(), DecodingError> {
         let pixel_bytes = self.check_buffer_size(frame)?;
         let mut vec = match mem::replace(&mut frame.buffer, Cow::Borrowed(&[])) {
             // reuse buffer if possible without reallocating
             Cow::Owned(mut vec) if vec.capacity() >= pixel_bytes => {
                 vec.resize(pixel_bytes, 0);
                 vec
-            },
+            }
             // resizing would realloc anyway, and 0-init is faster than a copy
             _ => vec![0; pixel_bytes],
         };
@@ -89,7 +96,12 @@ impl PixelConverter {
 
     /// Use `read_into_buffer` to deinterlace
     #[inline(never)]
-    pub(crate) fn fill_buffer(&mut self, current_frame: &Frame<'_>, mut buf: &mut [u8], data_callback: FillBufferCallback<'_>) -> Result<bool, DecodingError> {
+    pub(crate) fn fill_buffer(
+        &mut self,
+        current_frame: &Frame<'_>,
+        mut buf: &mut [u8],
+        data_callback: FillBufferCallback<'_>,
+    ) -> Result<bool, DecodingError> {
         loop {
             let decode_into = match self.color_output {
                 // When decoding indexed data, LZW can write the pixels directly
@@ -113,27 +125,38 @@ impl PixelConverter {
                     match self.color_output {
                         ColorOutput::RGBA => {
                             let transparent = current_frame.transparent;
-                            let palette: &[u8] = current_frame.palette.as_deref()
+                            let palette: &[u8] = current_frame
+                                .palette
+                                .as_deref()
                                 .or(self.global_palette.as_deref())
                                 .unwrap_or_default(); // next_frame_info already checked it won't happen
 
                             let (pixels, rest) = buf.split_at_mut(bytes_decoded * N_CHANNELS);
                             buf = rest;
 
-                            for (rgba, idx) in pixels.chunks_exact_mut(N_CHANNELS).zip(self.buffer.iter().copied().take(bytes_decoded)) {
+                            for (rgba, idx) in pixels
+                                .chunks_exact_mut(N_CHANNELS)
+                                .zip(self.buffer.iter().copied().take(bytes_decoded))
+                            {
                                 let plte_offset = PLTE_CHANNELS * idx as usize;
-                                if let Some(colors) = palette.get(plte_offset..plte_offset+PLTE_CHANNELS) {
+                                if let Some(colors) =
+                                    palette.get(plte_offset..plte_offset + PLTE_CHANNELS)
+                                {
                                     rgba[0] = colors[0];
                                     rgba[1] = colors[1];
                                     rgba[2] = colors[2];
                                     rgba[3] = if let Some(t) = transparent {
-                                        if t == idx { 0x00 } else { 0xFF }
+                                        if t == idx {
+                                            0x00
+                                        } else {
+                                            0xFF
+                                        }
                                     } else {
                                         0xFF
                                     };
                                 }
                             }
-                        },
+                        }
                         ColorOutput::Indexed => {
                             buf = &mut buf[bytes_decoded..];
                         }
@@ -141,7 +164,7 @@ impl PixelConverter {
                     if buf.is_empty() {
                         return Ok(true);
                     }
-                },
+                }
             }
         }
     }
@@ -161,21 +184,34 @@ impl PixelConverter {
     /// Applies deinterlacing
     ///
     /// Set `frame.interlaced = false` afterwards if you're putting the buffer back into the `Frame`
-    pub(crate) fn read_into_buffer(&mut self, frame: &Frame<'_>, buf: &mut [u8], data_callback: FillBufferCallback<'_>) -> Result<(), DecodingError> {
+    pub(crate) fn read_into_buffer(
+        &mut self,
+        frame: &Frame<'_>,
+        buf: &mut [u8],
+        data_callback: FillBufferCallback<'_>,
+    ) -> Result<(), DecodingError> {
         if frame.interlaced {
             let width = self.line_length(frame);
-            for row in (InterlaceIterator { len: frame.height, next: 0, pass: 0 }) {
+            for row in (InterlaceIterator {
+                len: frame.height,
+                next: 0,
+                pass: 0,
+            }) {
                 // this can't overflow 32-bit, because row never equals (maximum) height
                 let start = row * width;
                 // Handle a too-small buffer and 32-bit usize overflow without panicking
-                let line = buf.get_mut(start..).and_then(|b| b.get_mut(..width))
+                let line = buf
+                    .get_mut(start..)
+                    .and_then(|b| b.get_mut(..width))
                     .ok_or_else(|| DecodingError::format("buffer too small"))?;
                 if !self.fill_buffer(frame, line, data_callback)? {
                     return Err(DecodingError::format("image truncated"));
                 }
             }
         } else {
-            let buf = self.buffer_size(frame).and_then(|buffer_size| buf.get_mut(..buffer_size))
+            let buf = self
+                .buffer_size(frame)
+                .and_then(|buffer_size| buf.get_mut(..buffer_size))
                 .ok_or_else(|| DecodingError::format("buffer too small"))?;
             if !self.fill_buffer(frame, buf, data_callback)? {
                 return Err(DecodingError::format("image truncated"));
@@ -235,10 +271,20 @@ mod test {
             (13, &[0, 8, 4, 12, 2, 6, 10, 1, 3, 5, 7, 9, 11][..]),
             (14, &[0, 8, 4, 12, 2, 6, 10, 1, 3, 5, 7, 9, 11, 13][..]),
             (15, &[0, 8, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13][..]),
-            (16, &[0, 8, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..]),
-            (17, &[0, 8, 16, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..]),
+            (
+                16,
+                &[0, 8, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..],
+            ),
+            (
+                17,
+                &[0, 8, 16, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..],
+            ),
         ] {
-            let iter = InterlaceIterator { len, next: 0, pass: 0 };
+            let iter = InterlaceIterator {
+                len,
+                next: 0,
+                pass: 0,
+            };
             let lines = iter.collect::<Vec<_>>();
             assert_eq!(lines, expect);
         }
@@ -246,7 +292,11 @@ mod test {
 
     #[test]
     fn interlace_max() {
-        let iter = InterlaceIterator { len: 0xFFFF, next: 0, pass: 0 };
+        let iter = InterlaceIterator {
+            len: 0xFFFF,
+            next: 0,
+            pass: 0,
+        };
         assert_eq!(65533, iter.last().unwrap());
     }
 }

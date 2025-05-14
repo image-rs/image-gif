@@ -1,18 +1,18 @@
 //! # Minimal gif encoder
 
-use core::fmt;
-use alloc::boxed::Box;
 use alloc::borrow::Cow;
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::error;
+use core::fmt;
 
-use weezl::{BitOrder, encode::Encoder as LzwEncoder};
+use weezl::{encode::Encoder as LzwEncoder, BitOrder};
 
 use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 use crate::traits::{Write, WriteBytesExt as _};
 
 #[cfg(feature = "std")]
-use {std::io, crate::traits::std_impls::IoWriter};
+use {crate::traits::std_impls::IoWriter, std::io};
 
 /// The image has incorrect properties, making it impossible to encode as a gif.
 #[derive(Debug)]
@@ -34,7 +34,10 @@ impl fmt::Display for EncodingFormatError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::TooManyColors => write!(fmt, "the image has too many colors"),
-            Self::MissingColorPalette => write!(fmt, "the GIF format requires a color palette but none was given"),
+            Self::MissingColorPalette => write!(
+                fmt,
+                "the GIF format requires a color palette but none was given"
+            ),
             Self::InvalidMinCodeSize => write!(fmt, "LZW data is invalid"),
             Self::BufferImproperlySized => write!(fmt, "Frame buffer improperly sized"),
         }
@@ -137,13 +140,18 @@ impl ExtensionData {
     ///
     /// `delay` is given in units of 10 ms.
     #[must_use]
-    pub fn new_control_ext(delay: u16, dispose: DisposalMethod, needs_user_input: bool, trns: Option<u8>) -> Self {
+    pub fn new_control_ext(
+        delay: u16,
+        dispose: DisposalMethod,
+        needs_user_input: bool,
+        trns: Option<u8>,
+    ) -> Self {
         let mut flags = 0;
         let trns = match trns {
             Some(trns) => {
                 flags |= 1;
                 trns
-            },
+            }
             None => 0,
         };
         flags |= u8::from(needs_user_input) << 1;
@@ -158,7 +166,12 @@ impl<W: io::Write> Encoder<IoWriter<W>> {
     ///
     /// `global_palette` gives the global color palette in the format `[r, g, b, ...]`,
     /// if no global palette shall be used an empty slice may be supplied.
-    pub fn new(w: W, width: u16, height: u16, global_palette: &[u8]) -> Result<Self, EncodingError> {
+    pub fn new(
+        w: W,
+        width: u16,
+        height: u16,
+        global_palette: &[u8],
+    ) -> Result<Self, EncodingError> {
         Self::new_with_writer(IoWriter(w), width, height, global_palette)
     }
 }
@@ -168,13 +181,20 @@ impl<W: Write> Encoder<W> {
     ///
     /// `global_palette` gives the global color palette in the format `[r, g, b, ...]`,
     /// if no global palette shall be used an empty slice may be supplied.
-    pub fn new_with_writer(w: W, width: u16, height: u16, global_palette: &[u8]) -> Result<Self, EncodingError> {
+    pub fn new_with_writer(
+        w: W,
+        width: u16,
+        height: u16,
+        global_palette: &[u8],
+    ) -> Result<Self, EncodingError> {
         Self {
             w: Some(w),
             global_palette: false,
-            width, height,
+            width,
+            height,
             buffer: Vec::new(),
-        }.write_global_palette(global_palette)
+        }
+        .write_global_palette(global_palette)
     }
 
     /// Write an extension block that signals a repeat behaviour.
@@ -202,10 +222,18 @@ impl<W: Write> Encoder<W> {
     ///
     /// Note: This function also writes a control extension if necessary.
     pub fn write_frame(&mut self, frame: &Frame<'_>) -> Result<(), EncodingError> {
-        if usize::from(frame.width).checked_mul(usize::from(frame.height)).map_or(true, |size| frame.buffer.len() < size) {
-            return Err(EncodingError::Format(EncodingFormatError::BufferImproperlySized));
+        if usize::from(frame.width)
+            .checked_mul(usize::from(frame.height))
+            .map_or(true, |size| frame.buffer.len() < size)
+        {
+            return Err(EncodingError::Format(
+                EncodingFormatError::BufferImproperlySized,
+            ));
         }
-        debug_assert!((frame.width > 0 && frame.height > 0) || frame.buffer.is_empty(), "the frame has 0 pixels, but non-empty buffer");
+        debug_assert!(
+            (frame.width > 0 && frame.height > 0) || frame.buffer.is_empty(),
+            "the frame has 0 pixels, but non-empty buffer"
+        );
         self.write_frame_header(frame)?;
         self.write_image_block(&frame.buffer)
     }
@@ -227,12 +255,17 @@ impl<W: Write> Encoder<W> {
                 let (palette, padding, table_size) = Self::check_color_table(palette)?;
                 flags |= table_size;
                 Some((palette, padding))
-            },
+            }
             None if self.global_palette => None,
-            _ => return Err(EncodingError::Format(EncodingFormatError::MissingColorPalette)),
+            _ => {
+                return Err(EncodingError::Format(
+                    EncodingFormatError::MissingColorPalette,
+                ))
+            }
         };
         let mut tmp = tmp_buf::<10>();
-        tmp.write_le(Block::Image as u8).map_err(EncodingError::io)?;
+        tmp.write_le(Block::Image as u8)
+            .map_err(EncodingError::io)?;
         tmp.write_le(frame.left).map_err(EncodingError::io)?;
         tmp.write_le(frame.top).map_err(EncodingError::io)?;
         tmp.write_le(frame.width).map_err(EncodingError::io)?;
@@ -248,37 +281,68 @@ impl<W: Write> Encoder<W> {
 
     fn write_image_block(&mut self, data: &[u8]) -> Result<(), EncodingError> {
         self.buffer.clear();
-        self.buffer.try_reserve(data.len() / 4).ok().ok_or(EncodingError::OutOfMemory)?;
+        self.buffer
+            .try_reserve(data.len() / 4)
+            .ok()
+            .ok_or(EncodingError::OutOfMemory)?;
         lzw_encode(data, &mut self.buffer);
 
         let writer = self.w.as_mut().ok_or(EncodingError::MissingWriter)?;
         Self::write_encoded_image_block(writer, &self.buffer)
     }
 
-    fn write_encoded_image_block(writer: &mut W, data_with_min_code_size: &[u8]) -> Result<(), EncodingError> {
+    fn write_encoded_image_block(
+        writer: &mut W,
+        data_with_min_code_size: &[u8],
+    ) -> Result<(), EncodingError> {
         let (&min_code_size, data) = data_with_min_code_size.split_first().unwrap_or((&2, &[]));
-        writer.write_le(min_code_size).map_err(Into::into).map_err(EncodingError::Io)?;
+        writer
+            .write_le(min_code_size)
+            .map_err(Into::into)
+            .map_err(EncodingError::Io)?;
 
         // Write blocks. `chunks_exact` seems to be slightly faster
         // than `chunks` according to both Rust docs and benchmark results.
         let mut iter = data.chunks_exact(0xFF);
         for full_block in iter.by_ref() {
-            writer.write_le(0xFFu8).map_err(Into::into).map_err(EncodingError::Io)?;
-            writer.write_all(full_block).map_err(Into::into).map_err(EncodingError::Io)?;
+            writer
+                .write_le(0xFFu8)
+                .map_err(Into::into)
+                .map_err(EncodingError::Io)?;
+            writer
+                .write_all(full_block)
+                .map_err(Into::into)
+                .map_err(EncodingError::Io)?;
         }
         let last_block = iter.remainder();
         if !last_block.is_empty() {
-            writer.write_le(last_block.len() as u8).map_err(Into::into).map_err(EncodingError::Io)?;
-            writer.write_all(last_block).map_err(Into::into).map_err(EncodingError::Io)?;
+            writer
+                .write_le(last_block.len() as u8)
+                .map_err(Into::into)
+                .map_err(EncodingError::Io)?;
+            writer
+                .write_all(last_block)
+                .map_err(Into::into)
+                .map_err(EncodingError::Io)?;
         }
-        writer.write_le(0u8).map_err(Into::into).map_err(EncodingError::Io)
+        writer
+            .write_le(0u8)
+            .map_err(Into::into)
+            .map_err(EncodingError::Io)
     }
 
-    fn write_color_table(writer: &mut W, table: &[u8], padding: usize) -> Result<(), EncodingError> {
+    fn write_color_table(
+        writer: &mut W,
+        table: &[u8],
+        padding: usize,
+    ) -> Result<(), EncodingError> {
         writer.write_all(table).map_err(EncodingError::io)?;
         // Waste some space as of gif spec
         for _ in 0..padding {
-            writer.write_all(&[0, 0, 0]).map_err(Into::into).map_err(EncodingError::Io)?;
+            writer
+                .write_all(&[0, 0, 0])
+                .map_err(Into::into)
+                .map_err(EncodingError::Io)?;
         }
         Ok(())
     }
@@ -306,11 +370,15 @@ impl<W: Write> Encoder<W> {
             return Ok(());
         }
         let writer = self.writer()?;
-        writer.write_le(Block::Extension as u8).map_err(Into::into).map_err(EncodingError::Io)?;
+        writer
+            .write_le(Block::Extension as u8)
+            .map_err(Into::into)
+            .map_err(EncodingError::Io)?;
         match extension {
             Control { flags, delay, trns } => {
                 let mut tmp = tmp_buf::<6>();
-                tmp.write_le(Extension::Control as u8).map_err(EncodingError::io)?;
+                tmp.write_le(Extension::Control as u8)
+                    .map_err(EncodingError::io)?;
                 tmp.write_le(4u8).map_err(EncodingError::io)?;
                 tmp.write_le(flags).map_err(EncodingError::io)?;
                 tmp.write_le(delay).map_err(EncodingError::io)?;
@@ -319,7 +387,8 @@ impl<W: Write> Encoder<W> {
             }
             Repetitions(repeat) => {
                 let mut tmp = tmp_buf::<17>();
-                tmp.write_le(Extension::Application as u8).map_err(EncodingError::io)?;
+                tmp.write_le(Extension::Application as u8)
+                    .map_err(EncodingError::io)?;
                 tmp.write_le(11u8).map_err(EncodingError::io)?;
                 tmp.write_all(b"NETSCAPE2.0").map_err(EncodingError::io)?;
                 tmp.write_le(3u8).map_err(EncodingError::io)?;
@@ -327,11 +396,15 @@ impl<W: Write> Encoder<W> {
                 tmp.write_le(match repeat {
                     Repeat::Finite(no) => no,
                     Repeat::Infinite => 0u16,
-                }).map_err(EncodingError::io)?;
+                })
+                .map_err(EncodingError::io)?;
                 tmp.finish(&mut *writer).map_err(EncodingError::io)?;
             }
         }
-        writer.write_le(0u8).map_err(Into::into).map_err(EncodingError::Io)
+        writer
+            .write_le(0u8)
+            .map_err(Into::into)
+            .map_err(EncodingError::Io)
     }
 
     /// Writes a raw extension to the image.
@@ -339,17 +412,36 @@ impl<W: Write> Encoder<W> {
     /// This method can be used to write an unsupported extension to the file. `func` is the extension
     /// identifier (e.g. `Extension::Application as u8`). `data` are the extension payload blocks. If any
     /// contained slice has a lenght > 255 it is automatically divided into sub-blocks.
-    pub fn write_raw_extension(&mut self, func: AnyExtension, data: &[&[u8]]) -> Result<(), EncodingError> {
+    pub fn write_raw_extension(
+        &mut self,
+        func: AnyExtension,
+        data: &[&[u8]],
+    ) -> Result<(), EncodingError> {
         let writer = self.writer()?;
-        writer.write_le(Block::Extension as u8).map_err(Into::into).map_err(EncodingError::Io)?;
-        writer.write_le(func.0).map_err(Into::into).map_err(EncodingError::Io)?;
+        writer
+            .write_le(Block::Extension as u8)
+            .map_err(Into::into)
+            .map_err(EncodingError::Io)?;
+        writer
+            .write_le(func.0)
+            .map_err(Into::into)
+            .map_err(EncodingError::Io)?;
         for block in data {
             for chunk in block.chunks(0xFF) {
-                writer.write_le(chunk.len() as u8).map_err(Into::into).map_err(EncodingError::Io)?;
-                writer.write_all(chunk).map_err(Into::into).map_err(EncodingError::Io)?;
+                writer
+                    .write_le(chunk.len() as u8)
+                    .map_err(Into::into)
+                    .map_err(EncodingError::Io)?;
+                writer
+                    .write_all(chunk)
+                    .map_err(Into::into)
+                    .map_err(EncodingError::Io)?;
             }
         }
-        writer.write_le(0u8).map_err(Into::into).map_err(EncodingError::Io)
+        writer
+            .write_le(0u8)
+            .map_err(Into::into)
+            .map_err(EncodingError::Io)
     }
 
     /// Writes a frame to the image, but expects `Frame.buffer` to contain LZW-encoded data
@@ -360,7 +452,9 @@ impl<W: Write> Encoder<W> {
         // empty data is allowed
         if let Some(&min_code_size) = frame.buffer.first() {
             if min_code_size > 11 || min_code_size < 2 {
-                return Err(EncodingError::Format(EncodingFormatError::InvalidMinCodeSize));
+                return Err(EncodingError::Format(
+                    EncodingFormatError::InvalidMinCodeSize,
+                ));
             }
         }
 
@@ -401,7 +495,10 @@ impl<W: Write> Encoder<W> {
 
     /// Write the final tailer.
     fn write_trailer(&mut self) -> Result<(), EncodingError> {
-        self.writer()?.write_le(Block::Trailer as u8).map_err(Into::into).map_err(EncodingError::Io)
+        self.writer()?
+            .write_le(Block::Trailer as u8)
+            .map_err(Into::into)
+            .map_err(EncodingError::Io)
     }
 
     #[inline]
@@ -479,15 +576,15 @@ fn flag_size(size: usize) -> u8 {
 fn test_flag_size() {
     fn expected(size: usize) -> u8 {
         match size {
-            0  ..=2   => 0,
-            3  ..=4   => 1,
-            5  ..=8   => 2,
-            9  ..=16  => 3,
-            17 ..=32  => 4,
-            33 ..=64  => 5,
-            65 ..=128 => 6,
+            0..=2 => 0,
+            3..=4 => 1,
+            5..=8 => 2,
+            9..=16 => 3,
+            17..=32 => 4,
+            33..=64 => 5,
+            65..=128 => 6,
             129..=256 => 7,
-            _ => 7
+            _ => 7,
         }
     }
 
@@ -499,7 +596,10 @@ fn test_flag_size() {
             1 => 2,
             n => n,
         };
-        let actual = (u32::from(i) + 1).max(4).next_power_of_two().trailing_zeros() as u8;
+        let actual = (u32::from(i) + 1)
+            .max(4)
+            .next_power_of_two()
+            .trailing_zeros() as u8;
         assert_eq!(actual, expected);
     }
 }
@@ -527,7 +627,8 @@ impl<const N: usize> Write for Buf<N> {
     fn write_all(&mut self, buf: &[u8]) -> Result<(), WriteZero> {
         let len = buf.len();
         let pos = self.pos;
-        self.buf.get_mut(pos..pos + len)
+        self.buf
+            .get_mut(pos..pos + len)
             .ok_or(WriteZero)?
             .copy_from_slice(buf);
         self.pos += len;
@@ -536,7 +637,10 @@ impl<const N: usize> Write for Buf<N> {
 }
 
 fn tmp_buf<const N: usize>() -> Buf<N> {
-    Buf { buf: [0; N], pos: 0 }
+    Buf {
+        buf: [0; N],
+        pos: 0,
+    }
 }
 
 impl<const N: usize> Buf<N> {
@@ -549,5 +653,6 @@ impl<const N: usize> Buf<N> {
 
 #[test]
 fn error_cast() {
-    let _: Box<dyn error::Error> = EncodingError::from(EncodingFormatError::MissingColorPalette).into();
+    let _: Box<dyn error::Error> =
+        EncodingError::from(EncodingFormatError::MissingColorPalette).into();
 }

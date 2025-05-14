@@ -112,7 +112,6 @@
 #![deny(missing_docs)]
 #![allow(clippy::manual_range_contains)]
 #![allow(clippy::new_without_default)]
-
 #![no_std]
 
 #[macro_use]
@@ -121,20 +120,20 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-mod traits;
 mod common;
-mod reader;
 mod encoder;
+mod reader;
+mod traits;
 
 pub use crate::traits::{BufRead, Write};
 
-pub use crate::common::{AnyExtension, Extension, DisposalMethod, Frame};
+pub use crate::common::{AnyExtension, DisposalMethod, Extension, Frame};
 
-pub use crate::reader::{DecodingError, DecodingFormatError};
 pub use crate::reader::{ColorOutput, MemoryLimit};
 pub use crate::reader::{DecodeOptions, Decoder, Version};
+pub use crate::reader::{DecodingError, DecodingFormatError};
 
-pub use crate::encoder::{ExtensionData, Repeat, EncodingError, EncodingFormatError, Encoder};
+pub use crate::encoder::{Encoder, EncodingError, EncodingFormatError, ExtensionData, Repeat};
 
 /// Low-level, advanced decoder. Prefer [`Decoder`] instead, which can stream frames too.
 pub mod streaming_decoder {
@@ -143,7 +142,7 @@ pub mod streaming_decoder {
 }
 
 #[cfg(feature = "std")]
-pub use {crate::traits::std_impls::IoWriter, crate::traits::std_impls::IoBufReader};
+pub use {crate::traits::std_impls::IoBufReader, crate::traits::std_impls::IoWriter};
 
 #[cfg(feature = "color_quant")]
 macro_rules! insert_as_doc {

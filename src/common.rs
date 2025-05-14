@@ -1,7 +1,7 @@
 use alloc::borrow::Cow;
 use alloc::vec::Vec;
-use core::fmt;
 use core::error;
+use core::fmt;
 
 #[cfg(feature = "color_quant")]
 use alloc::collections::{BTreeMap, BTreeSet};
@@ -216,7 +216,10 @@ impl Frame<'static> {
     #[track_caller]
     pub fn from_rgba_speed(width: u16, height: u16, pixels: &mut [u8], speed: i32) -> Self {
         assert_eq!(width as usize * height as usize * 4, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
-        assert!(speed >= 1 && speed <= 30, "speed needs to be in the range [1, 30]");
+        assert!(
+            speed >= 1 && speed <= 30,
+            "speed needs to be in the range [1, 30]"
+        );
         let mut transparent = None;
         for pix in pixels.chunks_exact_mut(4) {
             if pix[3] != 0 {
@@ -237,7 +240,12 @@ impl Frame<'static> {
                 return Frame {
                     width,
                     height,
-                    buffer: Cow::Owned(pixels.chunks_exact(4).map(|pix| nq.index_of(pix) as u8).collect()),
+                    buffer: Cow::Owned(
+                        pixels
+                            .chunks_exact(4)
+                            .map(|pix| nq.index_of(pix) as u8)
+                            .collect(),
+                    ),
                     palette: Some(nq.color_map_rgb()),
                     transparent: transparent.map(|t| nq.index_of(&t) as u8),
                     ..Frame::default()
@@ -248,11 +256,19 @@ impl Frame<'static> {
         // Palette size <= 256 elements, we can build an exact palette.
         let mut colors_vec: Vec<(u8, u8, u8, u8)> = colors.into_iter().collect();
         colors_vec.sort_unstable();
-        let palette = colors_vec.iter().flat_map(|&(r, g, b, _a)| [r, g, b]).collect();
-        let colors_lookup: BTreeMap<(u8, u8, u8, u8), u8> = colors_vec.into_iter().zip(0..=255).collect();
+        let palette = colors_vec
+            .iter()
+            .flat_map(|&(r, g, b, _a)| [r, g, b])
+            .collect();
+        let colors_lookup: BTreeMap<(u8, u8, u8, u8), u8> =
+            colors_vec.into_iter().zip(0..=255).collect();
 
-        let index_of = | pixel: &[u8] |
-            colors_lookup.get(&(pixel[0], pixel[1], pixel[2], pixel[3])).copied().unwrap_or(0);
+        let index_of = |pixel: &[u8]| {
+            colors_lookup
+                .get(&(pixel[0], pixel[1], pixel[2], pixel[3]))
+                .copied()
+                .unwrap_or(0)
+        };
 
         Frame {
             width,
@@ -270,11 +286,24 @@ impl Frame<'static> {
     /// *   If the length of pixels does not equal `width * height`.
     /// *   If the length of palette > `256 * 3`.
     #[track_caller]
-    pub fn from_palette_pixels(width: u16, height: u16, pixels: impl Into<Vec<u8>>, palette: impl Into<Vec<u8>>, transparent: Option<u8>) -> Self {
+    pub fn from_palette_pixels(
+        width: u16,
+        height: u16,
+        pixels: impl Into<Vec<u8>>,
+        palette: impl Into<Vec<u8>>,
+        transparent: Option<u8>,
+    ) -> Self {
         let pixels = pixels.into();
         let palette = palette.into();
-        assert_eq!(width as usize * height as usize, pixels.len(), "Too many or too little pixels for the given width and height to create a GIF Frame");
-        assert!(palette.len() <= 256*3, "Too many palette values to create a GIF Frame");
+        assert_eq!(
+            width as usize * height as usize,
+            pixels.len(),
+            "Too many or too little pixels for the given width and height to create a GIF Frame"
+        );
+        assert!(
+            palette.len() <= 256 * 3,
+            "Too many palette values to create a GIF Frame"
+        );
 
         Frame {
             width,
@@ -291,9 +320,18 @@ impl Frame<'static> {
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height`.
     #[track_caller]
-    pub fn from_indexed_pixels(width: u16, height: u16, pixels: impl Into<Vec<u8>>, transparent: Option<u8>) -> Self {
+    pub fn from_indexed_pixels(
+        width: u16,
+        height: u16,
+        pixels: impl Into<Vec<u8>>,
+        transparent: Option<u8>,
+    ) -> Self {
         let pixels = pixels.into();
-        assert_eq!(width as usize * height as usize, pixels.len(), "Too many or too little pixels for the given width and height to create a GIF Frame");
+        assert_eq!(
+            width as usize * height as usize,
+            pixels.len(),
+            "Too many or too little pixels for the given width and height to create a GIF Frame"
+        );
 
         Frame {
             width,
@@ -342,7 +380,8 @@ impl Frame<'static> {
     pub fn from_rgb_speed(width: u16, height: u16, pixels: &[u8], speed: i32) -> Self {
         assert_eq!(width as usize * height as usize * 3, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
         let mut vec: Vec<u8> = Vec::new();
-        vec.try_reserve_exact(pixels.len() + width as usize * height as usize).expect("OOM");
+        vec.try_reserve_exact(pixels.len() + width as usize * height as usize)
+            .expect("OOM");
         for v in pixels.chunks_exact(3) {
             vec.extend_from_slice(&[v[0], v[1], v[2], 0xFF]);
         }

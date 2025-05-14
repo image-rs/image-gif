@@ -119,12 +119,12 @@ pub(crate) mod std_impls {
 
     impl<R: std::io::BufRead + ?Sized> BufRead for IoBufReader<R> {
         type Error = std::io::Error;
-    
+
         #[inline]
         fn fill_buf(&mut self) -> Result<&[u8], Self::Error> {
             <R as std::io::BufRead>::fill_buf(&mut self.0)
         }
-    
+
         #[inline]
         fn consume(&mut self, amt: usize) {
             <R as std::io::BufRead>::consume(&mut self.0, amt)

@@ -1,4 +1,6 @@
-use criterion::{black_box, BenchmarkId, BenchmarkGroup, Criterion, Throughput, measurement::Measurement};
+use criterion::{
+    black_box, measurement::Measurement, BenchmarkGroup, BenchmarkId, Criterion, Throughput,
+};
 use gif::Decoder;
 
 fn read_image(image: &[u8]) -> Option<Vec<u8>> {
@@ -42,38 +44,49 @@ fn main() {
     let mut c = Criterion::default().configure_from_args();
     let mut group = c.benchmark_group("gif");
 
-    run_bench_def(&mut group, BenchDef {
-        data: include_bytes!("note.gif"),
-        id: "note.gif",
-        sample_size: 100,
-    });
+    run_bench_def(
+        &mut group,
+        BenchDef {
+            data: include_bytes!("note.gif"),
+            id: "note.gif",
+            sample_size: 100,
+        },
+    );
 
-    run_bench_def(&mut group, BenchDef {
-        data: include_bytes!("photo.gif"),
-        id: "photo.gif",
-        sample_size: 20,
-    });
+    run_bench_def(
+        &mut group,
+        BenchDef {
+            data: include_bytes!("photo.gif"),
+            id: "photo.gif",
+            sample_size: 20,
+        },
+    );
 
-    run_bench_def(&mut group, BenchDef {
-        data: include_bytes!("../tests/samples/sample_1.gif"),
-        id: "sample_1.gif",
-        sample_size: 100,
-    });
+    run_bench_def(
+        &mut group,
+        BenchDef {
+            data: include_bytes!("../tests/samples/sample_1.gif"),
+            id: "sample_1.gif",
+            sample_size: 100,
+        },
+    );
 
-    run_bench_def(&mut group, BenchDef {
-        data: include_bytes!("../tests/samples/sample_big.gif"),
-        id: "sample_big.gif",
-        sample_size: 20,
-    });
+    run_bench_def(
+        &mut group,
+        BenchDef {
+            data: include_bytes!("../tests/samples/sample_big.gif"),
+            id: "sample_big.gif",
+            sample_size: 20,
+        },
+    );
 
-    group
-        .bench_with_input(
-            "extract-metadata-note",
-            include_bytes!("note.gif"),
-            |b, input| {
-                b.iter(|| read_metadata(input));
-            }
-        );
+    group.bench_with_input(
+        "extract-metadata-note",
+        include_bytes!("note.gif"),
+        |b, input| {
+            b.iter(|| read_metadata(input));
+        },
+    );
 
     group.finish();
 
