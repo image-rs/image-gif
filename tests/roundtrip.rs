@@ -1,6 +1,9 @@
 #![cfg(feature = "std")]
 
-use gif::{AnyExtension, ColorOutput, DecodeOptions, Decoder, Encoder, Frame};
+use gif::{AnyExtension, DecodeOptions, Decoder, Encoder, Frame};
+
+#[cfg_attr(not(feature = "color_quant"), expect(unused_imports))]
+use gif::ColorOutput;
 
 #[test]
 fn round_trip() {
