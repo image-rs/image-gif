@@ -1,12 +1,13 @@
 #![cfg(feature = "std")]
 
-use gif::{Decoder, DecodeOptions, DisposalMethod, Encoder, Frame};
+use gif::{DecodeOptions, Decoder, DisposalMethod, Encoder, Frame};
 use std::fs::File;
 
 #[test]
 fn test_simple_indexed() {
     let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap()).unwrap();
     let frame = decoder.read_next_frame().unwrap().unwrap();
+    #[rustfmt::skip]
     assert_eq!(&*frame.buffer, &[
         1, 1, 1, 1, 1, 2, 2, 2, 2, 2,
         1, 1, 1, 1, 1, 2, 2, 2, 2, 2,
@@ -119,7 +120,13 @@ fn rebuild_without_reencode(image: &[u8]) {
     options.skip_frame_decoding(true);
     let mut decoder = options.read_info(image).unwrap();
 
-    let mut encoder = Encoder::new(Vec::new(), decoder.width(), decoder.height(), decoder.global_palette().unwrap_or_default()).unwrap();
+    let mut encoder = Encoder::new(
+        Vec::new(),
+        decoder.width(),
+        decoder.height(),
+        decoder.global_palette().unwrap_or_default(),
+    )
+    .unwrap();
 
     let mut num_frames = 0;
     while let Some(frame) = decoder.read_next_frame().unwrap() {

@@ -1,14 +1,14 @@
 //! # Minimal gif encoder
+use std::borrow::Cow;
+use std::error;
+use std::fmt;
 use std::io;
 use std::io::prelude::*;
-use std::fmt;
-use std::error;
-use std::borrow::Cow;
 
-use weezl::{BitOrder, encode::Encoder as LzwEncoder};
+use weezl::{encode::Encoder as LzwEncoder, BitOrder};
 
-use crate::traits::WriteBytesExt;
 use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
+use crate::traits::WriteBytesExt;
 
 /// The image has incorrect properties, making it impossible to encode as a gif.
 #[derive(Debug)]
@@ -28,7 +28,10 @@ impl fmt::Display for EncodingFormatError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::TooManyColors => write!(fmt, "the image has too many colors"),
-            Self::MissingColorPalette => write!(fmt, "the GIF format requires a color palette but none was given"),
+            Self::MissingColorPalette => write!(
+                fmt,
+                "the GIF format requires a color palette but none was given"
+            ),
             Self::InvalidMinCodeSize => write!(fmt, "LZW data is invalid"),
         }
     }
@@ -113,13 +116,18 @@ impl ExtensionData {
     ///
     /// `delay` is given in units of 10 ms.
     #[must_use]
-    pub fn new_control_ext(delay: u16, dispose: DisposalMethod, needs_user_input: bool, trns: Option<u8>) -> Self {
+    pub fn new_control_ext(
+        delay: u16,
+        dispose: DisposalMethod,
+        needs_user_input: bool,
+        trns: Option<u8>,
+    ) -> Self {
         let mut flags = 0;
         let trns = match trns {
             Some(trns) => {
                 flags |= 1;
                 trns
-            },
+            }
             None => 0,
         };
         flags |= u8::from(needs_user_input) << 1;
@@ -133,13 +141,20 @@ impl<W: Write> Encoder<W> {
     ///
     /// `global_palette` gives the global color palette in the format `[r, g, b, ...]`,
     /// if no global palette shall be used an empty slice may be supplied.
-    pub fn new(w: W, width: u16, height: u16, global_palette: &[u8]) -> Result<Self, EncodingError> {
+    pub fn new(
+        w: W,
+        width: u16,
+        height: u16,
+        global_palette: &[u8],
+    ) -> Result<Self, EncodingError> {
         Self {
             w: Some(w),
             global_palette: false,
-            width, height,
+            width,
+            height,
             buffer: Vec::new(),
-        }.write_global_palette(global_palette)
+        }
+        .write_global_palette(global_palette)
     }
 
     /// Write an extension block that signals a repeat behaviour.
@@ -167,10 +182,20 @@ impl<W: Write> Encoder<W> {
     ///
     /// Note: This function also writes a control extension if necessary.
     pub fn write_frame(&mut self, frame: &Frame<'_>) -> Result<(), EncodingError> {
-        if usize::from(frame.width).checked_mul(usize::from(frame.height)).map_or(true, |size| frame.buffer.len() < size) {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "frame.buffer is too small for its width/height").into());
+        if usize::from(frame.width)
+            .checked_mul(usize::from(frame.height))
+            .map_or(true, |size| frame.buffer.len() < size)
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "frame.buffer is too small for its width/height",
+            )
+            .into());
         }
-        debug_assert!((frame.width > 0 && frame.height > 0) || frame.buffer.is_empty(), "the frame has 0 pixels, but non-empty buffer");
+        debug_assert!(
+            (frame.width > 0 && frame.height > 0) || frame.buffer.is_empty(),
+            "the frame has 0 pixels, but non-empty buffer"
+        );
         self.write_frame_header(frame)?;
         self.write_image_block(&frame.buffer)
     }
@@ -192,9 +217,13 @@ impl<W: Write> Encoder<W> {
                 let (palette, padding, table_size) = Self::check_color_table(palette)?;
                 flags |= table_size;
                 Some((palette, padding))
-            },
+            }
             None if self.global_palette => None,
-            _ => return Err(EncodingError::from(EncodingFormatError::MissingColorPalette)),
+            _ => {
+                return Err(EncodingError::from(
+                    EncodingFormatError::MissingColorPalette,
+                ))
+            }
         };
         let mut tmp = tmp_buf::<10>();
         tmp.write_le(Block::Image as u8)?;
@@ -213,15 +242,22 @@ impl<W: Write> Encoder<W> {
 
     fn write_image_block(&mut self, data: &[u8]) -> Result<(), EncodingError> {
         self.buffer.clear();
-        self.buffer.try_reserve(data.len() / 4)
+        self.buffer
+            .try_reserve(data.len() / 4)
             .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
         lzw_encode(data, &mut self.buffer);
 
-        let writer = self.w.as_mut().ok_or(io::Error::from(io::ErrorKind::Unsupported))?;
+        let writer = self
+            .w
+            .as_mut()
+            .ok_or(io::Error::from(io::ErrorKind::Unsupported))?;
         Self::write_encoded_image_block(writer, &self.buffer)
     }
 
-    fn write_encoded_image_block(writer: &mut W, data_with_min_code_size: &[u8]) -> Result<(), EncodingError> {
+    fn write_encoded_image_block(
+        writer: &mut W,
+        data_with_min_code_size: &[u8],
+    ) -> Result<(), EncodingError> {
         let (&min_code_size, data) = data_with_min_code_size.split_first().unwrap_or((&2, &[]));
         writer.write_le(min_code_size)?;
 
@@ -240,7 +276,11 @@ impl<W: Write> Encoder<W> {
         writer.write_le(0u8).map_err(Into::into)
     }
 
-    fn write_color_table(writer: &mut W, table: &[u8], padding: usize) -> Result<(), EncodingError> {
+    fn write_color_table(
+        writer: &mut W,
+        table: &[u8],
+        padding: usize,
+    ) -> Result<(), EncodingError> {
         writer.write_all(table)?;
         // Waste some space as of gif spec
         for _ in 0..padding {
@@ -325,7 +365,9 @@ impl<W: Write> Encoder<W> {
         // empty data is allowed
         if let Some(&min_code_size) = frame.buffer.first() {
             if min_code_size > 11 || min_code_size < 2 {
-                return Err(EncodingError::Format(EncodingFormatError::InvalidMinCodeSize));
+                return Err(EncodingError::Format(
+                    EncodingFormatError::InvalidMinCodeSize,
+                ));
             }
         }
 
@@ -361,7 +403,9 @@ impl<W: Write> Encoder<W> {
     /// Finishes writing, and returns the `io::Write` instance used by this encoder
     pub fn into_inner(mut self) -> io::Result<W> {
         self.write_trailer()?;
-        self.w.take().ok_or(io::Error::from(io::ErrorKind::Unsupported))
+        self.w
+            .take()
+            .ok_or(io::Error::from(io::ErrorKind::Unsupported))
     }
 
     /// Write the final tailer.
@@ -371,7 +415,9 @@ impl<W: Write> Encoder<W> {
 
     #[inline]
     fn writer(&mut self) -> io::Result<&mut W> {
-        self.w.as_mut().ok_or(io::Error::from(io::ErrorKind::Unsupported))
+        self.w
+            .as_mut()
+            .ok_or(io::Error::from(io::ErrorKind::Unsupported))
     }
 }
 
@@ -442,6 +488,7 @@ fn flag_size(size: usize) -> u8 {
 
 #[test]
 fn test_flag_size() {
+    #[rustfmt::skip]
     fn expected(size: usize) -> u8 {
         match size {
             0  ..=2   => 0,
@@ -464,7 +511,10 @@ fn test_flag_size() {
             1 => 2,
             n => n,
         };
-        let actual = (u32::from(i) + 1).max(4).next_power_of_two().trailing_zeros() as u8;
+        let actual = (u32::from(i) + 1)
+            .max(4)
+            .next_power_of_two()
+            .trailing_zeros() as u8;
         assert_eq!(actual, expected);
     }
 }
@@ -479,18 +529,24 @@ impl<const N: usize> Write for Buf<N> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let len = buf.len();
         let pos = self.pos;
-        self.buf.get_mut(pos..pos + len)
+        self.buf
+            .get_mut(pos..pos + len)
             .ok_or(io::ErrorKind::WriteZero)?
             .copy_from_slice(buf);
         self.pos += len;
         Ok(len)
     }
 
-    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 fn tmp_buf<const N: usize>() -> Buf<N> {
-    Buf { buf: [0; N], pos: 0 }
+    Buf {
+        buf: [0; N],
+        pos: 0,
+    }
 }
 
 impl<const N: usize> Buf<N> {
@@ -503,5 +559,6 @@ impl<const N: usize> Buf<N> {
 
 #[test]
 fn error_cast() {
-    let _: Box<dyn error::Error> = EncodingError::from(EncodingFormatError::MissingColorPalette).into();
+    let _: Box<dyn error::Error> =
+        EncodingError::from(EncodingFormatError::MissingColorPalette).into();
 }
