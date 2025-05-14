@@ -37,7 +37,7 @@
 //! ```rust
 //! use gif::{Frame, Encoder, Repeat};
 //! use std::fs::File;
-//! use std::borrow::Cow;
+//! use alloc::borrow::Cow;
 //!
 //! let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];
 //! let (width, height) = (6, 6);
@@ -110,28 +110,39 @@
 // # })().unwrap();
 // ```
 #![deny(missing_docs)]
-#![cfg(feature = "std")]
 #![allow(clippy::manual_range_contains)]
 #![allow(clippy::new_without_default)]
+#![no_std]
 
-mod traits;
+#[macro_use]
+extern crate alloc;
+
+#[cfg(feature = "std")]
+extern crate std;
+
 mod common;
-mod reader;
 mod encoder;
+mod reader;
+mod traits;
 
-pub use crate::common::{AnyExtension, Extension, DisposalMethod, Frame};
+pub use crate::traits::{BufRead, Write};
 
-pub use crate::reader::{DecodingError, DecodingFormatError};
+pub use crate::common::{AnyExtension, DisposalMethod, Extension, Frame};
+
 pub use crate::reader::{ColorOutput, MemoryLimit};
 pub use crate::reader::{DecodeOptions, Decoder, Version};
+pub use crate::reader::{DecodingError, DecodingFormatError};
 
-pub use crate::encoder::{Encoder, ExtensionData, Repeat, EncodingError, EncodingFormatError};
+pub use crate::encoder::{Encoder, EncodingError, EncodingFormatError, ExtensionData, Repeat};
 
 /// Low-level, advanced decoder. Prefer [`Decoder`] instead, which can stream frames too.
 pub mod streaming_decoder {
     pub use crate::common::Block;
     pub use crate::reader::{Decoded, FrameDataType, FrameDecoder, OutputBuffer, StreamingDecoder};
 }
+
+#[cfg(feature = "std")]
+pub use {crate::traits::std_impls::IoBufReader, crate::traits::std_impls::IoWriter};
 
 #[cfg(feature = "color_quant")]
 macro_rules! insert_as_doc {

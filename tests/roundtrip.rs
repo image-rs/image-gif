@@ -1,13 +1,16 @@
 #![cfg(feature = "std")]
 
-use gif::{ColorOutput, Decoder, Encoder, Frame, AnyExtension, DecodeOptions};
+use gif::{AnyExtension, ColorOutput, DecodeOptions, Decoder, Encoder, Frame};
 
 #[test]
 fn round_trip() {
-    use std::io::prelude::*;
     use std::fs::File;
+    use std::io::prelude::*;
     let mut data = vec![];
-    File::open("tests/samples/sample_1.gif").unwrap().read_to_end(&mut data).unwrap();
+    File::open("tests/samples/sample_1.gif")
+        .unwrap()
+        .read_to_end(&mut data)
+        .unwrap();
     let mut decoder = Decoder::new(&*data).unwrap();
     let palette: Vec<u8> = decoder.palette().unwrap().into();
     let frame = decoder.read_next_frame().unwrap().unwrap();
@@ -57,18 +60,15 @@ fn round_trip_from_image(original: &[u8]) {
         width = decoder.width();
         height = decoder.height();
         repeat = decoder.repeat();
-        global_palette = decoder
-            .global_palette()
-            .unwrap_or_default()
-            .to_vec();
-        core::iter::from_fn(move || {
-            decoder.read_next_frame().unwrap().cloned()
-        }).collect()
+        global_palette = decoder.global_palette().unwrap_or_default().to_vec();
+        core::iter::from_fn(move || decoder.read_next_frame().unwrap().cloned()).collect()
     };
 
     let mut encoder = Encoder::new(vec![], width, height, &global_palette).unwrap();
     encoder.set_repeat(repeat).unwrap();
-    encoder.write_raw_extension(AnyExtension(gif::Extension::Comment as _), &[b"hello"]).unwrap();
+    encoder
+        .write_raw_extension(AnyExtension(gif::Extension::Comment as _), &[b"hello"])
+        .unwrap();
     for frame in &frames {
         encoder.write_frame(frame).unwrap();
     }
@@ -80,9 +80,8 @@ fn round_trip_from_image(original: &[u8]) {
         assert_eq!(decoder.height(), height);
         assert_eq!(decoder.repeat(), repeat);
         assert_eq!(global_palette, decoder.global_palette().unwrap_or_default());
-        let new_frames: Vec<_> = core::iter::from_fn(|| {
-            decoder.read_next_frame().unwrap().cloned()
-        }).collect();
+        let new_frames: Vec<_> =
+            core::iter::from_fn(|| decoder.read_next_frame().unwrap().cloned()).collect();
         assert_eq!(new_frames.len(), frames.len(), "Diverging number of frames");
         for (new, reference) in new_frames.iter().zip(&frames) {
             assert_eq!(new.delay, reference.delay);
@@ -134,16 +133,17 @@ fn encode_roundtrip_few_colors() {
         let mut decoder = {
             let mut builder = Decoder::<&[u8]>::build();
             builder.set_color_output(ColorOutput::RGBA);
-            builder.read_info(&buffer[..]).expect("Invalid info encoded")
+            builder
+                .read_info(&buffer[..])
+                .expect("Invalid info encoded")
         };
 
         // Only check key fields, assuming "round_trip_from_image"
         // covers the rest. We are primarily concerned with quantisation.
         assert_eq!(decoder.width(), WIDTH);
         assert_eq!(decoder.height(), HEIGHT);
-        let new_frames: Vec<_> = core::iter::from_fn(move || {
-            decoder.read_next_frame().unwrap().cloned()
-        }).collect();
+        let new_frames: Vec<_> =
+            core::iter::from_fn(move || decoder.read_next_frame().unwrap().cloned()).collect();
         assert_eq!(new_frames.len(), 2, "Diverging number of frames");
         // NB: reference.buffer can't be used as it contains the palette version.
         assert_eq!(new_frames[0].buffer, pixels);
@@ -153,8 +153,12 @@ fn encode_roundtrip_few_colors() {
 
 #[test]
 fn palette_sizes() {
-    let global_pal = (0..=255u8).flat_map(|i| [i, i/2, i.wrapping_add(13)]).collect::<Vec<_>>();
-    let local_pal = (0..=255u8).flat_map(|i| [i^0x55, i, i.wrapping_add(7)]).collect::<Vec<_>>();
+    let global_pal = (0..=255u8)
+        .flat_map(|i| [i, i / 2, i.wrapping_add(13)])
+        .collect::<Vec<_>>();
+    let local_pal = (0..=255u8)
+        .flat_map(|i| [i ^ 0x55, i, i.wrapping_add(7)])
+        .collect::<Vec<_>>();
 
     for size in 1..=256 {
         let global = &global_pal[..size * 3];
@@ -183,7 +187,13 @@ fn palette_sizes() {
         assert!(padding.iter().all(|&b| b == 0));
 
         assert!(d.read_next_frame().unwrap().unwrap().palette.is_none());
-        let decoded_local_pal = d.read_next_frame().unwrap().unwrap().palette.as_deref().unwrap();
+        let decoded_local_pal = d
+            .read_next_frame()
+            .unwrap()
+            .unwrap()
+            .palette
+            .as_deref()
+            .unwrap();
         let (decoded_local_pal, padding) = decoded_local_pal.split_at(local.len());
         assert_eq!(local, decoded_local_pal);
         assert_eq!(padding.len(), 3 * (size.max(2).next_power_of_two() - size));
@@ -200,5 +210,10 @@ fn palette_fail() {
     f.width = 1;
     f.height = 1;
     f.buffer = [1][..].into();
-    assert!(matches!(encoder.write_frame(&f), Err(gif::EncodingError::Format(gif::EncodingFormatError::MissingColorPalette))));
+    assert!(matches!(
+        encoder.write_frame(&f),
+        Err(gif::EncodingError::Format(
+            gif::EncodingFormatError::MissingColorPalette
+        ))
+    ));
 }

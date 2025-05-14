@@ -1,18 +1,20 @@
-use std::borrow::Cow;
-use std::cmp;
-use std::error;
-use std::fmt;
-use std::io;
-use std::mem;
-use std::default::Default;
-use std::num::NonZeroUsize;
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+use core::cmp;
+use core::default::Default;
+use core::error;
+use core::fmt;
+use core::mem;
+use core::num::NonZeroUsize;
 
-use crate::Repeat;
-use crate::MemoryLimit;
+use weezl::{decode::Decoder as LzwDecoder, BitOrder, BufferResult, LzwError, LzwStatus};
+
+use crate::common::WrappedError;
 use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 use crate::reader::DecodeOptions;
-
-use weezl::{BitOrder, decode::Decoder as LzwDecoder, LzwError, LzwStatus};
+use crate::MemoryLimit;
+use crate::Repeat;
 
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
@@ -37,21 +39,32 @@ impl error::Error for DecodingFormatError {
     }
 }
 
-#[derive(Debug)]
 /// Decoding error.
+#[derive(Debug)]
 pub enum DecodingError {
     /// Returned if the image is found to be malformed.
     Format(DecodingFormatError),
-    /// Wraps `std::io::Error`.
-    Io(io::Error),
+    /// Returned if provided an insufficiently allocated buffer.
+    InsufficientBuffer,
+    /// Returned if additional data is required to finish decoding.
+    UnexpectedEof,
+    /// A decoder was not provided.
+    MissingDecoder,
+    /// Some kind of IO error.
+    Io(Box<dyn error::Error + Send + Sync + 'static>),
 }
 
 impl DecodingError {
     #[cold]
-    pub(crate) fn format(err: &'static str) -> Self {
+    pub(crate) fn format(err: impl Into<Box<dyn error::Error + Send + Sync + 'static>>) -> Self {
         Self::Format(DecodingFormatError {
             underlying: err.into(),
         })
+    }
+
+    #[cold]
+    pub(crate) fn io(err: impl Into<Box<dyn error::Error + Send + Sync + 'static>>) -> Self {
+        Self::Io(err.into())
     }
 }
 
@@ -60,7 +73,10 @@ impl fmt::Display for DecodingError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Self::Format(ref d) => d.fmt(fmt),
-            Self::Io(ref err) => err.fmt(fmt),
+            Self::InsufficientBuffer => fmt.write_str("Insufficient Buffer"),
+            Self::UnexpectedEof => fmt.write_str("Unexpected End of File"),
+            Self::MissingDecoder => fmt.write_str("Missing Decoder"),
+            Self::Io(ref inner) => inner.fmt(fmt),
         }
     }
 }
@@ -70,29 +86,19 @@ impl error::Error for DecodingError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             Self::Format(ref err) => Some(err),
-            Self::Io(ref err) => Some(err),
+            Self::InsufficientBuffer => None,
+            Self::UnexpectedEof => None,
+            Self::MissingDecoder => None,
+            Self::Io(ref err) => Some(err.as_ref()),
         }
     }
 }
 
-impl From<io::Error> for DecodingError {
-    #[inline]
-    fn from(err: io::Error) -> Self {
-        Self::Io(err)
-    }
-}
-
-impl From<io::ErrorKind> for DecodingError {
+#[cfg(feature = "std")]
+impl From<std::io::Error> for DecodingError {
     #[cold]
-    fn from(err: io::ErrorKind) -> Self {
-        Self::Io(io::Error::from(err))
-    }
-}
-
-impl From<DecodingFormatError> for DecodingError {
-    #[inline]
-    fn from(err: DecodingFormatError) -> Self {
-        Self::Format(err)
+    fn from(err: std::io::Error) -> Self {
+        Self::Io(err.into())
     }
 }
 
@@ -219,19 +225,22 @@ impl FrameDecoder {
     /// Converts into the given buffer. It must be [`buffer_size()`] bytes large.
     ///
     /// Pixels are always deinterlaced, so update `frame.interlaced` afterwards if you're putting the buffer back into the frame.
-    pub fn decode_lzw_encoded_frame_into_buffer(&mut self, frame: &Frame<'_>, buf: &mut [u8]) -> Result<(), DecodingError> {
+    pub fn decode_lzw_encoded_frame_into_buffer(
+        &mut self,
+        frame: &Frame<'_>,
+        buf: &mut [u8],
+    ) -> Result<(), DecodingError> {
         let (&min_code_size, mut data) = frame.buffer.split_first().unwrap_or((&2, &[]));
         self.lzw_reader.reset(min_code_size)?;
         let lzw_reader = &mut self.lzw_reader;
-        self.pixel_converter.read_into_buffer(frame, buf, &mut move |out| {
-            loop {
+        self.pixel_converter
+            .read_into_buffer(frame, buf, &mut move |out| loop {
                 let (bytes_read, bytes_written) = lzw_reader.decode_bytes(data, out)?;
                 data = data.get(bytes_read..).unwrap_or_default();
                 if bytes_written > 0 || bytes_read == 0 || data.is_empty() {
                     return Ok(bytes_written);
                 }
-            }
-        })?;
+            })?;
         Ok(())
     }
 
@@ -275,7 +284,10 @@ impl LzwReader {
             self.min_code_size = min_code_size;
             self.decoder = Some(LzwDecoder::new(BitOrder::Lsb, min_code_size));
         } else {
-            self.decoder.as_mut().ok_or_else(|| DecodingError::format("bad state"))?.reset();
+            self.decoder
+                .as_mut()
+                .ok_or_else(|| DecodingError::format("bad state"))?
+                .reset();
         }
 
         Ok(())
@@ -285,29 +297,42 @@ impl LzwReader {
         self.decoder.as_ref().map_or(true, |e| e.has_ended())
     }
 
-    pub fn decode_bytes(&mut self, lzw_data: &[u8], decode_buffer: &mut OutputBuffer<'_>) -> io::Result<(usize, usize)> {
-        let decoder = self.decoder.as_mut().ok_or(io::ErrorKind::Unsupported)?;
+    pub fn decode_bytes(
+        &mut self,
+        lzw_data: &[u8],
+        decode_buffer: &mut OutputBuffer<'_>,
+    ) -> Result<(usize, usize), DecodingError> {
+        let decoder = self.decoder.as_mut().ok_or(DecodingError::MissingDecoder)?;
 
-        let decode_buffer = match decode_buffer {
-            OutputBuffer::Slice(buf) => &mut **buf,
-            OutputBuffer::None => &mut [],
-            OutputBuffer::Vec(_) => return Err(io::Error::from(io::ErrorKind::Unsupported)),
+        let (consumed_in, consumed_out, status) = match decode_buffer {
+            OutputBuffer::Slice(buf) => {
+                let BufferResult {
+                    consumed_in,
+                    consumed_out,
+                    status,
+                } = decoder.decode_bytes(lzw_data, &mut **buf);
+                (consumed_in, consumed_out, status)
+            }
+            OutputBuffer::None => return Ok((0, 0)),
+            OutputBuffer::Vec(buf) => {
+                let mut vec_decoder = decoder.into_vec(&mut **buf);
+                let result = vec_decoder.decode(lzw_data);
+                (result.consumed_in, result.consumed_out, result.status)
+            }
         };
 
-        let decoded = decoder.decode_bytes(lzw_data, decode_buffer);
-
-        match decoded.status {
-            Ok(LzwStatus::Done | LzwStatus::Ok) => {},
+        match status {
+            Ok(LzwStatus::Done | LzwStatus::Ok) => {}
             Ok(LzwStatus::NoProgress) => {
                 if self.check_for_end_code {
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, "no end code in lzw stream"));
+                    return Err(DecodingError::format("no end code in lzw stream"));
                 }
-            },
+            }
             Err(err @ LzwError::InvalidCode) => {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, err));
+                return Err(DecodingError::format(WrappedError(err)));
             }
         }
-        Ok((decoded.consumed_in, decoded.consumed_out))
+        Ok((consumed_in, consumed_out))
     }
 }
 
@@ -362,23 +387,28 @@ pub enum OutputBuffer<'a> {
 }
 
 impl OutputBuffer<'_> {
-    fn append(&mut self, buf: &[u8], memory_limit: &MemoryLimit) -> Result<(usize, usize), DecodingError> {
+    fn append(
+        &mut self,
+        buf: &[u8],
+        memory_limit: &MemoryLimit,
+    ) -> Result<(usize, usize), DecodingError> {
         let (consumed, copied) = match self {
             OutputBuffer::Slice(slice) => {
                 let len = cmp::min(buf.len(), slice.len());
                 slice[..len].copy_from_slice(&buf[..len]);
                 (len, len)
-            },
+            }
             OutputBuffer::Vec(vec) => {
                 let vec: &mut Vec<u8> = vec;
                 let len = buf.len();
                 memory_limit.check_size(vec.len() + len)?;
-                vec.try_reserve(len).map_err(|_| io::ErrorKind::OutOfMemory)?;
+                vec.try_reserve(len)
+                    .map_err(|_| DecodingError::InsufficientBuffer)?;
                 if vec.capacity() - vec.len() >= len {
                     vec.extend_from_slice(buf);
                 }
                 (len, len)
-            },
+            }
             // It's valid that bytes are discarded. For example,
             // when using next_frame_info() with skip_frame_decoding to only get metadata.
             OutputBuffer::None => (buf.len(), 0),
@@ -433,10 +463,10 @@ impl StreamingDecoder {
             let (bytes, decoded) = self.next_state(buf, write_into)?;
             buf = buf.get(bytes..).unwrap_or_default();
             match decoded {
-                Decoded::Nothing => {},
+                Decoded::Nothing => {}
                 result => {
-                    return Ok((len-buf.len(), result));
-                },
+                    return Ok((len - buf.len(), result));
+                }
             };
         }
         Ok((len - buf.len(), Decoded::Nothing))
@@ -465,7 +495,9 @@ impl StreamingDecoder {
     /// Current frame info as a mutable ref.
     #[inline(always)]
     fn try_current_frame(&mut self) -> Result<&mut Frame<'static>, DecodingError> {
-        self.current.as_mut().ok_or_else(|| DecodingError::format("bad state"))
+        self.current
+            .as_mut()
+            .ok_or_else(|| DecodingError::format("bad state"))
     }
 
     /// Width of the image
@@ -490,7 +522,11 @@ impl StreamingDecoder {
     }
 
     #[inline]
-    fn next_state(&mut self, buf: &[u8], write_into: &mut OutputBuffer<'_>) -> Result<(usize, Decoded), DecodingError> {
+    fn next_state(
+        &mut self,
+        buf: &[u8],
+        write_into: &mut OutputBuffer<'_>,
+    ) -> Result<(usize, Decoded), DecodingError> {
         macro_rules! goto (
             ($n:expr, $state:expr) => ({
                 self.state = $state;
@@ -535,7 +571,7 @@ impl StreamingDecoder {
             })
         );
 
-        let b = *buf.first().ok_or(io::ErrorKind::UnexpectedEof)?;
+        let b = *buf.first().ok_or(DecodingError::UnexpectedEof)?;
 
         match self.state {
             Magic => {
@@ -548,7 +584,7 @@ impl StreamingDecoder {
                 };
 
                 goto!(consumed, ScreenDescriptor)
-            },
+            }
             ScreenDescriptor => {
                 let (consumed, desc) = ensure_min_length_buffer!(7);
 
@@ -560,7 +596,9 @@ impl StreamingDecoder {
                 let global_table = global_flags & 0x80 != 0;
                 let table_size = if global_table {
                     let table_size = PLTE_CHANNELS * (1 << ((global_flags & 0b111) + 1) as usize);
-                    self.global_color_table.try_reserve_exact(table_size).map_err(|_| io::ErrorKind::OutOfMemory)?;
+                    self.global_color_table
+                        .try_reserve_exact(table_size)
+                        .map_err(|_| DecodingError::InsufficientBuffer)?;
                     table_size
                 } else {
                     0usize
@@ -571,11 +609,14 @@ impl StreamingDecoder {
                     GlobalPalette(table_size),
                     emit Decoded::BackgroundColor(background_color)
                 )
-            },
+            }
             ImageBlockStart => {
                 let (consumed, header) = ensure_min_length_buffer!(9);
 
-                let frame = self.current.as_mut().ok_or_else(|| DecodingError::format("bad state"))?;
+                let frame = self
+                    .current
+                    .as_mut()
+                    .ok_or_else(|| DecodingError::format("bad state"))?;
                 frame.left = u16::from_le_bytes(header[..2].try_into().unwrap());
                 frame.top = u16::from_le_bytes(header[2..4].try_into().unwrap());
                 frame.width = u16::from_le_bytes(header[4..6].try_into().unwrap());
@@ -597,13 +638,16 @@ impl StreamingDecoder {
                 if local_table {
                     let table_size = flags & 0b0000_0111;
                     let pal_len = PLTE_CHANNELS * (1 << (table_size + 1));
-                    frame.palette.get_or_insert_with(Vec::new)
-                        .try_reserve_exact(pal_len).map_err(|_| io::ErrorKind::OutOfMemory)?;
+                    frame
+                        .palette
+                        .get_or_insert_with(Vec::new)
+                        .try_reserve_exact(pal_len)
+                        .map_err(|_| DecodingError::InsufficientBuffer)?;
                     goto!(consumed, LocalPalette(pal_len))
                 } else {
                     goto!(consumed, LocalPalette(0))
                 }
-            },
+            }
             GlobalPalette(left) => {
                 // the global_color_table is guaranteed to have the exact capacity required
                 if left > 0 {
@@ -649,7 +693,7 @@ impl StreamingDecoder {
                         }
                     }
                 }
-            },
+            }
             BlockEnd => {
                 if b == Block::Trailer as u8 {
                     // can't consume yet, because the trailer is not a real block,
@@ -667,7 +711,10 @@ impl StreamingDecoder {
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
                     self.memory_limit.check_size(self.ext.data.len() + n)?;
-                    self.ext.data.try_reserve(n).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                    self.ext
+                        .data
+                        .try_reserve(n)
+                        .map_err(|_| DecodingError::InsufficientBuffer)?;
                     self.ext.data.extend_from_slice(&buf[..n]);
                     goto!(n, ExtensionDataBlock(left - n))
                 } else if b == 0 {
@@ -679,7 +726,7 @@ impl StreamingDecoder {
                         Some(Extension::Control) => {
                             self.read_control_extension()?;
                             goto!(BlockEnd, emit Decoded::BlockFinished(self.ext.id))
-                        },
+                        }
                         _ => {
                             goto!(BlockEnd, emit Decoded::BlockFinished(self.ext.id))
                         }
@@ -745,7 +792,8 @@ impl StreamingDecoder {
                         return goto!(n, DecodeSubBlock(left - n), emit Decoded::Nothing);
                     }
 
-                    let (mut consumed, bytes_len) = self.lzw_reader.decode_bytes(&buf[..n], write_into)?;
+                    let (mut consumed, bytes_len) =
+                        self.lzw_reader.decode_bytes(&buf[..n], write_into)?;
 
                     // skip if can't make progress (decode would fail if check_for_end_code was set)
                     if consumed == 0 && bytes_len == 0 {
@@ -808,5 +856,5 @@ impl StreamingDecoder {
 
 #[test]
 fn error_cast() {
-    let _ : Box<dyn error::Error> = DecodingError::format("testing").into();
+    let _: Box<dyn error::Error> = DecodingError::format("testing").into();
 }
