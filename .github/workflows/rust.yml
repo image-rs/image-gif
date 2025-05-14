@@ -24,7 +24,7 @@ jobs:
     - name: clippy
       run: >
         cargo clippy --verbose --no-default-features --features "$FEATURES"
-      if: ${{ matrix.rust == '1.62.0' }}
+      if: ${{ matrix.rust == 'stable' }}
     - name: test
       run: >
         cargo test --tests --benches --no-default-features --features "$FEATURES"
