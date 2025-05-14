@@ -216,6 +216,7 @@ impl iter::Iterator for InterlaceIterator {
 mod test {
     use super::InterlaceIterator;
 
+    #[rustfmt::skip]
     #[test]
     fn test_interlace_iterator() {
         for &(len, expect) in &[

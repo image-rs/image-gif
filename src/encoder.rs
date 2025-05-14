@@ -442,6 +442,7 @@ fn flag_size(size: usize) -> u8 {
 
 #[test]
 fn test_flag_size() {
+    #[rustfmt::skip]
     fn expected(size: usize) -> u8 {
         match size {
             0  ..=2   => 0,
