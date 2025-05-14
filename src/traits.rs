@@ -131,6 +131,20 @@ pub(crate) mod std_impls {
         }
     }
 
+    impl<R: std::io::BufRead + ?Sized> core::ops::Deref for IoBufReader<R> {
+        type Target = R;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    impl<R: std::io::BufRead + ?Sized> core::ops::DerefMut for IoBufReader<R> {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.0
+        }
+    }
+
     /// Wrapper for an [`std::io::Write`] writer compatible with [`Write`].
     pub struct IoWriter<W: std::io::Write + ?Sized>(pub W);
 
@@ -140,6 +154,20 @@ pub(crate) mod std_impls {
         #[inline]
         fn write_all(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
             <W as std::io::Write>::write_all(&mut self.0, buf)
+        }
+    }
+
+    impl<W: std::io::Write + ?Sized> core::ops::Deref for IoWriter<W> {
+        type Target = W;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    impl<W: std::io::Write + ?Sized> core::ops::DerefMut for IoWriter<W> {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.0
         }
     }
 }

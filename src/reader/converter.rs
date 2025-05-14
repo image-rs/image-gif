@@ -250,6 +250,8 @@ impl iter::Iterator for InterlaceIterator {
 
 #[cfg(test)]
 mod test {
+    use alloc::vec::Vec;
+
     use super::InterlaceIterator;
 
     #[test]
