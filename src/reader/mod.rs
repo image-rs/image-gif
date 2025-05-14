@@ -446,9 +446,9 @@ where
     pub fn palette(&self) -> Result<&[u8], DecodingError> {
         Ok(match self.current_frame.palette {
             Some(ref table) => table,
-            None => self.global_palette().ok_or_else(|| DecodingError::format(
-                "no color table available for current frame",
-            ))?,
+            None => self.global_palette().ok_or_else(|| {
+                DecodingError::format("no color table available for current frame")
+            })?,
         })
     }
 
