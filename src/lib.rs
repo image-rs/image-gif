@@ -111,6 +111,7 @@
 // ```
 #![deny(missing_docs)]
 #![cfg(feature = "std")]
+#![allow(unknown_lints)] // Certain lints only apply to later versions of Rust
 #![allow(clippy::manual_range_contains)]
 #![allow(clippy::new_without_default)]
 #![deny(clippy::alloc_instead_of_core)]

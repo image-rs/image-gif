@@ -252,7 +252,7 @@ impl<W: Write> Encoder<W> {
         let writer = self
             .w
             .as_mut()
-            .ok_or(io::Error::from(io::ErrorKind::Unsupported))?;
+            .ok_or_else(|| io::Error::from(io::ErrorKind::Unsupported))?;
         Self::write_encoded_image_block(writer, &self.buffer)
     }
 
@@ -407,7 +407,7 @@ impl<W: Write> Encoder<W> {
         self.write_trailer()?;
         self.w
             .take()
-            .ok_or(io::Error::from(io::ErrorKind::Unsupported))
+            .ok_or_else(|| io::Error::from(io::ErrorKind::Unsupported))
     }
 
     /// Write the final tailer.
@@ -419,7 +419,7 @@ impl<W: Write> Encoder<W> {
     fn writer(&mut self) -> io::Result<&mut W> {
         self.w
             .as_mut()
-            .ok_or(io::Error::from(io::ErrorKind::Unsupported))
+            .ok_or_else(|| io::Error::from(io::ErrorKind::Unsupported))
     }
 }
 
