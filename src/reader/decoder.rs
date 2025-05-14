@@ -39,6 +39,7 @@ impl error::Error for DecodingFormatError {
 
 /// Decoding error.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum DecodingError {
     /// Failed to internally allocate a buffer of sufficient size.
     OutOfMemory,

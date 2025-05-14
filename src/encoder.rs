@@ -39,6 +39,7 @@ impl fmt::Display for EncodingFormatError {
 
 /// Encoding error.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum EncodingError {
     /// Frame buffer is too small for the declared dimensions.
     FrameBufferTooSmallForDimensions,
