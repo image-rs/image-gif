@@ -255,7 +255,6 @@ mod test {
     #[rustfmt::skip]
     #[test]
     fn test_interlace_iterator() {
-        #[rustfmt::skip]
         for &(len, expect) in &[
             (0, &[][..]),
             (1, &[0][..]),
