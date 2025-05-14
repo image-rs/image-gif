@@ -1,18 +1,20 @@
-use std::borrow::Cow;
-use std::cmp;
-use std::error;
-use std::fmt;
-use std::io;
-use std::mem;
-use std::default::Default;
-use std::num::NonZeroUsize;
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
+use alloc::boxed::Box;
+use core::cmp;
+use core::fmt;
+use core::mem;
+use core::default::Default;
+use core::num::NonZeroUsize;
+use core::error;
 
+use weezl::{BitOrder, decode::Decoder as LzwDecoder, LzwError, LzwStatus, BufferResult};
+
+use crate::common::WrappedError;
 use crate::Repeat;
 use crate::MemoryLimit;
 use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 use crate::reader::DecodeOptions;
-
-use weezl::{BitOrder, decode::Decoder as LzwDecoder, LzwError, LzwStatus};
 
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
@@ -37,21 +39,32 @@ impl error::Error for DecodingFormatError {
     }
 }
 
-#[derive(Debug)]
 /// Decoding error.
+#[derive(Debug)]
 pub enum DecodingError {
     /// Returned if the image is found to be malformed.
     Format(DecodingFormatError),
-    /// Wraps `std::io::Error`.
-    Io(io::Error),
+    /// Returned if provided an insufficiently allocated buffer.
+    InsufficientBuffer,
+    /// Returned if additional data is required to finish decoding.
+    UnexpectedEof,
+    /// A decoder was not provided.
+    MissingDecoder,
+    /// Some kind of IO error.
+    Io(Box<dyn error::Error + Send + Sync + 'static>),
 }
 
 impl DecodingError {
     #[cold]
-    pub(crate) fn format(err: &'static str) -> Self {
+    pub(crate) fn format(err: impl Into<Box<dyn error::Error + Send + Sync + 'static>>) -> Self {
         Self::Format(DecodingFormatError {
             underlying: err.into(),
         })
+    }
+
+    #[cold]
+    pub(crate) fn io(err: impl Into<Box<dyn error::Error + Send + Sync + 'static>>) -> Self {
+        Self::Io(err.into())
     }
 }
 
@@ -60,7 +73,10 @@ impl fmt::Display for DecodingError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Self::Format(ref d) => d.fmt(fmt),
-            Self::Io(ref err) => err.fmt(fmt),
+            Self::InsufficientBuffer => fmt.write_str("Insufficient Buffer"),
+            Self::UnexpectedEof => fmt.write_str("Unexpected End of File"),
+            Self::MissingDecoder => fmt.write_str("Missing Decoder"),
+            Self::Io(ref inner) => inner.fmt(fmt),
         }
     }
 }
@@ -70,29 +86,19 @@ impl error::Error for DecodingError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             Self::Format(ref err) => Some(err),
-            Self::Io(ref err) => Some(err),
+            Self::InsufficientBuffer => None,
+            Self::UnexpectedEof => None,
+            Self::MissingDecoder => None,
+            Self::Io(ref err) => Some(err.as_ref()),
         }
     }
 }
 
-impl From<io::Error> for DecodingError {
-    #[inline]
-    fn from(err: io::Error) -> Self {
-        Self::Io(err)
-    }
-}
-
-impl From<io::ErrorKind> for DecodingError {
+#[cfg(feature = "std")]
+impl From<std::io::Error> for DecodingError {
     #[cold]
-    fn from(err: io::ErrorKind) -> Self {
-        Self::Io(io::Error::from(err))
-    }
-}
-
-impl From<DecodingFormatError> for DecodingError {
-    #[inline]
-    fn from(err: DecodingFormatError) -> Self {
-        Self::Format(err)
+    fn from(err: std::io::Error) -> Self {
+        Self::Io(err.into())
     }
 }
 
@@ -285,29 +291,36 @@ impl LzwReader {
         self.decoder.as_ref().map_or(true, |e| e.has_ended())
     }
 
-    pub fn decode_bytes(&mut self, lzw_data: &[u8], decode_buffer: &mut OutputBuffer<'_>) -> io::Result<(usize, usize)> {
-        let decoder = self.decoder.as_mut().ok_or(io::ErrorKind::Unsupported)?;
+    pub fn decode_bytes(&mut self, lzw_data: &[u8], decode_buffer: &mut OutputBuffer<'_>) -> Result<(usize, usize), DecodingError> {
+        let decoder = self.decoder.as_mut().ok_or(DecodingError::MissingDecoder)?;
 
-        let decode_buffer = match decode_buffer {
-            OutputBuffer::Slice(buf) => &mut **buf,
-            OutputBuffer::None => &mut [],
-            OutputBuffer::Vec(_) => return Err(io::Error::from(io::ErrorKind::Unsupported)),
+        let (consumed_in, consumed_out, status) = match decode_buffer {
+            OutputBuffer::Slice(buf) => {
+                let BufferResult { consumed_in, consumed_out, status } = decoder.decode_bytes(lzw_data, &mut **buf);
+                (consumed_in, consumed_out, status)
+            }
+            OutputBuffer::None => {
+                return Ok((0, 0))
+            }
+            OutputBuffer::Vec(buf) => {
+                let mut vec_decoder = decoder.into_vec(&mut **buf);
+                let result = vec_decoder.decode(lzw_data);
+                (result.consumed_in, result.consumed_out, result.status)
+            }
         };
 
-        let decoded = decoder.decode_bytes(lzw_data, decode_buffer);
-
-        match decoded.status {
+        match status {
             Ok(LzwStatus::Done | LzwStatus::Ok) => {},
             Ok(LzwStatus::NoProgress) => {
                 if self.check_for_end_code {
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, "no end code in lzw stream"));
+                    return Err(DecodingError::format("no end code in lzw stream"));
                 }
             },
             Err(err @ LzwError::InvalidCode) => {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, err));
+                return Err(DecodingError::format(WrappedError(err)));
             }
         }
-        Ok((decoded.consumed_in, decoded.consumed_out))
+        Ok((consumed_in, consumed_out))
     }
 }
 
@@ -373,7 +386,7 @@ impl OutputBuffer<'_> {
                 let vec: &mut Vec<u8> = vec;
                 let len = buf.len();
                 memory_limit.check_size(vec.len() + len)?;
-                vec.try_reserve(len).map_err(|_| io::ErrorKind::OutOfMemory)?;
+                vec.try_reserve(len).map_err(|_| DecodingError::InsufficientBuffer)?;
                 if vec.capacity() - vec.len() >= len {
                     vec.extend_from_slice(buf);
                 }
@@ -535,7 +548,7 @@ impl StreamingDecoder {
             })
         );
 
-        let b = *buf.first().ok_or(io::ErrorKind::UnexpectedEof)?;
+        let b = *buf.first().ok_or(DecodingError::UnexpectedEof)?;
 
         match self.state {
             Magic => {
@@ -560,7 +573,7 @@ impl StreamingDecoder {
                 let global_table = global_flags & 0x80 != 0;
                 let table_size = if global_table {
                     let table_size = PLTE_CHANNELS * (1 << ((global_flags & 0b111) + 1) as usize);
-                    self.global_color_table.try_reserve_exact(table_size).map_err(|_| io::ErrorKind::OutOfMemory)?;
+                    self.global_color_table.try_reserve_exact(table_size).map_err(|_| DecodingError::InsufficientBuffer)?;
                     table_size
                 } else {
                     0usize
@@ -598,7 +611,7 @@ impl StreamingDecoder {
                     let table_size = flags & 0b0000_0111;
                     let pal_len = PLTE_CHANNELS * (1 << (table_size + 1));
                     frame.palette.get_or_insert_with(Vec::new)
-                        .try_reserve_exact(pal_len).map_err(|_| io::ErrorKind::OutOfMemory)?;
+                        .try_reserve_exact(pal_len).map_err(|_| DecodingError::InsufficientBuffer)?;
                     goto!(consumed, LocalPalette(pal_len))
                 } else {
                     goto!(consumed, LocalPalette(0))
@@ -667,7 +680,7 @@ impl StreamingDecoder {
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
                     self.memory_limit.check_size(self.ext.data.len() + n)?;
-                    self.ext.data.try_reserve(n).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                    self.ext.data.try_reserve(n).map_err(|_| DecodingError::InsufficientBuffer)?;
                     self.ext.data.extend_from_slice(&buf[..n]);
                     goto!(n, ExtensionDataBlock(left - n))
                 } else if b == 0 {

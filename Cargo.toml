@@ -10,13 +10,13 @@ repository = "https://github.com/image-rs/image-gif"
 documentation = "https://docs.rs/gif"
 edition = "2021"
 include = ["src/**", "LICENSE-*", "README.md", "benches/*.rs"]
-rust-version = "1.62"
+rust-version = "1.81"
 
 [lib]
 bench = false
 
 [dependencies]
-weezl = "0.1.8"
+weezl = { version = "0.1.8", default-features = false, features = ["alloc"] }
 color_quant = { version = "1.1", optional = true }
 
 [dev-dependencies]
@@ -32,7 +32,7 @@ default = ["raii_no_panic", "std", "color_quant"]
 raii_no_panic = []
 color_quant = ["dep:color_quant"]
 # Reservation for a feature turning off std
-std = []
+std = ["weezl/std"]
 
 [[bench]]
 name = "decode"

@@ -1,6 +1,10 @@
-use std::borrow::Cow;
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
+use core::fmt;
+use core::error;
+
 #[cfg(feature = "color_quant")]
-use std::collections::{HashMap, HashSet};
+use alloc::collections::{BTreeMap, BTreeSet};
 
 /// Disposal method
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -224,7 +228,7 @@ impl Frame<'static> {
 
         // Attempt to build a palette of all colors. If we go over 256 colors,
         // switch to the NeuQuant algorithm.
-        let mut colors: HashSet<(u8, u8, u8, u8)> = HashSet::new();
+        let mut colors: BTreeSet<(u8, u8, u8, u8)> = BTreeSet::new();
         for pixel in pixels.chunks_exact(4) {
             if colors.insert((pixel[0], pixel[1], pixel[2], pixel[3])) && colors.len() > 256 {
                 // > 256 colours, let's use NeuQuant.
@@ -245,7 +249,7 @@ impl Frame<'static> {
         let mut colors_vec: Vec<(u8, u8, u8, u8)> = colors.into_iter().collect();
         colors_vec.sort_unstable();
         let palette = colors_vec.iter().flat_map(|&(r, g, b, _a)| [r, g, b]).collect();
-        let colors_lookup: HashMap<(u8, u8, u8, u8), u8> = colors_vec.into_iter().zip(0..=255).collect();
+        let colors_lookup: BTreeMap<(u8, u8, u8, u8), u8> = colors_vec.into_iter().zip(0..=255).collect();
 
         let index_of = | pixel: &[u8] |
             colors_lookup.get(&(pixel[0], pixel[1], pixel[2], pixel[3])).copied().unwrap_or(0);
@@ -358,11 +362,28 @@ impl Frame<'static> {
             width: self.width,
             height: self.height,
             interlaced: self.interlaced,
-            palette: std::mem::take(&mut self.palette),
-            buffer: std::mem::replace(&mut self.buffer, Cow::Borrowed(&[])),
+            palette: core::mem::take(&mut self.palette),
+            buffer: core::mem::replace(&mut self.buffer, Cow::Borrowed(&[])),
         }
     }
 }
+
+/// Wrapper for an error-like `T` which may not itself implement [`Error`](error::Error).
+pub(crate) struct WrappedError<T: fmt::Display + fmt::Debug>(pub T);
+
+impl<T: fmt::Display + fmt::Debug> fmt::Debug for WrappedError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <T as fmt::Debug>::fmt(&self.0, f)
+    }
+}
+
+impl<T: fmt::Display + fmt::Debug> fmt::Display for WrappedError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <T as fmt::Display>::fmt(&self.0, f)
+    }
+}
+
+impl<T: fmt::Display + fmt::Debug> error::Error for WrappedError<T> {}
 
 #[test]
 #[cfg(feature = "color_quant")]
