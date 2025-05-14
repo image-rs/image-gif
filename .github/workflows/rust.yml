@@ -23,7 +23,7 @@ jobs:
         cargo build --verbose --no-default-features --features "$FEATURES"
     - name: clippy
       run: >
-        cargo clippy --verbose --no-default-features --features "$FEATURES"
+        cargo clippy --verbose --all-targets --no-default-features --features "$FEATURES"
       if: ${{ matrix.rust == 'stable' }}
     - name: test
       run: >
