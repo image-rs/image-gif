@@ -40,17 +40,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (send, recv) = std::sync::mpsc::channel();
 
-    decoder.into_iter().enumerate().par_bridge().try_for_each(move |(frame_number, frame)| {
-        let mut frame = frame?;
-        FrameDecoder::new(DecodeOptions::new())
-            .decode_lzw_encoded_frame(&mut frame)
-            .unwrap();
-        // frame is now pixels
-        frame.make_lzw_pre_encoded();
-        // frame is now LZW again, re-encoded
-        send.send((frame_number, frame)).unwrap();
-        Ok::<_, gif::DecodingError>(())
-    })?;
+    decoder
+        .into_iter()
+        .enumerate()
+        .par_bridge()
+        .try_for_each(move |(frame_number, frame)| {
+            let mut frame = frame?;
+            FrameDecoder::new(DecodeOptions::new())
+                .decode_lzw_encoded_frame(&mut frame)
+                .unwrap();
+            // frame is now pixels
+            frame.make_lzw_pre_encoded();
+            // frame is now LZW again, re-encoded
+            send.send((frame_number, frame)).unwrap();
+            Ok::<_, gif::DecodingError>(())
+        })?;
 
     // Decoding and encoding can happen in parallel, but writing to the GIF file is sequential
     let mut next_frame_number = 0;
@@ -59,7 +63,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // frames can arrive in any order, since they're processed in parallel,
         // so they have to be stored in a queue
         frames_to_process.push((frame_number, frame));
-        while let Some(index) = frames_to_process.iter().position(|&(num, _)| num == next_frame_number) {
+        while let Some(index) = frames_to_process
+            .iter()
+            .position(|&(num, _)| num == next_frame_number)
+        {
             let frame = frames_to_process.remove(index).1;
             encoder.write_lzw_pre_encoded_frame(&frame)?;
             next_frame_number += 1;
@@ -70,6 +77,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let seconds = start.elapsed().as_millis() as f64 / 1000.;
     let rate = (input_size / 1024 / 1024) as f64 / seconds;
 
-    eprintln!("Finished in {seconds:0.2}s, {rate:0.0}MiB/s {}", if cfg!(debug_assertions) { ". Run with --release for more speed." } else { "" });
+    eprintln!(
+        "Finished in {seconds:0.2}s, {rate:0.0}MiB/s {}",
+        if cfg!(debug_assertions) {
+            ". Run with --release for more speed."
+        } else {
+            ""
+        }
+    );
     Ok(())
 }

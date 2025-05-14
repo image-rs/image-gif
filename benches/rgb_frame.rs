@@ -35,20 +35,20 @@ fn main() {
         group
             .sample_size(50)
             .throughput(Throughput::Bytes(size as u64))
-            .bench_function(path.file_name().unwrap().to_str().unwrap(),
-                |b| {
-                match info.color_type {
-                    png::ColorType::Rgb => b.iter(|| {
-                        Frame::from_rgb_speed(w, h, &mut buf[..size], 30)
-                    }),
-                    png::ColorType::Rgba => b.iter(|| {
-                        Frame::from_rgba_speed(w, h, &mut buf[..size], 30)
-                    }),
+            .bench_function(
+                path.file_name().unwrap().to_str().unwrap(),
+                |b| match info.color_type {
+                    png::ColorType::Rgb => {
+                        b.iter(|| Frame::from_rgb_speed(w, h, &mut buf[..size], 30))
+                    }
+                    png::ColorType::Rgba => {
+                        b.iter(|| Frame::from_rgba_speed(w, h, &mut buf[..size], 30))
+                    }
                     c => {
                         println!("Image has wrong color type: {c:?}");
                     }
-                }
-            });
+                },
+            );
 
         // actually write the image as a singe frame gif... while MSE can be used
         // for quality check, it might not be as good as visual inspection
