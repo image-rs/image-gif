@@ -1,6 +1,6 @@
 #![cfg(feature = "std")]
 
-use std::{fs, sync::mpsc, thread, time::Duration, io};
+use std::{fs, io, sync::mpsc, thread, time::Duration};
 
 #[test]
 fn try_decode_crash_regression() {
@@ -9,9 +9,17 @@ fn try_decode_crash_regression() {
     for entry in files {
         let entry = entry.unwrap();
         if let Some(ext) = entry.path().extension() {
-            assert_eq!(ext.to_str(), Some("gif"), "Unexpected file {} in crashtests, should end with .gif", entry.path().display());
+            assert_eq!(
+                ext.to_str(),
+                Some("gif"),
+                "Unexpected file {} in crashtests, should end with .gif",
+                entry.path().display()
+            );
         } else {
-            panic!("Unexpected file {} in crashtests, should end with .gif", entry.path().display());
+            panic!(
+                "Unexpected file {} in crashtests, should end with .gif",
+                entry.path().display()
+            );
         }
 
         let file_data = fs::read(entry.path()).unwrap();
@@ -27,7 +35,8 @@ fn decode_on_timer(data: Vec<u8>) {
         send.send(result).expect("still waiting");
     });
 
-    let _ = recv.recv_timeout(Duration::from_secs(1))
+    let _ = recv
+        .recv_timeout(Duration::from_secs(1))
         .expect("any result");
 }
 
@@ -55,8 +64,11 @@ fn test_truncated_file() {
 
 #[track_caller]
 fn decode_chopped_anim(r: ChoppedReader) {
-    let frames = gif::DecodeOptions::new().read_info(r).unwrap()
-        .into_iter().enumerate()
+    let frames = gif::DecodeOptions::new()
+        .read_info(r)
+        .unwrap()
+        .into_iter()
+        .enumerate()
         .map(|(n, f)| f.expect(&n.to_string()))
         .count();
     assert_eq!(frames, 14);

@@ -1,10 +1,8 @@
 use std::{env, fs, process};
 
 fn main() {
-    let file = env::args().nth(1)
-        .unwrap_or_else(|| explain_usage());
-    let file = fs::File::open(file)
-        .expect("failed to open input file");
+    let file = env::args().nth(1).unwrap_or_else(|| explain_usage());
+    let file = fs::File::open(file).expect("failed to open input file");
     let mut reader = {
         let mut options = gif::DecodeOptions::new();
         options.allow_unknown_blocks(true);
@@ -28,7 +26,10 @@ fn main() {
                  dispose: {:?}\n  \
                  needs_input: {:?}",
             frame.delay,
-            frame.width, frame.height, frame.left, frame.top,
+            frame.width,
+            frame.height,
+            frame.left,
+            frame.top,
             frame.dispose,
             frame.needs_user_input
         );
