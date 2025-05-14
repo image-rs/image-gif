@@ -316,32 +316,37 @@ impl LzwReader {
         &mut self,
         lzw_data: &[u8],
         decode_buffer: &mut OutputBuffer<'_>,
-    ) -> io::Result<(usize, usize)> {
-        let decoder = self.decoder.as_mut().ok_or(io::ErrorKind::Unsupported)?;
+    ) -> Result<(usize, usize), DecodingError> {
+        let decoder = self
+            .decoder
+            .as_mut()
+            .ok_or(DecodingError::DecoderNotFound)?;
 
-        let decode_buffer = match decode_buffer {
-            OutputBuffer::Slice(buf) => &mut **buf,
-            OutputBuffer::None => &mut [],
-            OutputBuffer::Vec(_) => return Err(io::Error::from(io::ErrorKind::Unsupported)),
+        let (status, consumed_in, consumed_out) = match decode_buffer {
+            OutputBuffer::Slice(buf) => {
+                let decoded = decoder.decode_bytes(lzw_data, &mut **buf);
+                (decoded.status, decoded.consumed_in, decoded.consumed_out)
+            }
+            OutputBuffer::None => {
+                let decoded = decoder.decode_bytes(lzw_data, &mut []);
+                (decoded.status, decoded.consumed_in, decoded.consumed_out)
+            }
+            OutputBuffer::Vec(buf) => {
+                let decoded = decoder.into_vec(buf).decode(lzw_data);
+                (decoded.status, decoded.consumed_in, decoded.consumed_out)
+            }
         };
 
-        let decoded = decoder.decode_bytes(lzw_data, decode_buffer);
-
-        match decoded.status {
-            Ok(LzwStatus::Done | LzwStatus::Ok) => {}
-            Ok(LzwStatus::NoProgress) => {
+        match status? {
+            LzwStatus::Done | LzwStatus::Ok => {}
+            LzwStatus::NoProgress => {
                 if self.check_for_end_code {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "no end code in lzw stream",
-                    ));
+                    return Err(DecodingError::EndCodeNotFound);
                 }
             }
-            Err(err @ LzwError::InvalidCode) => {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, err));
-            }
         }
-        Ok((decoded.consumed_in, decoded.consumed_out))
+
+        Ok((consumed_in, consumed_out))
     }
 }
 
