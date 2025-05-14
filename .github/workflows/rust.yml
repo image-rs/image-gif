@@ -23,7 +23,6 @@ jobs:
     - name: test
       run: >
         cargo test --tests --benches --no-default-features --features "$FEATURES"
-      if: ${{ matrix.rust != '1.81.0' }}
       env:
         FEATURES: ${{ matrix.features }}
   rustfmt:
