@@ -4,7 +4,7 @@ use std::iter::FusedIterator;
 use std::mem;
 
 use std::convert::{TryFrom, TryInto};
-use std::io::prelude::*;
+use std::io::{BufRead, Read};
 use std::num::NonZeroU64;
 
 use crate::common::{Block, Frame};
@@ -189,18 +189,29 @@ impl DecodeOptions {
     /// Reads the logical screen descriptor including the global color palette
     ///
     /// Returns a [`Decoder`]. All decoder configuration has to be done beforehand.
-    pub fn read_info<R: Read>(self, r: R) -> Result<Decoder<R>, DecodingError> {
+    /// The provided reader will be wrapped in [`BufReader`](io::BufReader).
+    /// Consider [`read_info_buffered`](DecodeOptions::read_info_buffered) if `R` already implements
+    /// [`BufRead`].
+    pub fn read_info<R: Read>(self, r: R) -> Result<Decoder<io::BufReader<R>>, DecodingError> {
+        self.read_info_buffered(io::BufReader::new(r))
+    }
+
+    /// Reads the logical screen descriptor including the global color palette
+    ///
+    /// Returns a [`Decoder`]. All decoder configuration has to be done beforehand.
+    /// Consider [`read_info`](DecodeOptions::read_info) if `R` does not implement [`BufRead`].
+    pub fn read_info_buffered<R: BufRead>(self, r: R) -> Result<Decoder<R>, DecodingError> {
         Decoder::with_no_init(r, StreamingDecoder::with_options(&self), self).init()
     }
 }
 
-struct ReadDecoder<R: Read> {
-    reader: io::BufReader<R>,
+struct ReadDecoder<R: BufRead> {
+    reader: R,
     decoder: StreamingDecoder,
     at_eof: bool,
 }
 
-impl<R: Read> ReadDecoder<R> {
+impl<R: BufRead> ReadDecoder<R> {
     #[inline(never)]
     fn decode_next(
         &mut self,
@@ -227,7 +238,7 @@ impl<R: Read> ReadDecoder<R> {
         Ok(None)
     }
 
-    fn into_inner(self) -> io::BufReader<R> {
+    fn into_inner(self) -> R {
         self.reader
     }
 
@@ -242,7 +253,7 @@ impl<R: Read> ReadDecoder<R> {
 
 #[allow(dead_code)]
 /// GIF decoder. Create [`DecodeOptions`] to get started, and call [`DecodeOptions::read_info`].
-pub struct Decoder<R: Read> {
+pub struct Decoder<R: BufRead> {
     decoder: ReadDecoder<R>,
     pixel_converter: PixelConverter,
     bg_color: Option<u8>,
@@ -251,14 +262,22 @@ pub struct Decoder<R: Read> {
     current_frame_data_type: FrameDataType,
 }
 
-impl<R> Decoder<R>
-where
-    R: Read,
-{
+impl<R: Read> Decoder<io::BufReader<R>> {
     /// Create a new decoder with default options.
+    /// Wraps the provided reader in [`BufReader`](io::BufReader).
+    /// Consider [`new_buffered`](Decoder::new_buffered) if `R` implements [`BufRead`].
     #[inline]
     pub fn new(reader: R) -> Result<Self, DecodingError> {
         DecodeOptions::new().read_info(reader)
+    }
+}
+
+impl<R: BufRead> Decoder<R> {
+    /// Create a new decoder with default options.
+    /// Consider [`new`](Decoder::new) if `R` does not implement [`BufRead`].
+    #[inline]
+    pub fn new_buffered(reader: R) -> Result<Self, DecodingError> {
+        DecodeOptions::new().read_info_buffered(reader)
     }
 
     /// Return a builder that allows configuring limits etc.
@@ -271,7 +290,7 @@ where
     fn with_no_init(reader: R, decoder: StreamingDecoder, options: DecodeOptions) -> Self {
         Self {
             decoder: ReadDecoder {
-                reader: io::BufReader::new(reader),
+                reader: reader,
                 decoder,
                 at_eof: false,
             },
@@ -469,8 +488,8 @@ where
         self.decoder.decoder.height()
     }
 
-    /// Abort decoding and recover the `io::Read` instance
-    pub fn into_inner(self) -> io::BufReader<R> {
+    /// Abort decoding and recover the `io::BufRead` instance
+    pub fn into_inner(self) -> R {
         self.decoder.into_inner()
     }
 
@@ -489,7 +508,7 @@ where
     }
 }
 
-impl<R: Read> IntoIterator for Decoder<R> {
+impl<R: BufRead> IntoIterator for Decoder<R> {
     type Item = Result<Frame<'static>, DecodingError>;
     type IntoIter = DecoderIter<R>;
 
@@ -503,23 +522,23 @@ impl<R: Read> IntoIterator for Decoder<R> {
 }
 
 /// Use `decoder.into_iter()` to iterate over the frames
-pub struct DecoderIter<R: Read> {
+pub struct DecoderIter<R: BufRead> {
     inner: Decoder<R>,
     ended: bool,
 }
 
-impl<R: Read> DecoderIter<R> {
-    /// Abort decoding and recover the `io::Read` instance
+impl<R: BufRead> DecoderIter<R> {
+    /// Abort decoding and recover the `io::BufRead` instance
     ///
     /// Use `for frame in iter.by_ref()` to be able to call this afterwards.
-    pub fn into_inner(self) -> io::BufReader<R> {
+    pub fn into_inner(self) -> R {
         self.inner.into_inner()
     }
 }
 
-impl<R: Read> FusedIterator for DecoderIter<R> {}
+impl<R: BufRead> FusedIterator for DecoderIter<R> {}
 
-impl<R: Read> Iterator for DecoderIter<R> {
+impl<R: BufRead> Iterator for DecoderIter<R> {
     type Item = Result<Frame<'static>, DecodingError>;
 
     fn next(&mut self) -> Option<Self::Item> {
