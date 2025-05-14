@@ -17,9 +17,14 @@ jobs:
       with:
         toolchain: ${{ matrix.rust }}
         override: true
+        components: clippy
     - name: build
       run: >
         cargo build --verbose --no-default-features --features "$FEATURES"
+    - name: clippy
+      run: >
+        cargo clippy --verbose --all-targets --no-default-features --features "$FEATURES"
+      if: ${{ matrix.rust == 'stable' }}
     - name: test
       run: >
         cargo test --tests --benches --no-default-features --features "$FEATURES"

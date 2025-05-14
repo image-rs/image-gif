@@ -43,3 +43,15 @@ required-features = ["std"]
 name = "rgb_frame"
 harness = false
 required-features = ["std", "color_quant"]
+
+[[example]]
+name = "check"
+required-features = ["std"]
+
+[[example]]
+name = "explode"
+required-features = ["std"]
+
+[[example]]
+name = "parallel"
+required-features = ["std"]

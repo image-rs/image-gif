@@ -64,6 +64,8 @@ fn test_truncated_file() {
 
 #[track_caller]
 fn decode_chopped_anim(r: ChoppedReader) {
+    #[expect(clippy::suspicious_map)]
+    #[expect(clippy::expect_fun_call)]
     let frames = gif::DecodeOptions::new()
         .read_info(r)
         .unwrap()

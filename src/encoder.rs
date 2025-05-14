@@ -1,9 +1,11 @@
 //! # Minimal gif encoder
-use std::borrow::Cow;
+
+use alloc::borrow::Cow;
+use alloc::fmt;
+use alloc::vec::Vec;
 use std::error;
-use std::fmt;
 use std::io;
-use std::io::prelude::*;
+use std::io::Write;
 
 use weezl::{encode::Encoder as LzwEncoder, BitOrder};
 
@@ -250,7 +252,7 @@ impl<W: Write> Encoder<W> {
         let writer = self
             .w
             .as_mut()
-            .ok_or(io::Error::from(io::ErrorKind::Unsupported))?;
+            .ok_or_else(|| io::Error::from(io::ErrorKind::Unsupported))?;
         Self::write_encoded_image_block(writer, &self.buffer)
     }
 
@@ -405,7 +407,7 @@ impl<W: Write> Encoder<W> {
         self.write_trailer()?;
         self.w
             .take()
-            .ok_or(io::Error::from(io::ErrorKind::Unsupported))
+            .ok_or_else(|| io::Error::from(io::ErrorKind::Unsupported))
     }
 
     /// Write the final tailer.
@@ -417,7 +419,7 @@ impl<W: Write> Encoder<W> {
     fn writer(&mut self) -> io::Result<&mut W> {
         self.w
             .as_mut()
-            .ok_or(io::Error::from(io::ErrorKind::Unsupported))
+            .ok_or_else(|| io::Error::from(io::ErrorKind::Unsupported))
     }
 }
 
@@ -559,6 +561,7 @@ impl<const N: usize> Buf<N> {
 
 #[test]
 fn error_cast() {
+    use alloc::boxed::Box;
     let _: Box<dyn error::Error> =
         EncodingError::from(EncodingFormatError::MissingColorPalette).into();
 }

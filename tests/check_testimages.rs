@@ -145,6 +145,7 @@ pub struct Crc32 {
 
 impl Crc32 {
     /// Create a new hasher.
+    #[expect(clippy::new_without_default)]
     pub fn new() -> Crc32 {
         Crc32 { crc: 0xFFFFFFFF }
     }
