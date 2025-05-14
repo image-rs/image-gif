@@ -24,22 +24,20 @@ impl<W: io::Write + ?Sized> WriteBytesExt<u8> for W {
 impl<W: io::Write + ?Sized> WriteBytesExt<u16> for W {
     #[inline]
     fn write_le(&mut self, n: u16) -> io::Result<()> {
-        self.write_all(&[n as u8, (n >> 8) as u8])
+        self.write_all(&n.to_le_bytes())
     }
 }
 
 impl<W: io::Write + ?Sized> WriteBytesExt<u32> for W {
     #[inline]
     fn write_le(&mut self, n: u32) -> io::Result<()> {
-        self.write_le(n as u16)?;
-        self.write_le((n >> 16) as u16)
+        self.write_all(&n.to_le_bytes())
     }
 }
 
 impl<W: io::Write + ?Sized> WriteBytesExt<u64> for W {
     #[inline]
     fn write_le(&mut self, n: u64) -> io::Result<()> {
-        self.write_le(n as u32)?;
-        self.write_le((n >> 32) as u32)
+        self.write_all(&n.to_le_bytes())
     }
 }
