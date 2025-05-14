@@ -25,10 +25,12 @@ fn round_trip() {
 #[test]
 fn max_frame_size() {
     let mut encoder = Encoder::new(vec![], 0xFFFF, 0xFFFF, &[1, 2, 3]).unwrap();
-    let mut f = Frame::default();
-    f.width = 0xFFFF;
-    f.height = 0xFFFF;
-    f.buffer = [5][..].into();
+    let f = Frame {
+        width: 0xFFFF,
+        height: 0xFFFF,
+        buffer: [5][..].into(),
+        ..Default::default()
+    };
     encoder.write_lzw_pre_encoded_frame(&f).unwrap();
     let res = encoder.into_inner().unwrap();
     let mut decoder = Decoder::new(&res[..]).unwrap();
@@ -165,17 +167,21 @@ fn palette_sizes() {
         let local = &local_pal[..size * 3];
 
         let mut encoder = Encoder::new(vec![], 1, 1, global).unwrap();
-        let mut f = Frame::default();
-        f.width = 1;
-        f.height = 1;
-        f.buffer = [1][..].into();
+        let f = Frame {
+            width: 1,
+            height: 1,
+            buffer: [1][..].into(),
+            ..Default::default()
+        };
         encoder.write_frame(&f).unwrap();
 
-        let mut f = Frame::default();
-        f.width = 1;
-        f.height = 1;
-        f.buffer = [1][..].into();
-        f.palette = Some(local.to_vec());
+        let f = Frame {
+            width: 1,
+            height: 1,
+            buffer: [1][..].into(),
+            palette: Some(local.to_vec()),
+            ..Default::default()
+        };
         encoder.write_frame(&f).unwrap();
         let gif = encoder.into_inner().unwrap();
         let gif = &mut gif.as_slice();
@@ -206,10 +212,12 @@ fn palette_sizes() {
 #[test]
 fn palette_fail() {
     let mut encoder = Encoder::new(vec![], 0xFFFF, 0xFFFF, &[]).unwrap();
-    let mut f = Frame::default();
-    f.width = 1;
-    f.height = 1;
-    f.buffer = [1][..].into();
+    let f = Frame {
+        width: 1,
+        height: 1,
+        buffer: [1][..].into(),
+        ..Default::default()
+    };
     assert!(matches!(
         encoder.write_frame(&f),
         Err(gif::EncodingError::Format(

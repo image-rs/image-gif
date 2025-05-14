@@ -8,6 +8,7 @@ fn read_image(image: &[u8]) -> Option<Vec<u8>> {
     //decoder.set_param(gif::ColorOutput::RGBA);
     let mut reader = decoder.unwrap();
 
+    #[expect(clippy::never_loop)]
     while reader.next_frame_info().unwrap().is_some() {
         let mut v = vec![0; reader.buffer_size()];
         reader.fill_buffer(&mut v).unwrap();

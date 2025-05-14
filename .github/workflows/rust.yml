@@ -20,6 +20,9 @@ jobs:
     - name: build
       run: >
         cargo build --verbose --no-default-features --features "$FEATURES"
+    - name: clippy
+      run: >
+        cargo clippy --verbose --no-default-features --features "$FEATURES"
     - name: test
       run: >
         cargo test --tests --benches --no-default-features --features "$FEATURES"

@@ -113,6 +113,14 @@
 #![cfg(feature = "std")]
 #![allow(clippy::manual_range_contains)]
 #![allow(clippy::new_without_default)]
+#![deny(clippy::alloc_instead_of_core)]
+#![deny(clippy::std_instead_of_alloc)]
+#![deny(clippy::std_instead_of_core)]
+#![no_std]
+
+#[macro_use]
+extern crate alloc;
+extern crate std;
 
 mod common;
 mod encoder;
