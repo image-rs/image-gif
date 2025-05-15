@@ -6,7 +6,7 @@ fn main() {
     let mut reader = {
         let mut options = gif::DecodeOptions::new();
         options.allow_unknown_blocks(true);
-        options.read_info(file).unwrap()
+        options.read_info(std::io::BufReader::new(file)).unwrap()
     };
 
     loop {
