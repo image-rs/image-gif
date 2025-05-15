@@ -4,7 +4,7 @@ use std::iter::FusedIterator;
 use std::mem;
 
 use std::convert::{TryFrom, TryInto};
-use std::io::{BufRead, Read};
+use std::io::BufRead;
 use std::num::NonZeroU64;
 
 use crate::common::{Block, Frame};
@@ -189,18 +189,8 @@ impl DecodeOptions {
     /// Reads the logical screen descriptor including the global color palette
     ///
     /// Returns a [`Decoder`]. All decoder configuration has to be done beforehand.
-    /// The provided reader will be wrapped in [`BufReader`](io::BufReader).
-    /// Consider [`read_info_buffered`](DecodeOptions::read_info_buffered) if `R` already implements
     /// [`BufRead`].
-    pub fn read_info<R: Read>(self, r: R) -> Result<Decoder<io::BufReader<R>>, DecodingError> {
-        self.read_info_buffered(io::BufReader::new(r))
-    }
-
-    /// Reads the logical screen descriptor including the global color palette
-    ///
-    /// Returns a [`Decoder`]. All decoder configuration has to be done beforehand.
-    /// Consider [`read_info`](DecodeOptions::read_info) if `R` does not implement [`BufRead`].
-    pub fn read_info_buffered<R: BufRead>(self, r: R) -> Result<Decoder<R>, DecodingError> {
+    pub fn read_info<R: BufRead>(self, r: R) -> Result<Decoder<R>, DecodingError> {
         Decoder::with_no_init(r, StreamingDecoder::with_options(&self), self).init()
     }
 }
@@ -262,22 +252,11 @@ pub struct Decoder<R: BufRead> {
     current_frame_data_type: FrameDataType,
 }
 
-impl<R: Read> Decoder<io::BufReader<R>> {
+impl<R: BufRead> Decoder<R> {
     /// Create a new decoder with default options.
-    /// Wraps the provided reader in [`BufReader`](io::BufReader).
-    /// Consider [`new_buffered`](Decoder::new_buffered) if `R` implements [`BufRead`].
     #[inline]
     pub fn new(reader: R) -> Result<Self, DecodingError> {
         DecodeOptions::new().read_info(reader)
-    }
-}
-
-impl<R: BufRead> Decoder<R> {
-    /// Create a new decoder with default options.
-    /// Consider [`new`](Decoder::new) if `R` does not implement [`BufRead`].
-    #[inline]
-    pub fn new_buffered(reader: R) -> Result<Self, DecodingError> {
-        DecodeOptions::new().read_info_buffered(reader)
     }
 
     /// Return a builder that allows configuring limits etc.
