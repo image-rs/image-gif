@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = File::open(&input_path)?;
     let mut options = gif::DecodeOptions::new();
     options.set_color_output(gif::ColorOutput::Indexed);
-    let mut decoder = options.read_info(input)?;
+    let mut decoder = options.read_info(std::io::BufReader::new(input))?;
     let screen_width = decoder.width();
     let screen_height = decoder.height();
     let global_pal = decoder.global_palette().unwrap_or_default().to_vec();

@@ -67,7 +67,7 @@ fn render_images() {
         let mut decoder = gif::DecodeOptions::new();
         decoder.set_color_output(gif::ColorOutput::RGBA);
         let file = File::open(path)?;
-        let mut decoder = decoder.read_info(file)?;
+        let mut decoder = decoder.read_info(std::io::BufReader::new(file))?;
         let mut crc = Crc32::new();
         while let Some(frame) = decoder.read_next_frame()? {
             // First sanity check:
