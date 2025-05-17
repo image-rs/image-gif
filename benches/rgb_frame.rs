@@ -60,7 +60,7 @@ fn main() {
 
         let frame = match info.color_type {
             png::ColorType::Rgb => Frame::from_rgb(w, h, &buf[..size]),
-            png::ColorType::Rgba => Frame::from_rgba(w, h, &buf[..size]),
+            png::ColorType::Rgba => Frame::from_rgba(w, h, &mut buf[..size]),
             _ => continue,
         };
 
