@@ -38,9 +38,7 @@ fn main() {
             .bench_function(
                 path.file_name().unwrap().to_str().unwrap(),
                 |b| match info.color_type {
-                    png::ColorType::Rgb => {
-                        b.iter(|| Frame::from_rgb_speed(w, h, &mut buf[..size], 30))
-                    }
+                    png::ColorType::Rgb => b.iter(|| Frame::from_rgb_speed(w, h, &buf[..size], 30)),
                     png::ColorType::Rgba => {
                         b.iter(|| Frame::from_rgba_speed(w, h, &mut buf[..size], 30))
                     }

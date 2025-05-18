@@ -1,4 +1,6 @@
-use std::borrow::Cow;
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
+
 #[cfg(feature = "color_quant")]
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -397,8 +399,8 @@ impl Frame<'static> {
             width: self.width,
             height: self.height,
             interlaced: self.interlaced,
-            palette: std::mem::take(&mut self.palette),
-            buffer: std::mem::replace(&mut self.buffer, Cow::Borrowed(&[])),
+            palette: core::mem::take(&mut self.palette),
+            buffer: core::mem::replace(&mut self.buffer, Cow::Borrowed(&[])),
         }
     }
 }
