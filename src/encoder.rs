@@ -39,9 +39,16 @@ impl fmt::Display for EncodingFormatError {
     }
 }
 
-#[derive(Debug)]
 /// Encoding error.
+#[derive(Debug)]
+#[non_exhaustive]
 pub enum EncodingError {
+    /// Frame buffer is too small for the declared dimensions.
+    FrameBufferTooSmallForDimensions,
+    /// Failed to internally allocate a buffer of sufficient size.
+    OutOfMemory,
+    /// Expected a writer but none found.
+    WriterNotFound,
     /// Returned if the to image is not encodable as a gif.
     Format(EncodingFormatError),
     /// Wraps `std::io::Error`.
@@ -52,6 +59,11 @@ impl fmt::Display for EncodingError {
     #[cold]
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::FrameBufferTooSmallForDimensions => {
+                fmt.write_str("Frame Buffer Too Small for Dimensions")
+            }
+            Self::OutOfMemory => fmt.write_str("Out of Memory"),
+            Self::WriterNotFound => fmt.write_str("Writer Not Found"),
             Self::Io(err) => err.fmt(fmt),
             Self::Format(err) => err.fmt(fmt),
         }
@@ -62,6 +74,9 @@ impl error::Error for EncodingError {
     #[cold]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            Self::FrameBufferTooSmallForDimensions => None,
+            Self::OutOfMemory => None,
+            Self::WriterNotFound => None,
             Self::Io(err) => Some(err),
             Self::Format(err) => Some(err),
         }
@@ -188,11 +203,7 @@ impl<W: Write> Encoder<W> {
             .checked_mul(usize::from(frame.height))
             .map_or(true, |size| frame.buffer.len() < size)
         {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "frame.buffer is too small for its width/height",
-            )
-            .into());
+            return Err(EncodingError::FrameBufferTooSmallForDimensions);
         }
         debug_assert!(
             (frame.width > 0 && frame.height > 0) || frame.buffer.is_empty(),
@@ -246,13 +257,10 @@ impl<W: Write> Encoder<W> {
         self.buffer.clear();
         self.buffer
             .try_reserve(data.len() / 4)
-            .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+            .map_err(|_| EncodingError::OutOfMemory)?;
         lzw_encode(data, &mut self.buffer);
 
-        let writer = self
-            .w
-            .as_mut()
-            .ok_or_else(|| io::Error::from(io::ErrorKind::Unsupported))?;
+        let writer = self.w.as_mut().ok_or(EncodingError::WriterNotFound)?;
         Self::write_encoded_image_block(writer, &self.buffer)
     }
 
@@ -346,7 +354,11 @@ impl<W: Write> Encoder<W> {
     /// This method can be used to write an unsupported extension to the file. `func` is the extension
     /// identifier (e.g. `Extension::Application as u8`). `data` are the extension payload blocks. If any
     /// contained slice has a lenght > 255 it is automatically divided into sub-blocks.
-    pub fn write_raw_extension(&mut self, func: AnyExtension, data: &[&[u8]]) -> io::Result<()> {
+    pub fn write_raw_extension(
+        &mut self,
+        func: AnyExtension,
+        data: &[&[u8]],
+    ) -> Result<(), EncodingError> {
         let writer = self.writer()?;
         writer.write_le(Block::Extension as u8)?;
         writer.write_le(func.0)?;
@@ -356,7 +368,7 @@ impl<W: Write> Encoder<W> {
                 writer.write_all(chunk)?;
             }
         }
-        writer.write_le(0u8)
+        Ok(writer.write_le(0u8)?)
     }
 
     /// Writes a frame to the image, but expects `Frame.buffer` to contain LZW-encoded data
@@ -379,7 +391,7 @@ impl<W: Write> Encoder<W> {
     }
 
     /// Writes the logical screen desriptor
-    fn write_screen_desc(&mut self, flags: u8) -> io::Result<()> {
+    fn write_screen_desc(&mut self, flags: u8) -> Result<(), EncodingError> {
         let mut tmp = tmp_buf::<13>();
         tmp.write_all(b"GIF89a")?;
         tmp.write_le(self.width)?;
@@ -387,7 +399,7 @@ impl<W: Write> Encoder<W> {
         tmp.write_le(flags)?; // packed field
         tmp.write_le(0u8)?; // bg index
         tmp.write_le(0u8)?; // aspect ratio
-        tmp.finish(self.writer()?)
+        Ok(tmp.finish(self.writer()?)?)
     }
 
     /// Gets a reference to the writer instance used by this encoder.
@@ -403,23 +415,19 @@ impl<W: Write> Encoder<W> {
     }
 
     /// Finishes writing, and returns the `io::Write` instance used by this encoder
-    pub fn into_inner(mut self) -> io::Result<W> {
+    pub fn into_inner(mut self) -> Result<W, EncodingError> {
         self.write_trailer()?;
-        self.w
-            .take()
-            .ok_or_else(|| io::Error::from(io::ErrorKind::Unsupported))
+        self.w.take().ok_or(EncodingError::WriterNotFound)
     }
 
     /// Write the final tailer.
-    fn write_trailer(&mut self) -> io::Result<()> {
-        self.writer()?.write_le(Block::Trailer as u8)
+    fn write_trailer(&mut self) -> Result<(), EncodingError> {
+        Ok(self.writer()?.write_le(Block::Trailer as u8)?)
     }
 
     #[inline]
-    fn writer(&mut self) -> io::Result<&mut W> {
-        self.w
-            .as_mut()
-            .ok_or_else(|| io::Error::from(io::ErrorKind::Unsupported))
+    fn writer(&mut self) -> Result<&mut W, EncodingError> {
+        self.w.as_mut().ok_or(EncodingError::WriterNotFound)
     }
 }
 

@@ -2,7 +2,6 @@ use alloc::borrow::Cow;
 use alloc::vec::Vec;
 use core::iter;
 use core::mem;
-use std::io;
 
 use super::decoder::{DecodingError, OutputBuffer, PLTE_CHANNELS};
 use crate::common::Frame;
@@ -49,7 +48,7 @@ impl PixelConverter {
         let pixel_bytes = self
             .memory_limit
             .buffer_size(self.color_output, frame.width, frame.height)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::OutOfMemory, "image is too large"))?;
+            .ok_or_else(|| DecodingError::OutOfMemory)?;
 
         debug_assert_eq!(
             pixel_bytes,

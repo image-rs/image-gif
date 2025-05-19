@@ -39,9 +39,20 @@ impl error::Error for DecodingFormatError {
     }
 }
 
-#[derive(Debug)]
 /// Decoding error.
+#[derive(Debug)]
+#[non_exhaustive]
 pub enum DecodingError {
+    /// Failed to internally allocate a buffer of sufficient size.
+    OutOfMemory,
+    /// Expected a decoder but none found.
+    DecoderNotFound,
+    /// Expected an end-code, but none found.
+    EndCodeNotFound,
+    /// Decoding could not complete as the reader completed prematurely.
+    UnexpectedEof,
+    /// Error encountered while decoding an LZW stream.
+    LzwError(LzwError),
     /// Returned if the image is found to be malformed.
     Format(DecodingFormatError),
     /// Wraps `std::io::Error`.
@@ -61,6 +72,11 @@ impl fmt::Display for DecodingError {
     #[cold]
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
+            Self::OutOfMemory => fmt.write_str("Out of Memory"),
+            Self::DecoderNotFound => fmt.write_str("Decoder Not Found"),
+            Self::EndCodeNotFound => fmt.write_str("End-Code Not Found"),
+            Self::UnexpectedEof => fmt.write_str("Unexpected End of File"),
+            Self::LzwError(ref err) => err.fmt(fmt),
             Self::Format(ref d) => d.fmt(fmt),
             Self::Io(ref err) => err.fmt(fmt),
         }
@@ -71,9 +87,21 @@ impl error::Error for DecodingError {
     #[cold]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
+            Self::OutOfMemory => None,
+            Self::DecoderNotFound => None,
+            Self::EndCodeNotFound => None,
+            Self::UnexpectedEof => None,
+            Self::LzwError(ref err) => Some(err),
             Self::Format(ref err) => Some(err),
             Self::Io(ref err) => Some(err),
         }
+    }
+}
+
+impl From<LzwError> for DecodingError {
+    #[inline]
+    fn from(err: LzwError) -> Self {
+        Self::LzwError(err)
     }
 }
 
@@ -81,13 +109,6 @@ impl From<io::Error> for DecodingError {
     #[inline]
     fn from(err: io::Error) -> Self {
         Self::Io(err)
-    }
-}
-
-impl From<io::ErrorKind> for DecodingError {
-    #[cold]
-    fn from(err: io::ErrorKind) -> Self {
-        Self::Io(io::Error::from(err))
     }
 }
 
@@ -297,32 +318,37 @@ impl LzwReader {
         &mut self,
         lzw_data: &[u8],
         decode_buffer: &mut OutputBuffer<'_>,
-    ) -> io::Result<(usize, usize)> {
-        let decoder = self.decoder.as_mut().ok_or(io::ErrorKind::Unsupported)?;
+    ) -> Result<(usize, usize), DecodingError> {
+        let decoder = self
+            .decoder
+            .as_mut()
+            .ok_or(DecodingError::DecoderNotFound)?;
 
-        let decode_buffer = match decode_buffer {
-            OutputBuffer::Slice(buf) => &mut **buf,
-            OutputBuffer::None => &mut [],
-            OutputBuffer::Vec(_) => return Err(io::Error::from(io::ErrorKind::Unsupported)),
+        let (status, consumed_in, consumed_out) = match decode_buffer {
+            OutputBuffer::Slice(buf) => {
+                let decoded = decoder.decode_bytes(lzw_data, &mut **buf);
+                (decoded.status, decoded.consumed_in, decoded.consumed_out)
+            }
+            OutputBuffer::None => {
+                let decoded = decoder.decode_bytes(lzw_data, &mut []);
+                (decoded.status, decoded.consumed_in, decoded.consumed_out)
+            }
+            OutputBuffer::Vec(buf) => {
+                let decoded = decoder.into_vec(buf).decode(lzw_data);
+                (decoded.status, decoded.consumed_in, decoded.consumed_out)
+            }
         };
 
-        let decoded = decoder.decode_bytes(lzw_data, decode_buffer);
-
-        match decoded.status {
-            Ok(LzwStatus::Done | LzwStatus::Ok) => {}
-            Ok(LzwStatus::NoProgress) => {
+        match status? {
+            LzwStatus::Done | LzwStatus::Ok => {}
+            LzwStatus::NoProgress => {
                 if self.check_for_end_code {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "no end code in lzw stream",
-                    ));
+                    return Err(DecodingError::EndCodeNotFound);
                 }
             }
-            Err(err @ LzwError::InvalidCode) => {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, err));
-            }
         }
-        Ok((decoded.consumed_in, decoded.consumed_out))
+
+        Ok((consumed_in, consumed_out))
     }
 }
 
@@ -393,7 +419,7 @@ impl OutputBuffer<'_> {
                 let len = buf.len();
                 memory_limit.check_size(vec.len() + len)?;
                 vec.try_reserve(len)
-                    .map_err(|_| io::ErrorKind::OutOfMemory)?;
+                    .map_err(|_| DecodingError::OutOfMemory)?;
                 if vec.capacity() - vec.len() >= len {
                     vec.extend_from_slice(buf);
                 }
@@ -561,7 +587,7 @@ impl StreamingDecoder {
             })
         );
 
-        let b = *buf.first().ok_or(io::ErrorKind::UnexpectedEof)?;
+        let b = *buf.first().ok_or(DecodingError::UnexpectedEof)?;
 
         match self.state {
             Magic => {
@@ -588,7 +614,7 @@ impl StreamingDecoder {
                     let table_size = PLTE_CHANNELS * (1 << ((global_flags & 0b111) + 1) as usize);
                     self.global_color_table
                         .try_reserve_exact(table_size)
-                        .map_err(|_| io::ErrorKind::OutOfMemory)?;
+                        .map_err(|_| DecodingError::OutOfMemory)?;
                     table_size
                 } else {
                     0usize
@@ -632,7 +658,7 @@ impl StreamingDecoder {
                         .palette
                         .get_or_insert_with(Vec::new)
                         .try_reserve_exact(pal_len)
-                        .map_err(|_| io::ErrorKind::OutOfMemory)?;
+                        .map_err(|_| DecodingError::OutOfMemory)?;
                     goto!(consumed, LocalPalette(pal_len))
                 } else {
                     goto!(consumed, LocalPalette(0))
@@ -704,7 +730,7 @@ impl StreamingDecoder {
                     self.ext
                         .data
                         .try_reserve(n)
-                        .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                        .map_err(|_| DecodingError::OutOfMemory)?;
                     self.ext.data.extend_from_slice(&buf[..n]);
                     goto!(n, ExtensionDataBlock(left - n))
                 } else if b == 0 {
