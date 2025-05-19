@@ -1,0 +1,2 @@
+# Note: Ensure this matches the value in Cargo.toml and in CI
+msrv = "1.62.0"

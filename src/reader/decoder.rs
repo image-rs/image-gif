@@ -1,11 +1,13 @@
-use std::borrow::Cow;
-use std::cmp;
-use std::default::Default;
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use alloc::fmt;
+use alloc::vec::Vec;
+use core::cmp;
+use core::default::Default;
+use core::mem;
+use core::num::NonZeroUsize;
 use std::error;
-use std::fmt;
 use std::io;
-use std::mem;
-use std::num::NonZeroUsize;
 
 use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 use crate::reader::DecodeOptions;
