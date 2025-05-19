@@ -1,6 +1,8 @@
-use std::borrow::Cow;
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
+
 #[cfg(feature = "color_quant")]
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Disposal method
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -227,7 +229,7 @@ impl Frame<'static> {
 
         // Attempt to build a palette of all colors. If we go over 256 colors,
         // switch to the NeuQuant algorithm.
-        let mut colors: HashSet<(u8, u8, u8, u8)> = HashSet::new();
+        let mut colors: BTreeSet<(u8, u8, u8, u8)> = BTreeSet::new();
         for pixel in pixels.chunks_exact(4) {
             if colors.insert((pixel[0], pixel[1], pixel[2], pixel[3])) && colors.len() > 256 {
                 // > 256 colours, let's use NeuQuant.
@@ -256,7 +258,7 @@ impl Frame<'static> {
             .iter()
             .flat_map(|&(r, g, b, _a)| [r, g, b])
             .collect();
-        let colors_lookup: HashMap<(u8, u8, u8, u8), u8> =
+        let colors_lookup: BTreeMap<(u8, u8, u8, u8), u8> =
             colors_vec.into_iter().zip(0..=255).collect();
 
         let index_of = |pixel: &[u8]| {
@@ -397,8 +399,8 @@ impl Frame<'static> {
             width: self.width,
             height: self.height,
             interlaced: self.interlaced,
-            palette: std::mem::take(&mut self.palette),
-            buffer: std::mem::replace(&mut self.buffer, Cow::Borrowed(&[])),
+            palette: core::mem::take(&mut self.palette),
+            buffer: core::mem::replace(&mut self.buffer, Cow::Borrowed(&[])),
         }
     }
 }

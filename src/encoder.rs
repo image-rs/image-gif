@@ -1,9 +1,11 @@
 //! # Minimal gif encoder
-use std::borrow::Cow;
+
+use alloc::borrow::Cow;
+use alloc::fmt;
+use alloc::vec::Vec;
 use std::error;
-use std::fmt;
 use std::io;
-use std::io::prelude::*;
+use std::io::Write;
 
 use weezl::{encode::Encoder as LzwEncoder, BitOrder};
 
@@ -567,6 +569,7 @@ impl<const N: usize> Buf<N> {
 
 #[test]
 fn error_cast() {
+    use alloc::boxed::Box;
     let _: Box<dyn error::Error> =
         EncodingError::from(EncodingFormatError::MissingColorPalette).into();
 }

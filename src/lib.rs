@@ -111,8 +111,17 @@
 // ```
 #![deny(missing_docs)]
 #![cfg(feature = "std")]
+#![allow(unknown_lints)] // Certain lints only apply to later versions of Rust
 #![allow(clippy::manual_range_contains)]
 #![allow(clippy::new_without_default)]
+#![deny(clippy::alloc_instead_of_core)]
+#![deny(clippy::std_instead_of_alloc)]
+#![deny(clippy::std_instead_of_core)]
+#![no_std]
+
+#[macro_use]
+extern crate alloc;
+extern crate std;
 
 mod common;
 mod encoder;

@@ -1,11 +1,11 @@
-use std::borrow::Cow;
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
+use core::convert::{TryFrom, TryInto};
+use core::iter::FusedIterator;
+use core::mem;
+use core::num::NonZeroU64;
 use std::io;
-use std::iter::FusedIterator;
-use std::mem;
-
-use std::convert::{TryFrom, TryInto};
 use std::io::prelude::*;
-use std::num::NonZeroU64;
 
 use crate::common::{Block, Frame};
 use crate::Repeat;
@@ -446,9 +446,9 @@ where
     pub fn palette(&self) -> Result<&[u8], DecodingError> {
         Ok(match self.current_frame.palette {
             Some(ref table) => table,
-            None => self.global_palette().ok_or(DecodingError::format(
-                "no color table available for current frame",
-            ))?,
+            None => self.global_palette().ok_or_else(|| {
+                DecodingError::format("no color table available for current frame")
+            })?,
         })
     }
 

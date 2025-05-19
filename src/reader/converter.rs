@@ -1,10 +1,11 @@
-use crate::common::Frame;
-use crate::MemoryLimit;
-use std::borrow::Cow;
-use std::iter;
-use std::mem;
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
+use core::iter;
+use core::mem;
 
 use super::decoder::{DecodingError, OutputBuffer, PLTE_CHANNELS};
+use crate::common::Frame;
+use crate::MemoryLimit;
 
 pub(crate) const N_CHANNELS: usize = 4;
 
@@ -249,6 +250,8 @@ impl iter::Iterator for InterlaceIterator {
 
 #[cfg(test)]
 mod test {
+    use alloc::vec::Vec;
+
     use super::InterlaceIterator;
 
     #[rustfmt::skip]
