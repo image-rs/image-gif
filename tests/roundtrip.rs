@@ -80,7 +80,8 @@ fn round_trip_from_image(original: &[u8]) {
     let buffer = encoder.into_inner().unwrap();
 
     {
-        let mut decoder = Decoder::new(&buffer[..]).expect("Invalid info encoded");
+        let mut decoder =
+            Decoder::new(std::io::BufReader::new(&buffer[..])).expect("Invalid info encoded");
         assert_eq!(decoder.width(), width);
         assert_eq!(decoder.height(), height);
         assert_eq!(decoder.repeat(), repeat);

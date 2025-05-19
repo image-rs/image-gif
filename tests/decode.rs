@@ -5,7 +5,8 @@ use std::fs::File;
 
 #[test]
 fn test_simple_indexed() {
-    let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap()).unwrap();
+    let file = File::open("tests/samples/sample_1.gif").unwrap();
+    let mut decoder = Decoder::new(std::io::BufReader::new(file)).unwrap();
     let frame = decoder.read_next_frame().unwrap().unwrap();
     #[rustfmt::skip]
     assert_eq!(&*frame.buffer, &[
@@ -156,7 +157,7 @@ fn rebuild_without_reencode(image: &[u8]) {
     assert!(orig.next().is_none());
 
     assert!(rebuilt.next().is_none());
-    assert_eq!(0, rebuilt.into_inner().buffer().len());
+    assert_eq!(0, rebuilt.into_inner().len());
 }
 
 #[test]
