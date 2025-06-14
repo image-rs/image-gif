@@ -182,6 +182,10 @@ impl DecodeOptions {
     /// or `Trailer` block. Otherwise, the decoded image will return an error.
     /// If an unknown block error is returned from decoding, enabling this
     /// setting may allow for a further state of decoding on the next attempt.
+    ///
+    /// This option also allows unknown extension blocks. The decoder assumes the follow the same
+    /// block layout, i.e. a sequence of zero-length terminated sub-blocks immediately follow the
+    /// extension introducer.
     pub fn allow_unknown_blocks(&mut self, check: bool) {
         self.allow_unknown_blocks = check;
     }
