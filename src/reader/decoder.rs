@@ -646,7 +646,11 @@ impl StreamingDecoder {
                         self.ext.data.clear();
                         self.ext.id = AnyExtension(b);
                         if self.ext.id.into_known().is_none() {
-                            return Err(DecodingError::format("unknown block type encountered"));
+                            if !self.allow_unknown_blocks {
+                                return Err(DecodingError::format(
+                                    "unknown extension block encountered",
+                                ));
+                            }
                         }
                         goto!(ExtensionBlockStart, emit Decoded::BlockStart(Block::Extension))
                     }

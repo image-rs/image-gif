@@ -217,3 +217,38 @@ fn check_reset_code_lzw() {
         assert!(skipping_decoder.read_next_frame().unwrap().is_none());
     }
 }
+
+#[test]
+fn issue_209_exension_block() {
+    let image: &[u8] = include_bytes!("regression/issue-209-extension-block-type.gif");
+
+    {
+        // Check we can ignore the block with the right settings.
+        let mut options = DecodeOptions::new();
+        options.allow_unknown_blocks(true);
+
+        let mut normal_decoder = options.read_info(image).unwrap();
+        while let Some(_) = normal_decoder.read_next_frame().unwrap() {}
+    }
+
+    // TODO: block break syntax would be neat.
+    (|| {
+        // Check we surface the error with the right settings
+        let mut options = DecodeOptions::new();
+        options.allow_unknown_blocks(false);
+        let mut normal_decoder = match options.read_info(image) {
+            // Expectedly hit an unknown block
+            Err(_e) => return,
+            Ok(decoder) => decoder,
+        };
+
+        // This one is for future patches if we might surface the error later.
+        loop {
+            match normal_decoder.read_next_frame() {
+                Ok(Some(_)) => {}
+                Ok(None) => panic!("Fully decoded without hitting an unknown block"),
+                Err(_e) => return,
+            }
+        }
+    })();
+}
