@@ -252,9 +252,9 @@ impl FrameDecoder {
         let lzw_reader = &mut self.lzw_reader;
         self.pixel_converter
             .read_into_buffer(frame, buf, &mut move |out| loop {
-                let (bytes_read, bytes_written) = lzw_reader.decode_bytes(data, out)?;
+                let (bytes_read, bytes_written, status) = lzw_reader.decode_bytes(data, out)?;
                 data = data.get(bytes_read..).unwrap_or_default();
-                if bytes_written > 0 || bytes_read == 0 || data.is_empty() {
+                if bytes_written > 0 || matches!(status, LzwStatus::NoProgress) {
                     return Ok(bytes_written);
                 }
             })?;
@@ -318,7 +318,7 @@ impl LzwReader {
         &mut self,
         lzw_data: &[u8],
         decode_buffer: &mut OutputBuffer<'_>,
-    ) -> Result<(usize, usize), DecodingError> {
+    ) -> Result<(usize, usize, LzwStatus), DecodingError> {
         let decoder = self
             .decoder
             .as_mut()
@@ -339,16 +339,18 @@ impl LzwReader {
             }
         };
 
-        match status? {
-            LzwStatus::Done | LzwStatus::Ok => {}
-            LzwStatus::NoProgress => {
+        let status = match status? {
+            ok @ LzwStatus::Done | ok @ LzwStatus::Ok => ok,
+            ok @ LzwStatus::NoProgress => {
                 if self.check_for_end_code {
                     return Err(DecodingError::EndCodeNotFound);
                 }
-            }
-        }
 
-        Ok((consumed_in, consumed_out))
+                ok
+            }
+        };
+
+        Ok((consumed_in, consumed_out, status))
     }
 }
 
@@ -808,11 +810,11 @@ impl StreamingDecoder {
                         return goto!(n, DecodeSubBlock(left - n), emit Decoded::Nothing);
                     }
 
-                    let (mut consumed, bytes_len) =
+                    let (mut consumed, bytes_len, status) =
                         self.lzw_reader.decode_bytes(&buf[..n], write_into)?;
 
                     // skip if can't make progress (decode would fail if check_for_end_code was set)
-                    if consumed == 0 && bytes_len == 0 {
+                    if matches!(status, LzwStatus::NoProgress) {
                         consumed = n;
                     }
 
@@ -826,10 +828,14 @@ impl StreamingDecoder {
                     // decode next sub-block
                     goto!(DecodeSubBlock(b as usize))
                 } else {
-                    let (_, bytes_len) = self.lzw_reader.decode_bytes(&[], write_into)?;
+                    let (_, bytes_len, status) = self.lzw_reader.decode_bytes(&[], write_into)?;
 
                     if let Some(bytes_len) = NonZeroUsize::new(bytes_len) {
                         goto!(0, DecodeSubBlock(0), emit Decoded::BytesDecoded(bytes_len))
+                    } else if matches!(status, LzwStatus::Ok) {
+                        goto!(0, DecodeSubBlock(0), emit Decoded::Nothing)
+                    } else if matches!(status, LzwStatus::Done) {
+                        goto!(0, FrameDecoded)
                     } else {
                         goto!(0, FrameDecoded)
                     }
