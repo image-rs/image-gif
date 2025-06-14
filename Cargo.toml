@@ -16,7 +16,7 @@ rust-version = "1.62"
 bench = false
 
 [dependencies]
-weezl = "0.1.8"
+weezl = "0.1.10"
 color_quant = { version = "1.1", optional = true }
 
 [dev-dependencies]
