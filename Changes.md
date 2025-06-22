@@ -1,3 +1,8 @@
+# v0.13.3
+
+- Fix interpretation of LZW stream when multiple intermediate reset codes are used.
+- Allow extension blocks of unknown type with the `allow_unknown_blocks` option.
+
 # v0.13.2
 
 - Simplified internal decoder size
