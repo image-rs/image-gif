@@ -1,18 +1,18 @@
 use std::borrow::Cow;
 use std::cmp;
+use std::default::Default;
 use std::error;
 use std::fmt;
 use std::io;
 use std::mem;
-use std::default::Default;
 use std::num::NonZeroUsize;
 
-use crate::Repeat;
-use crate::MemoryLimit;
 use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 use crate::reader::DecodeOptions;
+use crate::MemoryLimit;
+use crate::Repeat;
 
-use weezl::{BitOrder, decode::Decoder as LzwDecoder, LzwError, LzwStatus};
+use weezl::{decode::Decoder as LzwDecoder, BitOrder, LzwError, LzwStatus};
 
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
@@ -219,19 +219,22 @@ impl FrameDecoder {
     /// Converts into the given buffer. It must be [`buffer_size()`] bytes large.
     ///
     /// Pixels are always deinterlaced, so update `frame.interlaced` afterwards if you're putting the buffer back into the frame.
-    pub fn decode_lzw_encoded_frame_into_buffer(&mut self, frame: &Frame<'_>, buf: &mut [u8]) -> Result<(), DecodingError> {
+    pub fn decode_lzw_encoded_frame_into_buffer(
+        &mut self,
+        frame: &Frame<'_>,
+        buf: &mut [u8],
+    ) -> Result<(), DecodingError> {
         let (&min_code_size, mut data) = frame.buffer.split_first().unwrap_or((&2, &[]));
         self.lzw_reader.reset(min_code_size)?;
         let lzw_reader = &mut self.lzw_reader;
-        self.pixel_converter.read_into_buffer(frame, buf, &mut move |out| {
-            loop {
-                let (bytes_read, bytes_written) = lzw_reader.decode_bytes(data, out)?;
+        self.pixel_converter
+            .read_into_buffer(frame, buf, &mut move |out| loop {
+                let (bytes_read, bytes_written, status) = lzw_reader.decode_bytes(data, out)?;
                 data = data.get(bytes_read..).unwrap_or_default();
-                if bytes_written > 0 || bytes_read == 0 || data.is_empty() {
+                if bytes_written > 0 || matches!(status, LzwStatus::NoProgress) {
                     return Ok(bytes_written);
                 }
-            }
-        })?;
+            })?;
         Ok(())
     }
 
@@ -285,7 +288,11 @@ impl LzwReader {
         self.decoder.as_ref().map_or(true, |e| e.has_ended())
     }
 
-    pub fn decode_bytes(&mut self, lzw_data: &[u8], decode_buffer: &mut OutputBuffer<'_>) -> io::Result<(usize, usize)> {
+    pub fn decode_bytes(
+        &mut self,
+        lzw_data: &[u8],
+        decode_buffer: &mut OutputBuffer<'_>,
+    ) -> io::Result<(usize, usize, LzwStatus)> {
         let decoder = self.decoder.as_mut().ok_or(io::ErrorKind::Unsupported)?;
 
         let decode_buffer = match decode_buffer {
@@ -296,18 +303,24 @@ impl LzwReader {
 
         let decoded = decoder.decode_bytes(lzw_data, decode_buffer);
 
-        match decoded.status {
-            Ok(LzwStatus::Done | LzwStatus::Ok) => {},
-            Ok(LzwStatus::NoProgress) => {
+        let status = match decoded.status {
+            Ok(ok @ LzwStatus::Done | ok @ LzwStatus::Ok) => ok,
+            Ok(ok @ LzwStatus::NoProgress) => {
                 if self.check_for_end_code {
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, "no end code in lzw stream"));
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "no end code in lzw stream",
+                    ));
                 }
-            },
+
+                ok
+            }
             Err(err @ LzwError::InvalidCode) => {
                 return Err(io::Error::new(io::ErrorKind::InvalidData, err));
             }
-        }
-        Ok((decoded.consumed_in, decoded.consumed_out))
+        };
+
+        Ok((decoded.consumed_in, decoded.consumed_out, status))
     }
 }
 
@@ -633,7 +646,11 @@ impl StreamingDecoder {
                         self.ext.data.clear();
                         self.ext.id = AnyExtension(b);
                         if self.ext.id.into_known().is_none() {
-                            return Err(DecodingError::format("unknown block type encountered"));
+                            if !self.allow_unknown_blocks {
+                                return Err(DecodingError::format(
+                                    "unknown extension block encountered",
+                                ));
+                            }
                         }
                         goto!(ExtensionBlockStart, emit Decoded::BlockStart(Block::Extension))
                     }
@@ -745,10 +762,11 @@ impl StreamingDecoder {
                         return goto!(n, DecodeSubBlock(left - n), emit Decoded::Nothing);
                     }
 
-                    let (mut consumed, bytes_len) = self.lzw_reader.decode_bytes(&buf[..n], write_into)?;
+                    let (mut consumed, bytes_len, status) =
+                        self.lzw_reader.decode_bytes(&buf[..n], write_into)?;
 
                     // skip if can't make progress (decode would fail if check_for_end_code was set)
-                    if consumed == 0 && bytes_len == 0 {
+                    if matches!(status, LzwStatus::NoProgress) {
                         consumed = n;
                     }
 
@@ -762,10 +780,14 @@ impl StreamingDecoder {
                     // decode next sub-block
                     goto!(DecodeSubBlock(b as usize))
                 } else {
-                    let (_, bytes_len) = self.lzw_reader.decode_bytes(&[], write_into)?;
+                    let (_, bytes_len, status) = self.lzw_reader.decode_bytes(&[], write_into)?;
 
                     if let Some(bytes_len) = NonZeroUsize::new(bytes_len) {
                         goto!(0, DecodeSubBlock(0), emit Decoded::BytesDecoded(bytes_len))
+                    } else if matches!(status, LzwStatus::Ok) {
+                        goto!(0, DecodeSubBlock(0), emit Decoded::Nothing)
+                    } else if matches!(status, LzwStatus::Done) {
+                        goto!(0, FrameDecoded)
                     } else {
                         goto!(0, FrameDecoded)
                     }

@@ -1,9 +1,9 @@
 name: Rust CI
 on:
   push:
-    branches: [ master ]
+    branches: [ master, "version-0.13" ]
   pull_request:
-    branches: [ master ]
+    branches: [ master, "version-0.13" ]
 jobs:
   build:
     runs-on: ubuntu-latest

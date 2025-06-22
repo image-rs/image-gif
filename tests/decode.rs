@@ -186,3 +186,69 @@ fn check_skip_frame_data_decode_frame_error() {
     }
     assert!(skipping_decoder.read_next_frame().unwrap().is_none());
 }
+
+#[test]
+fn check_reset_code_lzw() {
+    // We had a regression where reset (or clear) codes in the LZW stream was interpreted as a
+    // truncated image data block due to them neither consuming nor producing any bytes. This
+    // misinterpretation happened in both the main block and the flush portions of decoding.
+    let image: [&[u8]; 2] = [
+        include_bytes!("regression/issue-208-block-type.gif"),
+        include_bytes!("regression/issue-208-block-type-beta.gif"),
+    ];
+
+    for image in image {
+        let mut options = DecodeOptions::new();
+        // With skip_frame_decoding we are handling LZW streams differently, returning it.
+        // Nevertheless the data of these should be equivalent.
+        options.skip_frame_decoding(true);
+        let mut skipping_decoder = options.read_info(image).unwrap();
+        let mut normal_decoder = DecodeOptions::new().read_info(image).unwrap();
+
+        while let Some(normal_frame) = normal_decoder.read_next_frame().unwrap() {
+            let compressed_frame = skipping_decoder.read_next_frame().unwrap().unwrap();
+            assert_eq!(normal_frame.width, compressed_frame.width);
+            assert_eq!(normal_frame.height, compressed_frame.height);
+            assert_eq!(normal_frame.delay, compressed_frame.delay);
+            assert!(!normal_frame.buffer.is_empty());
+            assert!(!compressed_frame.buffer.is_empty());
+        }
+
+        assert!(skipping_decoder.read_next_frame().unwrap().is_none());
+    }
+}
+
+#[test]
+fn issue_209_exension_block() {
+    let image: &[u8] = include_bytes!("regression/issue-209-extension-block-type.gif");
+
+    {
+        // Check we can ignore the block with the right settings.
+        let mut options = DecodeOptions::new();
+        options.allow_unknown_blocks(true);
+
+        let mut normal_decoder = options.read_info(image).unwrap();
+        while let Some(_) = normal_decoder.read_next_frame().unwrap() {}
+    }
+
+    // TODO: block break syntax would be neat.
+    (|| {
+        // Check we surface the error with the right settings
+        let mut options = DecodeOptions::new();
+        options.allow_unknown_blocks(false);
+        let mut normal_decoder = match options.read_info(image) {
+            // Expectedly hit an unknown block
+            Err(_e) => return,
+            Ok(decoder) => decoder,
+        };
+
+        // This one is for future patches if we might surface the error later.
+        loop {
+            match normal_decoder.read_next_frame() {
+                Ok(Some(_)) => {}
+                Ok(None) => panic!("Fully decoded without hitting an unknown block"),
+                Err(_e) => return,
+            }
+        }
+    })();
+}
