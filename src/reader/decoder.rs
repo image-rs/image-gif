@@ -18,6 +18,9 @@ use weezl::{decode::Decoder as LzwDecoder, BitOrder, LzwError, LzwStatus};
 
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
+/// Headers for supported extensions.
+const EXT_NAME_NETSCAPE: &[u8] = b"\x0bNETSCAPE2.0\x03";
+const EXT_NAME_XMP: &[u8] = b"\x0bXMP DataXMP";
 
 /// An error returned in the case of the image not being formatted properly.
 #[derive(Debug)]
@@ -377,6 +380,8 @@ pub struct StreamingDecoder {
     current: Option<Frame<'static>>,
     /// Needs to emit `HeaderEnd` once
     header_end_reached: bool,
+    /// XMP metadata bytes.
+    xmp_metadata: Option<Vec<u8>>,
 }
 
 /// One version number of the GIF standard.
@@ -464,6 +469,7 @@ impl StreamingDecoder {
             },
             current: None,
             header_end_reached: false,
+            xmp_metadata: None,
         }
     }
 
@@ -528,6 +534,12 @@ impl StreamingDecoder {
     #[must_use]
     pub fn height(&self) -> u16 {
         self.height
+    }
+
+    /// XMP metadata stored in the image.
+    #[must_use]
+    pub fn xmp_metadata(&self) -> Option<&[u8]> {
+        self.xmp_metadata.as_deref()
     }
 
     /// The version number of the GIF standard used in this image.
@@ -754,17 +766,36 @@ impl StreamingDecoder {
                         }
                     }
                 } else {
+                    self.ext.data.push(b);
                     self.ext.is_block_end = false;
                     goto!(ExtensionDataBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.id))
                 }
             }
             ApplicationExtension => {
                 debug_assert_eq!(0, b);
+                // We can consume the extension data here as the next states won't access it anymore.
+                let mut data = std::mem::take(&mut self.ext.data);
+
                 // the parser removes sub-block lenghts, so app name and data are concatenated
-                if self.ext.data.len() >= 15 && &self.ext.data[1..13] == b"NETSCAPE2.0\x01" {
-                    let repeat = &self.ext.data[13..15];
-                    let repeat = u16::from(repeat[0]) | u16::from(repeat[1]) << 8;
+                if let Some(&[first, second, ..]) = data.strip_prefix(EXT_NAME_NETSCAPE) {
+                    let repeat = u16::from(first) | u16::from(second) << 8;
                     goto!(BlockEnd, emit Decoded::Repetitions(if repeat == 0 { Repeat::Infinite } else { Repeat::Finite(repeat) }))
+                } else if data.starts_with(EXT_NAME_XMP) {
+                    data.drain(..EXT_NAME_XMP.len());
+                    // XMP adds a "ramp" of 257 bytes to the end of the metadata to let the "pascal-strings"
+                    // parser converge to the null byte. The ramp looks like "0x01, 0xff, .., 0x01, 0x00".
+                    // For convenience and to allow consumers to not be bothered with this implementation detail,
+                    // we cut the ramp.
+                    const RAMP_SIZE: usize = 257;
+                    if data.len() >= RAMP_SIZE
+                        && data.ends_with(&[0x03, 0x02, 0x01, 0x00])
+                        && data[data.len() - RAMP_SIZE..].starts_with(&[0x01, 0x0ff])
+                    {
+                        data.truncate(data.len() - RAMP_SIZE);
+                    }
+
+                    self.xmp_metadata = Some(data);
+                    goto!(BlockEnd)
                 } else {
                     goto!(BlockEnd)
                 }
