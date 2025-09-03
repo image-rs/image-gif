@@ -473,6 +473,12 @@ where
         self.decoder.decoder.height()
     }
 
+    /// XMP metadata.
+    #[inline]
+    pub fn xmp_metadata(&self) -> Option<&[u8]> {
+        self.decoder.decoder.xmp_metadata()
+    }
+
     /// Abort decoding and recover the `io::Read` instance
     pub fn into_inner(self) -> io::BufReader<R> {
         self.decoder.into_inner()
