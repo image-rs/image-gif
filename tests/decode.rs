@@ -274,6 +274,15 @@ fn xmp_metadata() {
 }
 
 #[test]
+fn icc_profile() {
+    let image: &[u8] = include_bytes!("samples/beacon_icc.gif");
+    let icc_profile: &[u8] = include_bytes!("samples/profile.icc");
+    let decoder = DecodeOptions::new().read_info(image).unwrap();
+
+    assert_eq!(decoder.icc_profile(), Some(icc_profile))
+}
+
+#[test]
 fn check_last_extension_returns() {
     let mut buf: &[u8] = include_bytes!("samples/beacon_xmp.gif");
 
@@ -296,5 +305,5 @@ fn check_last_extension_returns() {
         }
     }
 
-    assert_eq!(decoder.last_ext().1.len(), 3129);
+    assert_eq!(decoder.last_ext().1.len(), 3048);
 }
