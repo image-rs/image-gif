@@ -773,28 +773,25 @@ impl StreamingDecoder {
             }
             ApplicationExtension => {
                 debug_assert_eq!(0, b);
-                // We can consume the extension data here as the next states won't access it anymore.
-                let mut data = std::mem::take(&mut self.ext.data);
 
                 // the parser removes sub-block lenghts, so app name and data are concatenated
-                if let Some(&[first, second, ..]) = data.strip_prefix(EXT_NAME_NETSCAPE) {
+                if let Some(&[first, second, ..]) = self.ext.data.strip_prefix(EXT_NAME_NETSCAPE) {
                     let repeat = u16::from(first) | u16::from(second) << 8;
                     goto!(BlockEnd, emit Decoded::Repetitions(if repeat == 0 { Repeat::Infinite } else { Repeat::Finite(repeat) }))
-                } else if data.starts_with(EXT_NAME_XMP) {
-                    data.drain(..EXT_NAME_XMP.len());
+                } else if let Some(mut rest) = self.ext.data.strip_prefix(EXT_NAME_XMP) {
                     // XMP adds a "ramp" of 257 bytes to the end of the metadata to let the "pascal-strings"
                     // parser converge to the null byte. The ramp looks like "0x01, 0xff, .., 0x01, 0x00".
                     // For convenience and to allow consumers to not be bothered with this implementation detail,
                     // we cut the ramp.
                     const RAMP_SIZE: usize = 257;
-                    if data.len() >= RAMP_SIZE
-                        && data.ends_with(&[0x03, 0x02, 0x01, 0x00])
-                        && data[data.len() - RAMP_SIZE..].starts_with(&[0x01, 0x0ff])
+                    if rest.len() >= RAMP_SIZE
+                        && rest.ends_with(&[0x03, 0x02, 0x01, 0x00])
+                        && rest[rest.len() - RAMP_SIZE..].starts_with(&[0x01, 0x0ff])
                     {
-                        data.truncate(data.len() - RAMP_SIZE);
+                        rest = &rest[..(rest.len() - RAMP_SIZE)];
                     }
 
-                    self.xmp_metadata = Some(data);
+                    self.xmp_metadata = Some(rest.to_vec());
                     goto!(BlockEnd)
                 } else {
                     goto!(BlockEnd)

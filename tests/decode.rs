@@ -1,7 +1,10 @@
 #![cfg(feature = "std")]
 
-use gif::{DecodeOptions, Decoder, DisposalMethod, Encoder, Frame};
-use std::fs::File;
+use gif::{
+    streaming_decoder::{Decoded, OutputBuffer, StreamingDecoder},
+    DecodeOptions, Decoder, DisposalMethod, Encoder, Frame,
+};
+use std::{fs::File, io::BufRead};
 
 #[test]
 fn test_simple_indexed() {
@@ -268,4 +271,30 @@ fn xmp_metadata() {
     let decoder = DecodeOptions::new().read_info(image).unwrap();
 
     assert_eq!(decoder.xmp_metadata(), Some(EXPECTED_METADATA.as_bytes()))
+}
+
+#[test]
+fn check_last_extension_returns() {
+    let mut buf: &[u8] = include_bytes!("samples/beacon_xmp.gif");
+
+    let mut out_buf = Vec::new();
+    let mut output = OutputBuffer::Vec(&mut out_buf);
+
+    let mut decoder = StreamingDecoder::new();
+
+    loop {
+        let (consumed, result) = {
+            if buf.is_empty() {
+                break;
+            }
+
+            decoder.update(&mut buf, &mut output).unwrap()
+        };
+        buf.consume(consumed);
+        if let Decoded::HeaderEnd = result {
+            break;
+        }
+    }
+
+    assert_eq!(decoder.last_ext().1.len(), 3129);
 }
