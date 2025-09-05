@@ -19,8 +19,9 @@ use weezl::{decode::Decoder as LzwDecoder, BitOrder, LzwError, LzwStatus};
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
 /// Headers for supported extensions.
-const EXT_NAME_NETSCAPE: &[u8] = b"\x0bNETSCAPE2.0\x03";
+const EXT_NAME_NETSCAPE: &[u8] = b"\x0bNETSCAPE2.0\x01";
 const EXT_NAME_XMP: &[u8] = b"\x0bXMP DataXMP";
+const EXT_NAME_ICC: &[u8] = b"\x0bICCRGBG1012";
 
 /// An error returned in the case of the image not being formatted properly.
 #[derive(Debug)]
@@ -382,6 +383,8 @@ pub struct StreamingDecoder {
     header_end_reached: bool,
     /// XMP metadata bytes.
     xmp_metadata: Option<Vec<u8>>,
+    /// ICC profile bytes.
+    icc_profile: Option<Vec<u8>>,
 }
 
 /// One version number of the GIF standard.
@@ -396,6 +399,7 @@ pub enum Version {
 struct ExtensionData {
     id: AnyExtension,
     data: Vec<u8>,
+    sub_block_lens: Vec<u8>,
     is_block_end: bool,
 }
 
@@ -465,11 +469,13 @@ impl StreamingDecoder {
             ext: ExtensionData {
                 id: AnyExtension(0),
                 data: Vec::with_capacity(256), // 0xFF + 1 byte length
+                sub_block_lens: Vec::new(),
                 is_block_end: true,
             },
             current: None,
             header_end_reached: false,
             xmp_metadata: None,
+            icc_profile: None,
         }
     }
 
@@ -540,6 +546,12 @@ impl StreamingDecoder {
     #[must_use]
     pub fn xmp_metadata(&self) -> Option<&[u8]> {
         self.xmp_metadata.as_deref()
+    }
+
+    /// ICC profile stored in the image.
+    #[must_use]
+    pub fn icc_profile(&self) -> Option<&[u8]> {
+        self.icc_profile.as_deref()
     }
 
     /// The version number of the GIF standard used in this image.
@@ -705,6 +717,7 @@ impl StreamingDecoder {
                     }
                     Some(Block::Extension) => {
                         self.ext.data.clear();
+                        self.ext.sub_block_lens.clear();
                         self.ext.id = AnyExtension(b);
                         if self.ext.id.into_known().is_none() {
                             if !self.allow_unknown_blocks {
@@ -766,36 +779,15 @@ impl StreamingDecoder {
                         }
                     }
                 } else {
-                    self.ext.data.push(b);
+                    self.ext.sub_block_lens.push(b);
                     self.ext.is_block_end = false;
                     goto!(ExtensionDataBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.id))
                 }
             }
             ApplicationExtension => {
                 debug_assert_eq!(0, b);
-                // We can consume the extension data here as the next states won't access it anymore.
-                let mut data = std::mem::take(&mut self.ext.data);
-
-                // the parser removes sub-block lenghts, so app name and data are concatenated
-                if let Some(&[first, second, ..]) = data.strip_prefix(EXT_NAME_NETSCAPE) {
-                    let repeat = u16::from(first) | u16::from(second) << 8;
-                    goto!(BlockEnd, emit Decoded::Repetitions(if repeat == 0 { Repeat::Infinite } else { Repeat::Finite(repeat) }))
-                } else if data.starts_with(EXT_NAME_XMP) {
-                    data.drain(..EXT_NAME_XMP.len());
-                    // XMP adds a "ramp" of 257 bytes to the end of the metadata to let the "pascal-strings"
-                    // parser converge to the null byte. The ramp looks like "0x01, 0xff, .., 0x01, 0x00".
-                    // For convenience and to allow consumers to not be bothered with this implementation detail,
-                    // we cut the ramp.
-                    const RAMP_SIZE: usize = 257;
-                    if data.len() >= RAMP_SIZE
-                        && data.ends_with(&[0x03, 0x02, 0x01, 0x00])
-                        && data[data.len() - RAMP_SIZE..].starts_with(&[0x01, 0x0ff])
-                    {
-                        data.truncate(data.len() - RAMP_SIZE);
-                    }
-
-                    self.xmp_metadata = Some(data);
-                    goto!(BlockEnd)
+                if let Some(decoded) = self.read_application_extension() {
+                    goto!(BlockEnd, emit decoded)
                 } else {
                     goto!(BlockEnd)
                 }
@@ -902,6 +894,44 @@ impl StreamingDecoder {
         frame.delay = u16::from_le_bytes(control[1..3].try_into().unwrap());
         frame.transparent = (control_flags & 1 != 0).then_some(control[3]);
         Ok(())
+    }
+
+    fn read_application_extension(&mut self) -> Option<Decoded> {
+        if let Some(&[first, second]) = self.ext.data.strip_prefix(EXT_NAME_NETSCAPE) {
+            let repeat = u16::from(first) | u16::from(second) << 8;
+            return Some(Decoded::Repetitions(if repeat == 0 {
+                Repeat::Infinite
+            } else {
+                Repeat::Finite(repeat)
+            }));
+        } else if let Some(mut rest) = self.ext.data.strip_prefix(EXT_NAME_XMP) {
+            // XMP is not written as a valid "pascal-string", so we need to stitch together
+            // the text from our collected sublock-lengths.
+            let mut xmp_metadata = Vec::new();
+            for len in self.ext.sub_block_lens.iter() {
+                xmp_metadata.push(*len);
+                let (sub_block, tail) = rest.split_at(*len as usize);
+                xmp_metadata.extend_from_slice(sub_block);
+                rest = tail;
+            }
+
+            // XMP adds a "ramp" of 257 bytes to the end of the metadata to let the "pascal-strings"
+            // parser converge to the null byte. The ramp looks like "0x01, 0xff, .., 0x01, 0x00".
+            // For convenience and to allow consumers to not be bothered with this implementation detail,
+            // we cut the ramp.
+            const RAMP_SIZE: usize = 257;
+            if xmp_metadata.len() >= RAMP_SIZE
+                && xmp_metadata.ends_with(&[0x03, 0x02, 0x01, 0x00])
+                && xmp_metadata[xmp_metadata.len() - RAMP_SIZE..].starts_with(&[0x01, 0x0ff])
+            {
+                xmp_metadata.truncate(xmp_metadata.len() - RAMP_SIZE);
+            }
+
+            self.xmp_metadata = Some(xmp_metadata);
+        } else if let Some(rest) = self.ext.data.strip_prefix(EXT_NAME_ICC) {
+            self.icc_profile = Some(rest.to_vec());
+        }
+        None
     }
 
     fn add_frame(&mut self) {

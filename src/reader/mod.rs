@@ -479,6 +479,12 @@ where
         self.decoder.decoder.xmp_metadata()
     }
 
+    /// ICC profile stored in the image.
+    #[inline]
+    pub fn icc_profile(&self) -> Option<&[u8]> {
+        self.decoder.decoder.icc_profile()
+    }
+
     /// Abort decoding and recover the `io::Read` instance
     pub fn into_inner(self) -> io::BufReader<R> {
         self.decoder.into_inner()
