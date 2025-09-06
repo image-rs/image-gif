@@ -19,9 +19,9 @@ use weezl::{decode::Decoder as LzwDecoder, BitOrder, LzwError, LzwStatus};
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
 /// Headers for supported extensions.
-const EXT_NAME_NETSCAPE: &[u8] = b"\x0bNETSCAPE2.0\x01";
-const EXT_NAME_XMP: &[u8] = b"\x0bXMP DataXMP";
-const EXT_NAME_ICC: &[u8] = b"\x0bICCRGBG1012";
+const EXT_NAME_NETSCAPE: &[u8] = b"NETSCAPE2.0\x01";
+const EXT_NAME_XMP: &[u8] = b"XMP DataXMP";
+const EXT_NAME_ICC: &[u8] = b"ICCRGBG1012";
 
 /// An error returned in the case of the image not being formatted properly.
 #[derive(Debug)]
@@ -719,12 +719,10 @@ impl StreamingDecoder {
                         self.ext.data.clear();
                         self.ext.sub_block_lens.clear();
                         self.ext.id = AnyExtension(b);
-                        if self.ext.id.into_known().is_none() {
-                            if !self.allow_unknown_blocks {
-                                return Err(DecodingError::format(
-                                    "unknown extension block encountered",
-                                ));
-                            }
+                        if !self.allow_unknown_blocks && self.ext.id.into_known().is_none() {
+                            return Err(DecodingError::format(
+                                "unknown extension block encountered",
+                            ));
                         }
                         goto!(ExtensionBlockStart, emit Decoded::BlockStart(Block::Extension))
                     }
@@ -751,7 +749,7 @@ impl StreamingDecoder {
                 }
             }
             ExtensionBlockStart => {
-                self.ext.data.push(b);
+                self.ext.sub_block_lens.push(b);
                 goto!(ExtensionDataBlock(b as usize))
             }
             ExtensionDataBlock(left) => {
@@ -879,10 +877,10 @@ impl StreamingDecoder {
     }
 
     fn read_control_extension(&mut self) -> Result<(), DecodingError> {
-        if self.ext.data.len() != 5 {
+        if self.ext.data.len() != 4 {
             return Err(DecodingError::format("control extension has wrong length"));
         }
-        let control = &self.ext.data[1..];
+        let control = &self.ext.data;
 
         let frame = self.current.get_or_insert_with(Frame::default);
         let control_flags = control[0];
@@ -905,12 +903,16 @@ impl StreamingDecoder {
                 Repeat::Finite(repeat)
             }));
         } else if let Some(mut rest) = self.ext.data.strip_prefix(EXT_NAME_XMP) {
+            let (&id_len, data_lens) = self.ext.sub_block_lens.split_first()?;
+            if id_len as usize != EXT_NAME_XMP.len() {
+                return None;
+            }
             // XMP is not written as a valid "pascal-string", so we need to stitch together
             // the text from our collected sublock-lengths.
-            let mut xmp_metadata = Vec::new();
-            for len in self.ext.sub_block_lens.iter() {
-                xmp_metadata.push(*len);
-                let (sub_block, tail) = rest.split_at(*len as usize);
+            let mut xmp_metadata = Vec::with_capacity(data_lens.len() + self.ext.data.len());
+            for &len in data_lens {
+                xmp_metadata.push(len);
+                let (sub_block, tail) = rest.split_at(len as usize);
                 xmp_metadata.extend_from_slice(sub_block);
                 rest = tail;
             }
