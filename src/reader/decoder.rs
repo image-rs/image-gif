@@ -716,15 +716,13 @@ impl StreamingDecoder {
                         goto!(0, ImageBlockStart, emit Decoded::BlockStart(Block::Image))
                     }
                     Some(Block::Extension) => {
-                        self.ext.data.clear();
-                        self.ext.sub_block_lens.clear();
                         self.ext.id = AnyExtension(b);
                         if !self.allow_unknown_blocks && self.ext.id.into_known().is_none() {
                             return Err(DecodingError::format(
                                 "unknown extension block encountered",
                             ));
                         }
-                        goto!(ExtensionBlockStart, emit Decoded::BlockStart(Block::Extension))
+                        goto!(ExtensionBlockStart)
                     }
                     Some(Block::Trailer) => {
                         // The `Trailer` is the final state, and isn't reachable without extraneous data after the end of file
@@ -732,7 +730,8 @@ impl StreamingDecoder {
                     }
                     None => {
                         if self.allow_unknown_blocks {
-                            goto!(ExtensionDataBlock(b as usize))
+                            self.ext.id = AnyExtension(0);
+                            goto!(0, ExtensionBlockStart)
                         } else {
                             Err(DecodingError::format("unknown block type encountered"))
                         }
@@ -749,8 +748,11 @@ impl StreamingDecoder {
                 }
             }
             ExtensionBlockStart => {
+                self.ext.data.clear();
+                self.ext.sub_block_lens.clear();
+                self.ext.is_block_end = false;
                 self.ext.sub_block_lens.push(b);
-                goto!(ExtensionDataBlock(b as usize))
+                goto!(ExtensionDataBlock(b as usize), emit Decoded::BlockStart(Block::Extension))
             }
             ExtensionDataBlock(left) => {
                 if left > 0 {
