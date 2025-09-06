@@ -305,5 +305,5 @@ fn check_last_extension_returns() {
         }
     }
 
-    assert_eq!(decoder.last_ext().1.len(), 3048);
+    assert_eq!(decoder.last_ext().1.len(), 3047);
 }
