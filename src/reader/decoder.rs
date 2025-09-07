@@ -44,6 +44,8 @@ impl error::Error for DecodingFormatError {
 pub enum DecodingError {
     /// Failed to internally allocate a buffer of sufficient size.
     OutOfMemory,
+    /// Allocation exceeded set memory limit
+    MemoryLimit,
     /// Expected a decoder but none found.
     DecoderNotFound,
     /// Expected an end-code, but none found.
@@ -72,6 +74,7 @@ impl fmt::Display for DecodingError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Self::OutOfMemory => fmt.write_str("Out of Memory"),
+            Self::MemoryLimit => fmt.write_str("Memory limit reached"),
             Self::DecoderNotFound => fmt.write_str("Decoder Not Found"),
             Self::EndCodeNotFound => fmt.write_str("End-Code Not Found"),
             Self::UnexpectedEof => fmt.write_str("Unexpected End of File"),
@@ -87,6 +90,7 @@ impl error::Error for DecodingError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             Self::OutOfMemory => None,
+            Self::MemoryLimit => None,
             Self::DecoderNotFound => None,
             Self::EndCodeNotFound => None,
             Self::UnexpectedEof => None,
@@ -201,6 +205,7 @@ use super::converter::PixelConverter;
 pub struct FrameDecoder {
     lzw_reader: LzwReader,
     pixel_converter: PixelConverter,
+    memory_limit: MemoryLimit,
 }
 
 impl FrameDecoder {
@@ -210,7 +215,8 @@ impl FrameDecoder {
     pub fn new(options: DecodeOptions) -> Self {
         Self {
             lzw_reader: LzwReader::new(options.check_for_end_code),
-            pixel_converter: PixelConverter::new(options.color_output, options.memory_limit),
+            pixel_converter: PixelConverter::new(options.color_output),
+            memory_limit: options.memory_limit.clone(),
         }
     }
 
@@ -225,7 +231,9 @@ impl FrameDecoder {
     /// If you get an error about invalid min code size, the buffer was probably pixels, not compressed data.
     #[inline]
     pub fn decode_lzw_encoded_frame(&mut self, frame: &mut Frame<'_>) -> Result<(), DecodingError> {
-        let pixel_bytes = self.pixel_converter.check_buffer_size(frame)?;
+        let pixel_bytes = self
+            .pixel_converter
+            .check_buffer_size(frame, &self.memory_limit)?;
         let mut vec = vec![0; pixel_bytes];
         self.decode_lzw_encoded_frame_into_buffer(frame, &mut vec)?;
         frame.buffer = Cow::Owned(vec);
@@ -412,9 +420,7 @@ impl OutputBuffer<'_> {
             OutputBuffer::Vec(vec) => {
                 let vec: &mut Vec<u8> = vec;
                 let len = buf.len();
-                memory_limit.check_size(vec.len() + len)?;
-                vec.try_reserve(len)
-                    .map_err(|_| DecodingError::OutOfMemory)?;
+                memory_limit.try_reserve(vec, len)?;
                 if vec.capacity() - vec.len() >= len {
                     vec.extend_from_slice(buf);
                 }

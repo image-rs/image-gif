@@ -54,7 +54,7 @@ impl MemoryLimit {
                 if size as u64 <= limit.get() {
                     Ok(())
                 } else {
-                    Err(DecodingError::format("memory limit reached"))
+                    Err(DecodingError::MemoryLimit)
                 }
             }
         }
@@ -84,6 +84,18 @@ impl MemoryLimit {
                 }
             }
         }
+    }
+
+    #[inline]
+    fn try_reserve(&self, vec: &mut Vec<u8>, additional: usize) -> Result<(), DecodingError> {
+        let len = vec
+            .len()
+            .checked_add(additional)
+            .ok_or(DecodingError::MemoryLimit)?;
+        self.check_size(len)?;
+        vec.try_reserve(additional)
+            .map_err(|_| DecodingError::OutOfMemory)?;
+        Ok(())
     }
 }
 
@@ -263,6 +275,7 @@ enum AppExtensionState {
 pub struct Decoder<R: Read> {
     decoder: ReadDecoder<R>,
     pixel_converter: PixelConverter,
+    memory_limit: MemoryLimit,
     bg_color: Option<u8>,
     repeat: Repeat,
     current_frame: Frame<'static>,
@@ -299,7 +312,8 @@ where
                 at_eof: false,
             },
             bg_color: None,
-            pixel_converter: PixelConverter::new(options.color_output, options.memory_limit),
+            pixel_converter: PixelConverter::new(options.color_output),
+            memory_limit: options.memory_limit.clone(),
             repeat: Repeat::default(),
             current_frame: Frame::default(),
             current_frame_data_type: FrameDataType::Pixels,
@@ -323,7 +337,7 @@ where
                     ext: APP_EXTENSION,
                     is_last,
                 }) => {
-                    self.read_application_extension(is_last);
+                    self.read_application_extension(is_last)?;
                 }
                 Some(Decoded::HeaderEnd) => break,
                 Some(_) => {
@@ -346,7 +360,7 @@ where
         Ok(self)
     }
 
-    fn read_application_extension(&mut self, is_last: bool) {
+    fn read_application_extension(&mut self, is_last: bool) -> Result<(), DecodingError> {
         let data = self.decoder.decoder.last_ext_sub_block();
         match self.app_extension_state {
             AppExtensionState::None => {
@@ -380,6 +394,8 @@ where
                 if let Some(xmp_metadata) = &mut self.xmp_metadata {
                     // XMP is not written as a valid "pascal-string", so we need to stitch together
                     // the text from our collected sublock-lengths.
+                    self.memory_limit
+                        .try_reserve(xmp_metadata, 1 + data.len())?;
                     xmp_metadata.push(data.len() as u8);
                     xmp_metadata.extend_from_slice(data);
                     if is_last {
@@ -400,6 +416,7 @@ where
             }
             AppExtensionState::Icc => {
                 if let Some(icc) = &mut self.icc_profile {
+                    self.memory_limit.try_reserve(icc, data.len())?;
                     icc.extend_from_slice(data);
                 }
             }
@@ -408,6 +425,7 @@ where
         if is_last {
             self.app_extension_state = AppExtensionState::None;
         }
+        Ok(())
     }
 
     /// Returns the next frame info
@@ -441,10 +459,11 @@ where
         if self.next_frame_info()?.is_some() {
             match self.current_frame_data_type {
                 FrameDataType::Pixels => {
-                    self.pixel_converter
-                        .read_frame(&mut self.current_frame, &mut |out| {
-                            self.decoder.decode_next_bytes(out)
-                        })?;
+                    self.pixel_converter.read_frame(
+                        &mut self.current_frame,
+                        &mut |out| self.decoder.decode_next_bytes(out),
+                        &self.memory_limit,
+                    )?;
                 }
                 FrameDataType::Lzw { min_code_size } => {
                     let mut vec = if matches!(self.current_frame.buffer, Cow::Owned(_)) {
