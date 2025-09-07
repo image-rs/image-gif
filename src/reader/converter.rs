@@ -28,25 +28,26 @@ pub(crate) type FillBufferCallback<'a> =
 
 /// Deinterlaces and expands to RGBA if needed
 pub(crate) struct PixelConverter {
-    memory_limit: MemoryLimit,
     color_output: ColorOutput,
     buffer: Vec<u8>,
     global_palette: Option<Vec<u8>>,
 }
 
 impl PixelConverter {
-    pub(crate) const fn new(color_output: ColorOutput, memory_limit: MemoryLimit) -> Self {
+    pub(crate) const fn new(color_output: ColorOutput) -> Self {
         Self {
-            memory_limit,
             color_output,
             buffer: Vec::new(),
             global_palette: None,
         }
     }
 
-    pub(crate) fn check_buffer_size(&self, frame: &Frame<'_>) -> Result<usize, DecodingError> {
-        let pixel_bytes = self
-            .memory_limit
+    pub(crate) fn check_buffer_size(
+        &self,
+        frame: &Frame<'_>,
+        memory_limit: &MemoryLimit,
+    ) -> Result<usize, DecodingError> {
+        let pixel_bytes = memory_limit
             .buffer_size(self.color_output, frame.width, frame.height)
             .ok_or_else(|| DecodingError::OutOfMemory)?;
 
@@ -63,8 +64,9 @@ impl PixelConverter {
         &mut self,
         frame: &mut Frame<'_>,
         data_callback: FillBufferCallback<'_>,
+        memory_limit: &MemoryLimit,
     ) -> Result<(), DecodingError> {
-        let pixel_bytes = self.check_buffer_size(frame)?;
+        let pixel_bytes = self.check_buffer_size(frame, memory_limit)?;
         let mut vec = match mem::replace(&mut frame.buffer, Cow::Borrowed(&[])) {
             // reuse buffer if possible without reallocating
             Cow::Owned(mut vec) if vec.capacity() >= pixel_bytes => {

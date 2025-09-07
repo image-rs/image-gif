@@ -2,7 +2,7 @@
 
 use gif::{
     streaming_decoder::{Decoded, OutputBuffer, StreamingDecoder},
-    DecodeOptions, Decoder, DisposalMethod, Encoder, Frame,
+    DecodeOptions, Decoder, DisposalMethod, Encoder, Frame, Repeat,
 };
 use std::{fs::File, io::BufRead};
 
@@ -263,14 +263,15 @@ fn issue_209_exension_block() {
     })();
 }
 
+const EXPECTED_METADATA: &str = "<?xpacket begin='\u{feff}' id='W5M0MpCehiHzreSzNTczkc9d'?>\n<x:xmpmeta xmlns:x='adobe:ns:meta/' x:xmptk='Image::ExifTool 13.25'>\n<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>\n\n <rdf:Description rdf:about=''\n  xmlns:dc='http://purl.org/dc/elements/1.1/'>\n  <dc:subject>\n   <rdf:Bag>\n    <rdf:li>sunset, mountains, nature</rdf:li>\n   </rdf:Bag>\n  </dc:subject>\n </rdf:Description>\n</rdf:RDF>\n</x:xmpmeta>\n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n<?xpacket end='w'?>";
 #[test]
 fn xmp_metadata() {
-    const EXPECTED_METADATA: &str = "<?xpacket begin='\u{feff}' id='W5M0MpCehiHzreSzNTczkc9d'?>\n<x:xmpmeta xmlns:x='adobe:ns:meta/' x:xmptk='Image::ExifTool 13.25'>\n<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>\n\n <rdf:Description rdf:about=''\n  xmlns:dc='http://purl.org/dc/elements/1.1/'>\n  <dc:subject>\n   <rdf:Bag>\n    <rdf:li>sunset, mountains, nature</rdf:li>\n   </rdf:Bag>\n  </dc:subject>\n </rdf:Description>\n</rdf:RDF>\n</x:xmpmeta>\n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n<?xpacket end='w'?>";
-
     let image: &[u8] = include_bytes!("samples/beacon_xmp.gif");
     let decoder = DecodeOptions::new().read_info(image).unwrap();
 
-    assert_eq!(decoder.xmp_metadata(), Some(EXPECTED_METADATA.as_bytes()))
+    assert_eq!(decoder.xmp_metadata(), Some(EXPECTED_METADATA.as_bytes()));
+    assert_eq!(decoder.icc_profile(), None);
+    assert_eq!(decoder.repeat(), Repeat::Infinite);
 }
 
 #[test]
@@ -279,7 +280,9 @@ fn icc_profile() {
     let icc_profile: &[u8] = include_bytes!("samples/profile.icc");
     let decoder = DecodeOptions::new().read_info(image).unwrap();
 
-    assert_eq!(decoder.icc_profile(), Some(icc_profile))
+    assert_eq!(decoder.icc_profile(), Some(icc_profile));
+    assert_eq!(decoder.xmp_metadata(), None);
+    assert_eq!(decoder.repeat(), Repeat::Infinite);
 }
 
 #[test]
@@ -290,7 +293,9 @@ fn check_last_extension_returns() {
     let mut output = OutputBuffer::Vec(&mut out_buf);
 
     let mut decoder = StreamingDecoder::new();
-
+    let mut expect_label = true;
+    let mut expect_xmp = false;
+    let mut xmp_len = 0;
     loop {
         let (consumed, result) = {
             if buf.is_empty() {
@@ -300,10 +305,26 @@ fn check_last_extension_returns() {
             decoder.update(&mut buf, &mut output).unwrap()
         };
         buf.consume(consumed);
-        if let Decoded::HeaderEnd = result {
-            break;
+        match result {
+            Decoded::SubBlock { ext, is_last }
+                if ext.into_known() == Some(gif::Extension::Application) =>
+            {
+                let data = decoder.last_ext_sub_block();
+                if expect_label {
+                    expect_label = false;
+                    expect_xmp = data == b"XMP DataXMP";
+                } else if expect_xmp {
+                    xmp_len += data.len() + 1;
+                }
+                if is_last {
+                    expect_xmp = false;
+                    expect_label = true;
+                }
+            }
+            Decoded::HeaderEnd => break,
+            _ => {}
         }
     }
 
-    assert_eq!(decoder.last_ext().1.len(), 3047);
+    assert_eq!(xmp_len, EXPECTED_METADATA.len() + 257);
 }
