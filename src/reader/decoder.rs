@@ -12,16 +12,11 @@ use std::io;
 use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 use crate::reader::DecodeOptions;
 use crate::MemoryLimit;
-use crate::Repeat;
 
 use weezl::{decode::Decoder as LzwDecoder, BitOrder, LzwError, LzwStatus};
 
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
-/// Headers for supported extensions.
-const EXT_NAME_NETSCAPE: &[u8] = b"NETSCAPE2.0\x01";
-const EXT_NAME_XMP: &[u8] = b"XMP DataXMP";
-const EXT_NAME_ICC: &[u8] = b"ICCRGBG1012";
 
 /// An error returned in the case of the image not being formatted properly.
 #[derive(Debug)]
@@ -145,28 +140,21 @@ pub enum Decoded {
     GlobalPalette(Box<[u8]>),
     /// Index of the background color in the global palette.
     BackgroundColor(u8),
-    /// Loop count is known
-    Repetitions(Repeat),
     /// Palette and optional `Application` extension have been parsed,
     /// reached frame data.
     HeaderEnd,
     /// The start of a block.
     /// `BlockStart(Block::Trailer)` is the very last decode event
     BlockStart(Block),
-    /// Decoded a sub-block. More sub-block are available.
+    /// Decoded a sub-block.
     ///
-    /// Indicates the label of the extension which might be unknown. A label of `0` is used when
-    /// the sub block does not belong to an extension.
-    ///
-    /// Call `last_ext()` to get the data
-    SubBlockFinished(AnyExtension),
-    /// Decoded the last (or only) sub-block of a block.
-    ///
-    /// Indicates the label of the extension which might be unknown. A label of `0` is used when
-    /// the sub block does not belong to an extension.
-    ///
-    /// Call `last_ext()` to get the data
-    BlockFinished(AnyExtension),
+    /// Call `last_ext_sub_block()` to get the sub-block data. It won't be available after this event.
+    SubBlock {
+        /// An ext label of `0` is used when the sub block does not belong to an extension.
+        ext: AnyExtension,
+        /// if true, then no more sub-blocks are available in this block.
+        is_last: bool,
+    },
     /// Decoded all information of the next frame, except the image data.
     ///
     /// The returned frame does **not** contain any owned image data.
@@ -191,9 +179,11 @@ enum State {
     BlockStart(u8),
     BlockEnd,
     ExtensionBlockStart,
+    /// Resets ext.data
+    ExtensionDataSubBlockStart(usize),
     /// Collects data in ext.data
-    ExtensionDataBlock(usize),
-    ApplicationExtension,
+    ExtensionDataSubBlock(usize),
+    ExtensionBlockEnd,
     LocalPalette(usize),
     LzwInit(u8),
     /// Decompresses LZW
@@ -381,10 +371,6 @@ pub struct StreamingDecoder {
     current: Option<Frame<'static>>,
     /// Needs to emit `HeaderEnd` once
     header_end_reached: bool,
-    /// XMP metadata bytes.
-    xmp_metadata: Option<Vec<u8>>,
-    /// ICC profile bytes.
-    icc_profile: Option<Vec<u8>>,
 }
 
 /// One version number of the GIF standard.
@@ -399,8 +385,6 @@ pub enum Version {
 struct ExtensionData {
     id: AnyExtension,
     data: Vec<u8>,
-    sub_block_lens: Vec<u8>,
-    is_block_end: bool,
 }
 
 /// Destination to write to for `StreamingDecoder::update`
@@ -469,13 +453,9 @@ impl StreamingDecoder {
             ext: ExtensionData {
                 id: AnyExtension(0),
                 data: Vec::with_capacity(256), // 0xFF + 1 byte length
-                sub_block_lens: Vec::new(),
-                is_block_end: true,
             },
             current: None,
             header_end_reached: false,
-            xmp_metadata: None,
-            icc_profile: None,
         }
     }
 
@@ -502,10 +482,11 @@ impl StreamingDecoder {
         Ok((len - buf.len(), Decoded::Nothing))
     }
 
-    /// Returns the data of the last extension that has been decoded.
+    /// Data of the last extension sub block that has been decoded.
+    /// You need to concatenate all subblocks together to get the overall block content.
     #[must_use]
-    pub fn last_ext(&self) -> (AnyExtension, &[u8], bool) {
-        (self.ext.id, &self.ext.data, self.ext.is_block_end)
+    pub fn last_ext_sub_block(&mut self) -> &[u8] {
+        &self.ext.data
     }
 
     /// Current frame info as a mutable ref.
@@ -540,18 +521,6 @@ impl StreamingDecoder {
     #[must_use]
     pub fn height(&self) -> u16 {
         self.height
-    }
-
-    /// XMP metadata stored in the image.
-    #[must_use]
-    pub fn xmp_metadata(&self) -> Option<&[u8]> {
-        self.xmp_metadata.as_deref()
-    }
-
-    /// ICC profile stored in the image.
-    #[must_use]
-    pub fn icc_profile(&self) -> Option<&[u8]> {
-        self.icc_profile.as_deref()
     }
 
     /// The version number of the GIF standard used in this image.
@@ -738,6 +707,13 @@ impl StreamingDecoder {
                     }
                 }
             }
+            ExtensionBlockStart => {
+                goto!(ExtensionDataSubBlockStart(b as usize), emit Decoded::BlockStart(Block::Extension))
+            }
+            ExtensionBlockEnd => {
+                self.ext.data.clear();
+                goto!(0, BlockEnd)
+            }
             BlockEnd => {
                 if b == Block::Trailer as u8 {
                     // can't consume yet, because the trailer is not a real block,
@@ -747,49 +723,27 @@ impl StreamingDecoder {
                     goto!(BlockStart(b))
                 }
             }
-            ExtensionBlockStart => {
+            ExtensionDataSubBlockStart(sub_block_len) => {
                 self.ext.data.clear();
-                self.ext.sub_block_lens.clear();
-                self.ext.is_block_end = false;
-                self.ext.sub_block_lens.push(b);
-                goto!(ExtensionDataBlock(b as usize), emit Decoded::BlockStart(Block::Extension))
+                goto!(0, ExtensionDataSubBlock(sub_block_len))
             }
-            ExtensionDataBlock(left) => {
+            ExtensionDataSubBlock(left) => {
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
-                    self.memory_limit.check_size(self.ext.data.len() + n)?;
-                    self.ext
-                        .data
-                        .try_reserve(n)
-                        .map_err(|_| DecodingError::OutOfMemory)?;
-                    self.ext.data.extend_from_slice(&buf[..n]);
-                    goto!(n, ExtensionDataBlock(left - n))
-                } else if b == 0 {
-                    self.ext.is_block_end = true;
-                    match self.ext.id.into_known() {
-                        Some(Extension::Application) => {
-                            goto!(0, ApplicationExtension, emit Decoded::BlockFinished(self.ext.id))
-                        }
-                        Some(Extension::Control) => {
-                            self.read_control_extension()?;
-                            goto!(BlockEnd, emit Decoded::BlockFinished(self.ext.id))
-                        }
-                        _ => {
-                            goto!(BlockEnd, emit Decoded::BlockFinished(self.ext.id))
-                        }
+                    let needs_to_grow =
+                        n > self.ext.data.capacity().wrapping_sub(self.ext.data.len());
+                    if needs_to_grow {
+                        return Err(DecodingError::OutOfMemory);
                     }
+                    self.ext.data.extend_from_slice(&buf[..n]);
+                    goto!(n, ExtensionDataSubBlock(left - n))
+                } else if b == 0 {
+                    if self.ext.id.into_known() == Some(Extension::Control) {
+                        self.read_control_extension()?;
+                    }
+                    goto!(ExtensionBlockEnd, emit Decoded::SubBlock { ext: self.ext.id, is_last: true })
                 } else {
-                    self.ext.sub_block_lens.push(b);
-                    self.ext.is_block_end = false;
-                    goto!(ExtensionDataBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.id))
-                }
-            }
-            ApplicationExtension => {
-                debug_assert_eq!(0, b);
-                if let Some(decoded) = self.read_application_extension() {
-                    goto!(BlockEnd, emit decoded)
-                } else {
-                    goto!(BlockEnd)
+                    goto!(ExtensionDataSubBlockStart(b as usize), emit Decoded::SubBlock { ext: self.ext.id, is_last: false })
                 }
             }
             LocalPalette(left) => {
@@ -894,48 +848,6 @@ impl StreamingDecoder {
         frame.delay = u16::from_le_bytes(control[1..3].try_into().unwrap());
         frame.transparent = (control_flags & 1 != 0).then_some(control[3]);
         Ok(())
-    }
-
-    fn read_application_extension(&mut self) -> Option<Decoded> {
-        if let Some(&[first, second]) = self.ext.data.strip_prefix(EXT_NAME_NETSCAPE) {
-            let repeat = u16::from(first) | u16::from(second) << 8;
-            return Some(Decoded::Repetitions(if repeat == 0 {
-                Repeat::Infinite
-            } else {
-                Repeat::Finite(repeat)
-            }));
-        } else if let Some(mut rest) = self.ext.data.strip_prefix(EXT_NAME_XMP) {
-            let (&id_len, data_lens) = self.ext.sub_block_lens.split_first()?;
-            if id_len as usize != EXT_NAME_XMP.len() {
-                return None;
-            }
-            // XMP is not written as a valid "pascal-string", so we need to stitch together
-            // the text from our collected sublock-lengths.
-            let mut xmp_metadata = Vec::with_capacity(data_lens.len() + self.ext.data.len());
-            for &len in data_lens {
-                xmp_metadata.push(len);
-                let (sub_block, tail) = rest.split_at(len as usize);
-                xmp_metadata.extend_from_slice(sub_block);
-                rest = tail;
-            }
-
-            // XMP adds a "ramp" of 257 bytes to the end of the metadata to let the "pascal-strings"
-            // parser converge to the null byte. The ramp looks like "0x01, 0xff, .., 0x01, 0x00".
-            // For convenience and to allow consumers to not be bothered with this implementation detail,
-            // we cut the ramp.
-            const RAMP_SIZE: usize = 257;
-            if xmp_metadata.len() >= RAMP_SIZE
-                && xmp_metadata.ends_with(&[0x03, 0x02, 0x01, 0x00])
-                && xmp_metadata[xmp_metadata.len() - RAMP_SIZE..].starts_with(&[0x01, 0x0ff])
-            {
-                xmp_metadata.truncate(xmp_metadata.len() - RAMP_SIZE);
-            }
-
-            self.xmp_metadata = Some(xmp_metadata);
-        } else if let Some(rest) = self.ext.data.strip_prefix(EXT_NAME_ICC) {
-            self.icc_profile = Some(rest.to_vec());
-        }
-        None
     }
 
     fn add_frame(&mut self) {
