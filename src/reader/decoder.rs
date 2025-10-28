@@ -1,11 +1,14 @@
-use std::borrow::Cow;
-use std::cmp;
-use std::default::Default;
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use alloc::fmt;
+use alloc::vec::Vec;
+use core::cmp;
+use core::default::Default;
+use core::mem;
+use core::num::NonZeroUsize;
+
 use std::error;
-use std::fmt;
 use std::io;
-use std::mem;
-use std::num::NonZeroUsize;
 
 use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 use crate::reader::DecodeOptions;
@@ -16,6 +19,10 @@ use weezl::{decode::Decoder as LzwDecoder, BitOrder, LzwError, LzwStatus};
 
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
+/// Headers for supported extensions.
+const EXT_NAME_NETSCAPE: &[u8] = b"NETSCAPE2.0\x01";
+const EXT_NAME_XMP: &[u8] = b"XMP DataXMP";
+const EXT_NAME_ICC: &[u8] = b"ICCRGBG1012";
 
 /// An error returned in the case of the image not being formatted properly.
 #[derive(Debug)]
@@ -37,9 +44,20 @@ impl error::Error for DecodingFormatError {
     }
 }
 
-#[derive(Debug)]
 /// Decoding error.
+#[derive(Debug)]
+#[non_exhaustive]
 pub enum DecodingError {
+    /// Failed to internally allocate a buffer of sufficient size.
+    OutOfMemory,
+    /// Expected a decoder but none found.
+    DecoderNotFound,
+    /// Expected an end-code, but none found.
+    EndCodeNotFound,
+    /// Decoding could not complete as the reader completed prematurely.
+    UnexpectedEof,
+    /// Error encountered while decoding an LZW stream.
+    LzwError(LzwError),
     /// Returned if the image is found to be malformed.
     Format(DecodingFormatError),
     /// Wraps `std::io::Error`.
@@ -59,6 +77,11 @@ impl fmt::Display for DecodingError {
     #[cold]
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
+            Self::OutOfMemory => fmt.write_str("Out of Memory"),
+            Self::DecoderNotFound => fmt.write_str("Decoder Not Found"),
+            Self::EndCodeNotFound => fmt.write_str("End-Code Not Found"),
+            Self::UnexpectedEof => fmt.write_str("Unexpected End of File"),
+            Self::LzwError(ref err) => err.fmt(fmt),
             Self::Format(ref d) => d.fmt(fmt),
             Self::Io(ref err) => err.fmt(fmt),
         }
@@ -69,9 +92,21 @@ impl error::Error for DecodingError {
     #[cold]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
+            Self::OutOfMemory => None,
+            Self::DecoderNotFound => None,
+            Self::EndCodeNotFound => None,
+            Self::UnexpectedEof => None,
+            Self::LzwError(ref err) => Some(err),
             Self::Format(ref err) => Some(err),
             Self::Io(ref err) => Some(err),
         }
+    }
+}
+
+impl From<LzwError> for DecodingError {
+    #[inline]
+    fn from(err: LzwError) -> Self {
+        Self::LzwError(err)
     }
 }
 
@@ -79,13 +114,6 @@ impl From<io::Error> for DecodingError {
     #[inline]
     fn from(err: io::Error) -> Self {
         Self::Io(err)
-    }
-}
-
-impl From<io::ErrorKind> for DecodingError {
-    #[cold]
-    fn from(err: io::ErrorKind) -> Self {
-        Self::Io(io::Error::from(err))
     }
 }
 
@@ -278,7 +306,10 @@ impl LzwReader {
             self.min_code_size = min_code_size;
             self.decoder = Some(LzwDecoder::new(BitOrder::Lsb, min_code_size));
         } else {
-            self.decoder.as_mut().ok_or_else(|| DecodingError::format("bad state"))?.reset();
+            self.decoder
+                .as_mut()
+                .ok_or_else(|| DecodingError::format("bad state"))?
+                .reset();
         }
 
         Ok(())
@@ -292,35 +323,39 @@ impl LzwReader {
         &mut self,
         lzw_data: &[u8],
         decode_buffer: &mut OutputBuffer<'_>,
-    ) -> io::Result<(usize, usize, LzwStatus)> {
-        let decoder = self.decoder.as_mut().ok_or(io::ErrorKind::Unsupported)?;
+    ) -> Result<(usize, usize, LzwStatus), DecodingError> {
+        let decoder = self
+            .decoder
+            .as_mut()
+            .ok_or(DecodingError::DecoderNotFound)?;
 
-        let decode_buffer = match decode_buffer {
-            OutputBuffer::Slice(buf) => &mut **buf,
-            OutputBuffer::None => &mut [],
-            OutputBuffer::Vec(_) => return Err(io::Error::from(io::ErrorKind::Unsupported)),
+        let (status, consumed_in, consumed_out) = match decode_buffer {
+            OutputBuffer::Slice(buf) => {
+                let decoded = decoder.decode_bytes(lzw_data, &mut **buf);
+                (decoded.status, decoded.consumed_in, decoded.consumed_out)
+            }
+            OutputBuffer::None => {
+                let decoded = decoder.decode_bytes(lzw_data, &mut []);
+                (decoded.status, decoded.consumed_in, decoded.consumed_out)
+            }
+            OutputBuffer::Vec(buf) => {
+                let decoded = decoder.into_vec(buf).decode(lzw_data);
+                (decoded.status, decoded.consumed_in, decoded.consumed_out)
+            }
         };
 
-        let decoded = decoder.decode_bytes(lzw_data, decode_buffer);
-
-        let status = match decoded.status {
-            Ok(ok @ LzwStatus::Done | ok @ LzwStatus::Ok) => ok,
-            Ok(ok @ LzwStatus::NoProgress) => {
+        let status = match status? {
+            ok @ LzwStatus::Done | ok @ LzwStatus::Ok => ok,
+            ok @ LzwStatus::NoProgress => {
                 if self.check_for_end_code {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "no end code in lzw stream",
-                    ));
+                    return Err(DecodingError::EndCodeNotFound);
                 }
 
                 ok
             }
-            Err(err @ LzwError::InvalidCode) => {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, err));
-            }
         };
 
-        Ok((decoded.consumed_in, decoded.consumed_out, status))
+        Ok((consumed_in, consumed_out, status))
     }
 }
 
@@ -347,6 +382,10 @@ pub struct StreamingDecoder {
     current: Option<Frame<'static>>,
     /// Needs to emit `HeaderEnd` once
     header_end_reached: bool,
+    /// XMP metadata bytes.
+    xmp_metadata: Option<Vec<u8>>,
+    /// ICC profile bytes.
+    icc_profile: Option<Vec<u8>>,
 }
 
 /// One version number of the GIF standard.
@@ -361,6 +400,7 @@ pub enum Version {
 struct ExtensionData {
     id: AnyExtension,
     data: Vec<u8>,
+    sub_block_lens: Vec<u8>,
     is_block_end: bool,
 }
 
@@ -375,23 +415,28 @@ pub enum OutputBuffer<'a> {
 }
 
 impl OutputBuffer<'_> {
-    fn append(&mut self, buf: &[u8], memory_limit: &MemoryLimit) -> Result<(usize, usize), DecodingError> {
+    fn append(
+        &mut self,
+        buf: &[u8],
+        memory_limit: &MemoryLimit,
+    ) -> Result<(usize, usize), DecodingError> {
         let (consumed, copied) = match self {
             OutputBuffer::Slice(slice) => {
                 let len = cmp::min(buf.len(), slice.len());
                 slice[..len].copy_from_slice(&buf[..len]);
                 (len, len)
-            },
+            }
             OutputBuffer::Vec(vec) => {
                 let vec: &mut Vec<u8> = vec;
                 let len = buf.len();
                 memory_limit.check_size(vec.len() + len)?;
-                vec.try_reserve(len).map_err(|_| io::ErrorKind::OutOfMemory)?;
+                vec.try_reserve(len)
+                    .map_err(|_| DecodingError::OutOfMemory)?;
                 if vec.capacity() - vec.len() >= len {
                     vec.extend_from_slice(buf);
                 }
                 (len, len)
-            },
+            }
             // It's valid that bytes are discarded. For example,
             // when using next_frame_info() with skip_frame_decoding to only get metadata.
             OutputBuffer::None => (buf.len(), 0),
@@ -425,10 +470,13 @@ impl StreamingDecoder {
             ext: ExtensionData {
                 id: AnyExtension(0),
                 data: Vec::with_capacity(256), // 0xFF + 1 byte length
+                sub_block_lens: Vec::new(),
                 is_block_end: true,
             },
             current: None,
             header_end_reached: false,
+            xmp_metadata: None,
+            icc_profile: None,
         }
     }
 
@@ -446,10 +494,10 @@ impl StreamingDecoder {
             let (bytes, decoded) = self.next_state(buf, write_into)?;
             buf = buf.get(bytes..).unwrap_or_default();
             match decoded {
-                Decoded::Nothing => {},
+                Decoded::Nothing => {}
                 result => {
-                    return Ok((len-buf.len(), result));
-                },
+                    return Ok((len - buf.len(), result));
+                }
             };
         }
         Ok((len - buf.len(), Decoded::Nothing))
@@ -478,7 +526,9 @@ impl StreamingDecoder {
     /// Current frame info as a mutable ref.
     #[inline(always)]
     fn try_current_frame(&mut self) -> Result<&mut Frame<'static>, DecodingError> {
-        self.current.as_mut().ok_or_else(|| DecodingError::format("bad state"))
+        self.current
+            .as_mut()
+            .ok_or_else(|| DecodingError::format("bad state"))
     }
 
     /// Width of the image
@@ -493,6 +543,18 @@ impl StreamingDecoder {
         self.height
     }
 
+    /// XMP metadata stored in the image.
+    #[must_use]
+    pub fn xmp_metadata(&self) -> Option<&[u8]> {
+        self.xmp_metadata.as_deref()
+    }
+
+    /// ICC profile stored in the image.
+    #[must_use]
+    pub fn icc_profile(&self) -> Option<&[u8]> {
+        self.icc_profile.as_deref()
+    }
+
     /// The version number of the GIF standard used in this image.
     ///
     /// We suppose a minimum of `V87a` compatibility. This value will be reported until we have
@@ -503,7 +565,11 @@ impl StreamingDecoder {
     }
 
     #[inline]
-    fn next_state(&mut self, buf: &[u8], write_into: &mut OutputBuffer<'_>) -> Result<(usize, Decoded), DecodingError> {
+    fn next_state(
+        &mut self,
+        buf: &[u8],
+        write_into: &mut OutputBuffer<'_>,
+    ) -> Result<(usize, Decoded), DecodingError> {
         macro_rules! goto (
             ($n:expr, $state:expr) => ({
                 self.state = $state;
@@ -548,7 +614,7 @@ impl StreamingDecoder {
             })
         );
 
-        let b = *buf.first().ok_or(io::ErrorKind::UnexpectedEof)?;
+        let b = *buf.first().ok_or(DecodingError::UnexpectedEof)?;
 
         match self.state {
             Magic => {
@@ -561,7 +627,7 @@ impl StreamingDecoder {
                 };
 
                 goto!(consumed, ScreenDescriptor)
-            },
+            }
             ScreenDescriptor => {
                 let (consumed, desc) = ensure_min_length_buffer!(7);
 
@@ -573,7 +639,9 @@ impl StreamingDecoder {
                 let global_table = global_flags & 0x80 != 0;
                 let table_size = if global_table {
                     let table_size = PLTE_CHANNELS * (1 << ((global_flags & 0b111) + 1) as usize);
-                    self.global_color_table.try_reserve_exact(table_size).map_err(|_| io::ErrorKind::OutOfMemory)?;
+                    self.global_color_table
+                        .try_reserve_exact(table_size)
+                        .map_err(|_| DecodingError::OutOfMemory)?;
                     table_size
                 } else {
                     0usize
@@ -584,11 +652,14 @@ impl StreamingDecoder {
                     GlobalPalette(table_size),
                     emit Decoded::BackgroundColor(background_color)
                 )
-            },
+            }
             ImageBlockStart => {
                 let (consumed, header) = ensure_min_length_buffer!(9);
 
-                let frame = self.current.as_mut().ok_or_else(|| DecodingError::format("bad state"))?;
+                let frame = self
+                    .current
+                    .as_mut()
+                    .ok_or_else(|| DecodingError::format("bad state"))?;
                 frame.left = u16::from_le_bytes(header[..2].try_into().unwrap());
                 frame.top = u16::from_le_bytes(header[2..4].try_into().unwrap());
                 frame.width = u16::from_le_bytes(header[4..6].try_into().unwrap());
@@ -610,13 +681,16 @@ impl StreamingDecoder {
                 if local_table {
                     let table_size = flags & 0b0000_0111;
                     let pal_len = PLTE_CHANNELS * (1 << (table_size + 1));
-                    frame.palette.get_or_insert_with(Vec::new)
-                        .try_reserve_exact(pal_len).map_err(|_| io::ErrorKind::OutOfMemory)?;
+                    frame
+                        .palette
+                        .get_or_insert_with(Vec::new)
+                        .try_reserve_exact(pal_len)
+                        .map_err(|_| DecodingError::OutOfMemory)?;
                     goto!(consumed, LocalPalette(pal_len))
                 } else {
                     goto!(consumed, LocalPalette(0))
                 }
-            },
+            }
             GlobalPalette(left) => {
                 // the global_color_table is guaranteed to have the exact capacity required
                 if left > 0 {
@@ -643,16 +717,13 @@ impl StreamingDecoder {
                         goto!(0, ImageBlockStart, emit Decoded::BlockStart(Block::Image))
                     }
                     Some(Block::Extension) => {
-                        self.ext.data.clear();
                         self.ext.id = AnyExtension(b);
-                        if self.ext.id.into_known().is_none() {
-                            if !self.allow_unknown_blocks {
-                                return Err(DecodingError::format(
-                                    "unknown extension block encountered",
-                                ));
-                            }
+                        if !self.allow_unknown_blocks && self.ext.id.into_known().is_none() {
+                            return Err(DecodingError::format(
+                                "unknown extension block encountered",
+                            ));
                         }
-                        goto!(ExtensionBlockStart, emit Decoded::BlockStart(Block::Extension))
+                        goto!(ExtensionBlockStart)
                     }
                     Some(Block::Trailer) => {
                         // The `Trailer` is the final state, and isn't reachable without extraneous data after the end of file
@@ -660,13 +731,14 @@ impl StreamingDecoder {
                     }
                     None => {
                         if self.allow_unknown_blocks {
-                            goto!(ExtensionDataBlock(b as usize))
+                            self.ext.id = AnyExtension(0);
+                            goto!(0, ExtensionBlockStart)
                         } else {
                             Err(DecodingError::format("unknown block type encountered"))
                         }
                     }
                 }
-            },
+            }
             BlockEnd => {
                 if b == Block::Trailer as u8 {
                     // can't consume yet, because the trailer is not a real block,
@@ -677,14 +749,20 @@ impl StreamingDecoder {
                 }
             }
             ExtensionBlockStart => {
-                self.ext.data.push(b);
-                goto!(ExtensionDataBlock(b as usize))
+                self.ext.data.clear();
+                self.ext.sub_block_lens.clear();
+                self.ext.is_block_end = false;
+                self.ext.sub_block_lens.push(b);
+                goto!(ExtensionDataBlock(b as usize), emit Decoded::BlockStart(Block::Extension))
             }
             ExtensionDataBlock(left) => {
                 if left > 0 {
                     let n = cmp::min(left, buf.len());
                     self.memory_limit.check_size(self.ext.data.len() + n)?;
-                    self.ext.data.try_reserve(n).map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                    self.ext
+                        .data
+                        .try_reserve(n)
+                        .map_err(|_| DecodingError::OutOfMemory)?;
                     self.ext.data.extend_from_slice(&buf[..n]);
                     goto!(n, ExtensionDataBlock(left - n))
                 } else if b == 0 {
@@ -696,23 +774,21 @@ impl StreamingDecoder {
                         Some(Extension::Control) => {
                             self.read_control_extension()?;
                             goto!(BlockEnd, emit Decoded::BlockFinished(self.ext.id))
-                        },
+                        }
                         _ => {
                             goto!(BlockEnd, emit Decoded::BlockFinished(self.ext.id))
                         }
                     }
                 } else {
+                    self.ext.sub_block_lens.push(b);
                     self.ext.is_block_end = false;
                     goto!(ExtensionDataBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.id))
                 }
             }
             ApplicationExtension => {
                 debug_assert_eq!(0, b);
-                // the parser removes sub-block lenghts, so app name and data are concatenated
-                if self.ext.data.len() >= 15 && &self.ext.data[1..13] == b"NETSCAPE2.0\x01" {
-                    let repeat = &self.ext.data[13..15];
-                    let repeat = u16::from(repeat[0]) | u16::from(repeat[1]) << 8;
-                    goto!(BlockEnd, emit Decoded::Repetitions(if repeat == 0 { Repeat::Infinite } else { Repeat::Finite(repeat) }))
+                if let Some(decoded) = self.read_application_extension() {
+                    goto!(BlockEnd, emit decoded)
                 } else {
                     goto!(BlockEnd)
                 }
@@ -804,10 +880,10 @@ impl StreamingDecoder {
     }
 
     fn read_control_extension(&mut self) -> Result<(), DecodingError> {
-        if self.ext.data.len() != 5 {
+        if self.ext.data.len() != 4 {
             return Err(DecodingError::format("control extension has wrong length"));
         }
-        let control = &self.ext.data[1..];
+        let control = &self.ext.data;
 
         let frame = self.current.get_or_insert_with(Frame::default);
         let control_flags = control[0];
@@ -821,6 +897,48 @@ impl StreamingDecoder {
         Ok(())
     }
 
+    fn read_application_extension(&mut self) -> Option<Decoded> {
+        if let Some(&[first, second]) = self.ext.data.strip_prefix(EXT_NAME_NETSCAPE) {
+            let repeat = u16::from(first) | u16::from(second) << 8;
+            return Some(Decoded::Repetitions(if repeat == 0 {
+                Repeat::Infinite
+            } else {
+                Repeat::Finite(repeat)
+            }));
+        } else if let Some(mut rest) = self.ext.data.strip_prefix(EXT_NAME_XMP) {
+            let (&id_len, data_lens) = self.ext.sub_block_lens.split_first()?;
+            if id_len as usize != EXT_NAME_XMP.len() {
+                return None;
+            }
+            // XMP is not written as a valid "pascal-string", so we need to stitch together
+            // the text from our collected sublock-lengths.
+            let mut xmp_metadata = Vec::with_capacity(data_lens.len() + self.ext.data.len());
+            for &len in data_lens {
+                xmp_metadata.push(len);
+                let (sub_block, tail) = rest.split_at(len as usize);
+                xmp_metadata.extend_from_slice(sub_block);
+                rest = tail;
+            }
+
+            // XMP adds a "ramp" of 257 bytes to the end of the metadata to let the "pascal-strings"
+            // parser converge to the null byte. The ramp looks like "0x01, 0xff, .., 0x01, 0x00".
+            // For convenience and to allow consumers to not be bothered with this implementation detail,
+            // we cut the ramp.
+            const RAMP_SIZE: usize = 257;
+            if xmp_metadata.len() >= RAMP_SIZE
+                && xmp_metadata.ends_with(&[0x03, 0x02, 0x01, 0x00])
+                && xmp_metadata[xmp_metadata.len() - RAMP_SIZE..].starts_with(&[0x01, 0x0ff])
+            {
+                xmp_metadata.truncate(xmp_metadata.len() - RAMP_SIZE);
+            }
+
+            self.xmp_metadata = Some(xmp_metadata);
+        } else if let Some(rest) = self.ext.data.strip_prefix(EXT_NAME_ICC) {
+            self.icc_profile = Some(rest.to_vec());
+        }
+        None
+    }
+
     fn add_frame(&mut self) {
         if self.current.is_none() {
             self.current = Some(Frame::default());
@@ -830,5 +948,5 @@ impl StreamingDecoder {
 
 #[test]
 fn error_cast() {
-    let _ : Box<dyn error::Error> = DecodingError::format("testing").into();
+    let _: Box<dyn error::Error> = DecodingError::format("testing").into();
 }

@@ -1,25 +1,25 @@
-use std::borrow::Cow;
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
+use core::convert::{TryFrom, TryInto};
+use core::iter::FusedIterator;
+use core::mem;
+use core::num::NonZeroU64;
 use std::io;
-use std::iter::FusedIterator;
-use std::mem;
-
 use std::io::prelude::*;
-use std::num::NonZeroU64;
-use std::convert::{TryFrom, TryInto};
 
-use crate::Repeat;
 use crate::common::{Block, Frame};
+use crate::Repeat;
 
-mod decoder;
 mod converter;
+mod decoder;
 
 pub use self::decoder::{
-    PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, DecodingFormatError,
-    Version, FrameDataType, OutputBuffer, FrameDecoder
+    Decoded, DecodingError, DecodingFormatError, FrameDataType, FrameDecoder, OutputBuffer,
+    StreamingDecoder, Version, PLTE_CHANNELS,
 };
 
-use self::converter::PixelConverter;
 pub use self::converter::ColorOutput;
+use self::converter::PixelConverter;
 
 #[derive(Clone, Debug)]
 /// The maximum amount of memory the decoder is allowed to use for each frame
@@ -56,7 +56,7 @@ impl MemoryLimit {
                 } else {
                     Err(DecodingError::format("memory limit reached"))
                 }
-            },
+            }
         }
     }
 
@@ -82,7 +82,7 @@ impl MemoryLimit {
                 } else {
                     Some(usize_bytes)
                 }
-            },
+            }
         }
     }
 }
@@ -206,12 +206,15 @@ struct ReadDecoder<R: Read> {
 
 impl<R: Read> ReadDecoder<R> {
     #[inline(never)]
-    fn decode_next(&mut self, write_into: &mut OutputBuffer<'_>) -> Result<Option<Decoded>, DecodingError> {
+    fn decode_next(
+        &mut self,
+        write_into: &mut OutputBuffer<'_>,
+    ) -> Result<Option<Decoded>, DecodingError> {
         while !self.at_eof {
             let (consumed, result) = {
                 let buf = self.reader.fill_buf()?;
                 if buf.is_empty() {
-                    return Err(io::ErrorKind::UnexpectedEof.into());
+                    return Err(DecodingError::UnexpectedEof);
                 }
 
                 self.decoder.update(buf, write_into)?
@@ -221,7 +224,7 @@ impl<R: Read> ReadDecoder<R> {
                 Decoded::Nothing => (),
                 Decoded::BlockStart(Block::Trailer) => {
                     self.at_eof = true;
-                },
+                }
                 result => return Ok(Some(result)),
             }
         }
@@ -252,7 +255,10 @@ pub struct Decoder<R: Read> {
     current_frame_data_type: FrameDataType,
 }
 
-impl<R> Decoder<R> where R: Read {
+impl<R> Decoder<R>
+where
+    R: Read,
+{
     /// Create a new decoder with default options.
     #[inline]
     pub fn new(reader: R) -> Result<Self, DecodingError> {
@@ -289,18 +295,20 @@ impl<R> Decoder<R> where R: Read {
                 }
                 Some(Decoded::GlobalPalette(palette)) => {
                     self.pixel_converter.set_global_palette(palette.into());
-                },
+                }
                 Some(Decoded::Repetitions(repeat)) => {
                     self.repeat = repeat;
-                },
+                }
                 Some(Decoded::HeaderEnd) => break,
                 Some(_) => {
                     // There will be extra events when parsing application extension
                     continue;
-                },
-                None => return Err(DecodingError::format(
-                    "file does not contain any image data"
-                ))
+                }
+                None => {
+                    return Err(DecodingError::format(
+                        "file does not contain any image data",
+                    ))
+                }
             }
         }
         // If the background color is invalid, ignore it
@@ -343,22 +351,31 @@ impl<R> Decoder<R> where R: Read {
         if self.next_frame_info()?.is_some() {
             match self.current_frame_data_type {
                 FrameDataType::Pixels => {
-                    self.pixel_converter.read_frame(&mut self.current_frame, &mut |out| self.decoder.decode_next_bytes(out))?;
-                },
+                    self.pixel_converter
+                        .read_frame(&mut self.current_frame, &mut |out| {
+                            self.decoder.decode_next_bytes(out)
+                        })?;
+                }
                 FrameDataType::Lzw { min_code_size } => {
                     let mut vec = if matches!(self.current_frame.buffer, Cow::Owned(_)) {
-                        let mut vec = mem::replace(&mut self.current_frame.buffer, Cow::Borrowed(&[])).into_owned();
+                        let mut vec =
+                            mem::replace(&mut self.current_frame.buffer, Cow::Borrowed(&[]))
+                                .into_owned();
                         vec.clear();
                         vec
                     } else {
                         Vec::new()
                     };
                     // Guesstimate 2bpp
-                    vec.try_reserve(usize::from(self.current_frame.width) * usize::from(self.current_frame.height) / 4)
-                        .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                    vec.try_reserve(
+                        usize::from(self.current_frame.width)
+                            * usize::from(self.current_frame.height)
+                            / 4,
+                    )
+                    .map_err(|_| DecodingError::OutOfMemory)?;
                     self.copy_lzw_into_buffer(min_code_size, &mut vec)?;
                     self.current_frame.buffer = Cow::Owned(vec);
-                },
+                }
             }
             Ok(Some(&self.current_frame))
         } else {
@@ -380,15 +397,22 @@ impl<R> Decoder<R> where R: Read {
     /// The length of `buf` must be at least `Self::buffer_size`.
     /// Deinterlaces the result.
     pub fn read_into_buffer(&mut self, buf: &mut [u8]) -> Result<(), DecodingError> {
-        self.pixel_converter.read_into_buffer(&self.current_frame, buf, &mut |out| self.decoder.decode_next_bytes(out))
+        self.pixel_converter
+            .read_into_buffer(&self.current_frame, buf, &mut |out| {
+                self.decoder.decode_next_bytes(out)
+            })
     }
 
-    fn copy_lzw_into_buffer(&mut self, min_code_size: u8, buf: &mut Vec<u8>) -> Result<(), DecodingError> {
+    fn copy_lzw_into_buffer(
+        &mut self,
+        min_code_size: u8,
+        buf: &mut Vec<u8>,
+    ) -> Result<(), DecodingError> {
         // `write_lzw_pre_encoded_frame` smuggles `min_code_size` in the first byte.
         buf.push(min_code_size);
         loop {
             match self.decoder.decode_next(&mut OutputBuffer::Vec(buf))? {
-                Some(Decoded::LzwDataCopied(_len)) => {},
+                Some(Decoded::LzwDataCopied(_len)) => {}
                 Some(Decoded::DataEnd) => return Ok(()),
                 _ => return Err(DecodingError::format("unexpected data")),
             }
@@ -403,12 +427,17 @@ impl<R> Decoder<R> where R: Read {
     /// `Self::next_frame_info` needs to be called beforehand. Returns `true` if the supplied
     /// buffer could be filled completely. Should not be called after `false` had been returned.
     pub fn fill_buffer(&mut self, buf: &mut [u8]) -> Result<bool, DecodingError> {
-        self.pixel_converter.fill_buffer(&self.current_frame, buf, &mut |out| self.decoder.decode_next_bytes(out))
+        self.pixel_converter
+            .fill_buffer(&self.current_frame, buf, &mut |out| {
+                self.decoder.decode_next_bytes(out)
+            })
     }
 
     /// Output buffer size
     pub fn buffer_size(&self) -> usize {
-        self.pixel_converter.buffer_size(&self.current_frame).unwrap()
+        self.pixel_converter
+            .buffer_size(&self.current_frame)
+            .unwrap()
     }
 
     /// Line length of the current frame
@@ -421,9 +450,9 @@ impl<R> Decoder<R> where R: Read {
     pub fn palette(&self) -> Result<&[u8], DecodingError> {
         Ok(match self.current_frame.palette {
             Some(ref table) => table,
-            None => self.global_palette().ok_or(DecodingError::format(
-                "no color table available for current frame",
-            ))?,
+            None => self.global_palette().ok_or_else(|| {
+                DecodingError::format("no color table available for current frame")
+            })?,
         })
     }
 
@@ -442,6 +471,18 @@ impl<R> Decoder<R> where R: Read {
     #[inline]
     pub fn height(&self) -> u16 {
         self.decoder.decoder.height()
+    }
+
+    /// XMP metadata.
+    #[inline]
+    pub fn xmp_metadata(&self) -> Option<&[u8]> {
+        self.decoder.decoder.xmp_metadata()
+    }
+
+    /// ICC profile stored in the image.
+    #[inline]
+    pub fn icc_profile(&self) -> Option<&[u8]> {
+        self.decoder.decoder.icc_profile()
     }
 
     /// Abort decoding and recover the `io::Read` instance
@@ -504,11 +545,11 @@ impl<R: Read> Iterator for DecoderIter<R> {
                 Ok(None) => {
                     self.ended = true;
                     None
-                },
+                }
                 Err(err) => {
                     self.ended = true;
                     Some(Err(err))
-                },
+                }
             }
         } else {
             None

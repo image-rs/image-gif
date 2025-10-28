@@ -111,21 +111,30 @@
 // ```
 #![deny(missing_docs)]
 #![cfg(feature = "std")]
+#![allow(unknown_lints)] // Certain lints only apply to later versions of Rust
 #![allow(clippy::manual_range_contains)]
 #![allow(clippy::new_without_default)]
+#![deny(clippy::alloc_instead_of_core)]
+#![deny(clippy::std_instead_of_alloc)]
+#![deny(clippy::std_instead_of_core)]
+#![no_std]
 
-mod traits;
+#[macro_use]
+extern crate alloc;
+extern crate std;
+
 mod common;
-mod reader;
 mod encoder;
+mod reader;
+mod traits;
 
-pub use crate::common::{AnyExtension, Extension, DisposalMethod, Frame};
+pub use crate::common::{AnyExtension, DisposalMethod, Extension, Frame};
 
-pub use crate::reader::{DecodingError, DecodingFormatError};
 pub use crate::reader::{ColorOutput, MemoryLimit};
 pub use crate::reader::{DecodeOptions, Decoder, Version};
+pub use crate::reader::{DecodingError, DecodingFormatError};
 
-pub use crate::encoder::{Encoder, ExtensionData, Repeat, EncodingError, EncodingFormatError};
+pub use crate::encoder::{Encoder, EncodingError, EncodingFormatError, ExtensionData, Repeat};
 
 /// Low-level, advanced decoder. Prefer [`Decoder`] instead, which can stream frames too.
 pub mod streaming_decoder {

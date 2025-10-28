@@ -1,12 +1,16 @@
 #![cfg(feature = "std")]
 
-use gif::{Decoder, DecodeOptions, DisposalMethod, Encoder, Frame};
-use std::fs::File;
+use gif::{
+    streaming_decoder::{Decoded, OutputBuffer, StreamingDecoder},
+    DecodeOptions, Decoder, DisposalMethod, Encoder, Frame,
+};
+use std::{fs::File, io::BufRead};
 
 #[test]
 fn test_simple_indexed() {
     let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap()).unwrap();
     let frame = decoder.read_next_frame().unwrap().unwrap();
+    #[rustfmt::skip]
     assert_eq!(&*frame.buffer, &[
         1, 1, 1, 1, 1, 2, 2, 2, 2, 2,
         1, 1, 1, 1, 1, 2, 2, 2, 2, 2,
@@ -119,7 +123,13 @@ fn rebuild_without_reencode(image: &[u8]) {
     options.skip_frame_decoding(true);
     let mut decoder = options.read_info(image).unwrap();
 
-    let mut encoder = Encoder::new(Vec::new(), decoder.width(), decoder.height(), decoder.global_palette().unwrap_or_default()).unwrap();
+    let mut encoder = Encoder::new(
+        Vec::new(),
+        decoder.width(),
+        decoder.height(),
+        decoder.global_palette().unwrap_or_default(),
+    )
+    .unwrap();
 
     let mut num_frames = 0;
     while let Some(frame) = decoder.read_next_frame().unwrap() {
@@ -251,4 +261,49 @@ fn issue_209_exension_block() {
             }
         }
     })();
+}
+
+#[test]
+fn xmp_metadata() {
+    const EXPECTED_METADATA: &str = "<?xpacket begin='\u{feff}' id='W5M0MpCehiHzreSzNTczkc9d'?>\n<x:xmpmeta xmlns:x='adobe:ns:meta/' x:xmptk='Image::ExifTool 13.25'>\n<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>\n\n <rdf:Description rdf:about=''\n  xmlns:dc='http://purl.org/dc/elements/1.1/'>\n  <dc:subject>\n   <rdf:Bag>\n    <rdf:li>sunset, mountains, nature</rdf:li>\n   </rdf:Bag>\n  </dc:subject>\n </rdf:Description>\n</rdf:RDF>\n</x:xmpmeta>\n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n                                                                                                    \n<?xpacket end='w'?>";
+
+    let image: &[u8] = include_bytes!("samples/beacon_xmp.gif");
+    let decoder = DecodeOptions::new().read_info(image).unwrap();
+
+    assert_eq!(decoder.xmp_metadata(), Some(EXPECTED_METADATA.as_bytes()))
+}
+
+#[test]
+fn icc_profile() {
+    let image: &[u8] = include_bytes!("samples/beacon_icc.gif");
+    let icc_profile: &[u8] = include_bytes!("samples/profile.icc");
+    let decoder = DecodeOptions::new().read_info(image).unwrap();
+
+    assert_eq!(decoder.icc_profile(), Some(icc_profile))
+}
+
+#[test]
+fn check_last_extension_returns() {
+    let mut buf: &[u8] = include_bytes!("samples/beacon_xmp.gif");
+
+    let mut out_buf = Vec::new();
+    let mut output = OutputBuffer::Vec(&mut out_buf);
+
+    let mut decoder = StreamingDecoder::new();
+
+    loop {
+        let (consumed, result) = {
+            if buf.is_empty() {
+                break;
+            }
+
+            decoder.update(&mut buf, &mut output).unwrap()
+        };
+        buf.consume(consumed);
+        if let Decoded::HeaderEnd = result {
+            break;
+        }
+    }
+
+    assert_eq!(decoder.last_ext().1.len(), 3047);
 }

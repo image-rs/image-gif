@@ -4,13 +4,15 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
 
-use std::io::BufReader;
 use std::io::prelude::*;
+use std::io::BufReader;
 
 const BASE_PATH: [&str; 2] = [".", "tests"];
 
 fn process_images<F>(func: F)
-where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
+where
+    F: Fn(PathBuf) -> Result<u32, gif::DecodingError>,
+{
     let base: PathBuf = BASE_PATH.iter().collect();
     let test_suites = &["samples"];
     let mut results = HashMap::new();
@@ -26,11 +28,11 @@ where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
                 Ok(crc) => {
                     results.insert(path, format!("{crc}"));
                     println!("{crc}");
-                },
+                }
                 Err(_) if path.file_name().unwrap().to_str().unwrap().starts_with('x') => {
                     expected_failures += 1;
                     println!("Expected failure");
-                },
+                }
                 err => panic!("{err:?}"),
             }
         }
@@ -51,7 +53,9 @@ where F: Fn(PathBuf) -> Result<u32, gif::DecodingError> {
     assert_eq!(expected_failures, failures);
     for (path, crc) in &results {
         assert_eq!(
-            ref_results.get(path).unwrap_or_else(|| panic!("reference for {path:?} is missing")), 
+            ref_results
+                .get(path)
+                .unwrap_or_else(|| panic!("reference for {path:?} is missing")),
             crc
         );
     }
@@ -77,7 +81,7 @@ fn render_images() {
     });
 }
 
-
+#[rustfmt::skip]
 const CRC_TABLE: [u32; 256] = [
     0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419,
     0x706af48f, 0xe963a535, 0x9e6495a3, 0x0edb8832, 0x79dcb8a4,
@@ -141,6 +145,7 @@ pub struct Crc32 {
 
 impl Crc32 {
     /// Create a new hasher.
+    #[expect(clippy::new_without_default)]
     pub fn new() -> Crc32 {
         Crc32 { crc: 0xFFFFFFFF }
     }
