@@ -2,7 +2,7 @@ use alloc::borrow::Cow;
 use alloc::vec::Vec;
 
 #[cfg(feature = "color_quant")]
-use std::collections::{BTreeMap, BTreeSet};
+use alloc::collections::{BTreeMap, BTreeSet};
 
 /// Disposal method
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
