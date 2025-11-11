@@ -1,3 +1,7 @@
+# v0.14.0
+
+
+
 # v0.13.3
 
 - Fix interpretation of LZW stream when multiple intermediate reset codes are used.
