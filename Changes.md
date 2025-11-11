@@ -1,5 +1,13 @@
 # v0.14.0
 
+- `EncodingError` and `DecodingError` are now `#[non_exhaustive]`
+- Modified several error paths to return a new variant of `EncodingError` instead of boxing them into
+  an `io::Error`, several return `Result` types are adjusted accordingly.
+- The `Decoded` enum no longer communicates data from decoded sub-blocks such as the repetition count.
+  It now only contains the meta information on framing and extension data. This ensures we are yielding
+  less often for performance.
+- `last_ext` was renamed to `last_extension_sub_block` for clarity.
+- The `Decoder` will now collect XMP and ICC metadata subblocks, making them available after decoding.
 
 
 # v0.13.3
