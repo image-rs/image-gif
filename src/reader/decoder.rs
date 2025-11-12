@@ -329,7 +329,7 @@ impl LzwReader {
 
         let (status, consumed_in, consumed_out) = match decode_buffer {
             OutputBuffer::Slice(buf) => {
-                let decoded = decoder.decode_bytes(lzw_data, &mut **buf);
+                let decoded = decoder.decode_bytes(lzw_data, buf);
                 (decoded.status, decoded.consumed_in, decoded.consumed_out)
             }
             OutputBuffer::None => {

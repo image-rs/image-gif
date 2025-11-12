@@ -1,7 +1,6 @@
-use criterion::{
-    black_box, measurement::Measurement, BenchmarkGroup, BenchmarkId, Criterion, Throughput,
-};
+use criterion::{measurement::Measurement, BenchmarkGroup, BenchmarkId, Criterion, Throughput};
 use gif::Decoder;
+use std::hint::black_box;
 
 fn read_image(image: &[u8]) -> Option<Vec<u8>> {
     let decoder = Decoder::new(black_box(image));

@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, io};
 
 use criterion::{Criterion, Throughput};
 use gif::{Encoder, Frame, Repeat};
@@ -19,11 +19,11 @@ fn main() {
 
         let mut reader = {
             let input = fs::File::open(&path).unwrap();
-            let decoder = png::Decoder::new(input);
+            let decoder = png::Decoder::new(io::BufReader::new(input));
             decoder.read_info().unwrap()
         };
 
-        let mut buf = vec![0; reader.output_buffer_size()];
+        let mut buf = vec![0; reader.output_buffer_size().unwrap()];
         let info = reader.next_frame(&mut buf).unwrap();
 
         let (w, h, size) = {
