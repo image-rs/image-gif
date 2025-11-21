@@ -282,14 +282,33 @@ impl Frame<'static> {
     pub fn from_grayscale_with_alpha(width: u16, height: u16, pixels: &[u8]) -> Self {
         // Input is in LumaA format.
         // Count the occurrences of all the colors, then pick the least common color as alpha.
+        let mut num_transparent_pixels: u32 = 0;
         let mut color_frequencies: [u32; 256] = [0; 256];
         for pixel in pixels.chunks_exact(2) {
             let color = pixel[0];
             let alpha = pixel[1];
             // do not count colors in fully transparent pixels
-            if alpha != 0 {
+            if alpha == 0 {
+                num_transparent_pixels += 1;
+            } else {
                 color_frequencies[color as usize] += 1;
             }
+        }
+
+        let grayscale_palette: Vec<u8> = (0..=255).flat_map(|i| [i, i, i]).collect();
+
+        // If there were no fully transparent pixels, do not allocate a color to transparency in the GIF
+        // and return immediately with the generic grayscale palette
+        if num_transparent_pixels == 0 {
+            let stripped_alpha: Vec<u8> = pixels.chunks_exact(2).map(|pixel| pixel[0]).collect();
+            return Frame {
+                width,
+                height,
+                buffer: Cow::Owned(stripped_alpha),
+                palette: Some(grayscale_palette),
+                transparent: None,
+                ..Frame::default()
+            };
         }
 
         // Choose the color that will be our alpha color
@@ -300,11 +319,11 @@ impl Frame<'static> {
             .map(|(index, _)| index as u8)
             .expect("input slice is empty");
 
+        // pick the less used color out of the neighbours as the replacement color
         let replacement_color = if least_used_color == 255 {
             254
         } else if least_used_color == 0 {
             1
-        // pick the less used color out of the neighbours
         } else if color_frequencies[(least_used_color - 1) as usize]
             < color_frequencies[(least_used_color + 1) as usize]
         {
@@ -333,7 +352,7 @@ impl Frame<'static> {
             width,
             height,
             buffer: Cow::Owned(paletted),
-            palette: Some((0..=255).flat_map(|i| [i, i, i]).collect()),
+            palette: Some(grayscale_palette),
             transparent: Some(least_used_color),
             ..Frame::default()
         }
