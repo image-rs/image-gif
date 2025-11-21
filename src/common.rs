@@ -278,6 +278,67 @@ impl Frame<'static> {
         }
     }
 
+    /// TODO: docs
+    pub fn from_grayscale_with_alpha(width: u16, height: u16, pixels: &[u8]) -> Self {
+        // Input is in LumaA format.
+        // Count the occurrences of all the colors, then pick the least common color as alpha.
+        let mut color_frequencies: [u32; 256] = [0; 256];
+        for pixel in pixels.chunks_exact(2) {
+            let color = pixel[0];
+            let alpha = pixel[1];
+            // do not count colors in fully transparent pixels
+            if alpha != 0 {
+                color_frequencies[color as usize] += 1;
+            }
+        }
+
+        // Choose the color that will be our alpha color
+        let least_used_color = color_frequencies
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, &value)| value)
+            .map(|(index, _)| index as u8)
+            .expect("input slice is empty");
+
+        let replacement_color = if least_used_color == 255 {
+            254
+        } else if least_used_color == 0 {
+            1
+        // pick the less used color out of the neighbours
+        } else if color_frequencies[(least_used_color - 1) as usize]
+            < color_frequencies[(least_used_color + 1) as usize]
+        {
+            least_used_color - 1
+        } else {
+            least_used_color + 1
+        };
+
+        // Strip alpha and replace fully transparent pixels with the chosen color
+        let paletted: Vec<u8> = pixels
+            .chunks_exact(2)
+            .map(|pixel| {
+                let color = pixel[0];
+                let alpha = pixel[1];
+                if alpha == 0 {
+                    least_used_color
+                } else if color == least_used_color {
+                    replacement_color
+                } else {
+                    color
+                }
+            })
+            .collect();
+
+        Frame {
+            width,
+            height,
+            buffer: Cow::Owned(paletted),
+            palette: Some((0..=255).flat_map(|i| [i, i, i]).collect()),
+            transparent: Some(least_used_color),
+            ..Frame::default()
+        }
+    }
+
     /// Creates a frame from a palette and indexed pixels.
     ///
     /// # Panics:
