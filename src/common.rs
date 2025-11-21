@@ -280,6 +280,8 @@ impl Frame<'static> {
 
     /// TODO: docs
     pub fn from_grayscale_with_alpha(width: u16, height: u16, pixels: &[u8]) -> Self {
+        assert_eq!(width as usize * height as usize * 4, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
+
         // Input is in LumaA format.
         // Count the occurrences of all the colors, then pick the least common color as alpha.
         let mut num_transparent_pixels: u32 = 0;
