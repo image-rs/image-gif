@@ -278,7 +278,15 @@ impl Frame<'static> {
         }
     }
 
-    /// TODO: docs
+    /// Creates a frame from pixels in LumaAlpha format (grayscale pixels with transparency).
+    ///
+    /// This is a lossy method. The `gif` format does not support arbitrary alpha but only a 1-bit
+    /// transparency mask per pixel. Any non-zero alpha value will be interpreted as a fully opaque
+    /// pixel. The least used color will be used to indicate alpha and replace with the closest other color
+    /// in the image. Different frames have independent palettes.
+    ///
+    /// # Panics:
+    /// *   If the length of pixels does not equal `width * height * 4`.
     pub fn from_grayscale_with_alpha(width: u16, height: u16, pixels: &[u8]) -> Self {
         assert_eq!(width as usize * height as usize * 4, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
 
