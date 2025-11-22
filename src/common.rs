@@ -225,7 +225,7 @@ impl Frame<'static> {
                 continue;
             }
 
-            if let Some([r, g, b, a]) = transparent { 
+            if let Some([r, g, b, a]) = transparent {
                 pix[0] = r;
                 pix[1] = g;
                 pix[2] = b;
