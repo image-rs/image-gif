@@ -218,17 +218,20 @@ impl Frame<'static> {
             speed >= 1 && speed <= 30,
             "speed needs to be in the range [1, 30]"
         );
-        let mut transparent = None;
+        let mut transparent: Option<[u8; 4]> = None;
         for pix in pixels.chunks_exact_mut(4) {
             if pix[3] != 0 {
                 pix[3] = 0xFF;
-            } else if transparent.is_none() {
-                transparent = Some([pix[0], pix[1], pix[2], pix[3]]);
-            } else if let Some([r, g, b, a]) = transparent {
+                continue;
+            }
+
+            if let Some([r, g, b, a]) = transparent { 
                 pix[0] = r;
                 pix[1] = g;
                 pix[2] = b;
                 pix[3] = a;
+            } else {
+                transparent = Some([pix[0], pix[1], pix[2], pix[3]]);
             }
         }
 
