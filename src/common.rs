@@ -278,6 +278,96 @@ impl Frame<'static> {
         }
     }
 
+    /// Creates a frame from pixels in LumaAlpha format (grayscale pixels with transparency).
+    ///
+    /// This is a lossy method. The `gif` format does not support arbitrary alpha but only a 1-bit
+    /// transparency mask per pixel. Any non-zero alpha value will be interpreted as a fully opaque
+    /// pixel. The least used color will be used to indicate alpha and replace with the closest other color
+    /// in the image. Different frames have independent palettes.
+    ///
+    /// # Panics:
+    /// *   If the length of pixels does not equal `width * height * 2`.
+    pub fn from_grayscale_with_alpha(width: u16, height: u16, pixels: &[u8]) -> Self {
+        assert_eq!(width as usize * height as usize * 2, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
+
+        // Input is in LumaA format.
+        // Count the occurrences of all the colors, then pick the least common color as alpha.
+        let mut num_transparent_pixels: u32 = 0;
+        let mut color_frequencies: [u32; 256] = [0; 256];
+        for pixel in pixels.chunks_exact(2) {
+            let color = pixel[0];
+            let alpha = pixel[1];
+            // do not count colors in fully transparent pixels
+            if alpha == 0 {
+                num_transparent_pixels += 1;
+            } else {
+                color_frequencies[color as usize] += 1;
+            }
+        }
+
+        let grayscale_palette: Vec<u8> = (0..=255).flat_map(|i| [i, i, i]).collect();
+
+        // If there were no fully transparent pixels, do not allocate a color to transparency in the GIF
+        // and return immediately with the generic grayscale palette
+        if num_transparent_pixels == 0 {
+            let stripped_alpha: Vec<u8> = pixels.chunks_exact(2).map(|pixel| pixel[0]).collect();
+            return Frame {
+                width,
+                height,
+                buffer: Cow::Owned(stripped_alpha),
+                palette: Some(grayscale_palette),
+                transparent: None,
+                ..Frame::default()
+            };
+        }
+
+        // Choose the color that will be our alpha color
+        let least_used_color = color_frequencies
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, &value)| value)
+            .map(|(index, _)| index as u8)
+            .expect("input slice is empty");
+
+        // pick the less used color out of the neighbours as the replacement color
+        let replacement_color = if least_used_color == 255 {
+            254
+        } else if least_used_color == 0 {
+            1
+        } else if color_frequencies[(least_used_color - 1) as usize]
+            < color_frequencies[(least_used_color + 1) as usize]
+        {
+            least_used_color - 1
+        } else {
+            least_used_color + 1
+        };
+
+        // Strip alpha and replace fully transparent pixels with the chosen color
+        let paletted: Vec<u8> = pixels
+            .chunks_exact(2)
+            .map(|pixel| {
+                let color = pixel[0];
+                let alpha = pixel[1];
+                if alpha == 0 {
+                    least_used_color
+                } else if color == least_used_color {
+                    replacement_color
+                } else {
+                    color
+                }
+            })
+            .collect();
+
+        Frame {
+            width,
+            height,
+            buffer: Cow::Owned(paletted),
+            palette: Some(grayscale_palette),
+            transparent: Some(least_used_color),
+            ..Frame::default()
+        }
+    }
+
     /// Creates a frame from a palette and indexed pixels.
     ///
     /// # Panics:
