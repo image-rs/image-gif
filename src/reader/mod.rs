@@ -449,6 +449,17 @@ where
         Ok(Some(&self.current_frame))
     }
 
+    /// Query information about the frame previously advanced with [`Self::next_frame_info`].
+    ///
+    /// Returns `None` past the end of file.
+    pub fn current_frame_info(&self) -> Option<&Frame<'static>> {
+        if self.decoder.at_eof {
+            None
+        } else {
+            Some(&self.current_frame)
+        }
+    }
+
     /// Reads the next frame from the image.
     ///
     /// Do not call `Self::next_frame_info` beforehand.
