@@ -1,3 +1,14 @@
+# v0.14.1
+
+Features:
+- Added `Frame::from_grayscale_with_alpha` to efficiently generate a palette for `LumaA` pixels.
+- Added `Decoder::current_frame_info` to re-query the `next_frame_info` without advancing the frame.
+
+Enhancements:
+- The palette for `Frame::from_rgba_speed` now handles multiple transparent
+  colors, i.e. non-premultiplied alpha, by normalizing fully transparent pixels
+  to one transparent entry. This leads to a better distributed palette.
+
 # v0.14.0
 
 - `EncodingError` and `DecodingError` are now `#[non_exhaustive]`
