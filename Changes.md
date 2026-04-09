@@ -1,3 +1,12 @@
+# v0.14.2
+
+Bugfixes:
+- Correctly recognize extension blocks that only have a terminator block, i.e.
+  are completely empty. This affects Comment as most extensions have some
+  minimum required data (e.g. Application Identifier, …). Such images might
+  have erratically failed to parse, interpreting the following block type as a
+  sub-block length.
+
 # v0.14.1
 
 Features:
