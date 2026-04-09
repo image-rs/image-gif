@@ -732,7 +732,18 @@ impl StreamingDecoder {
             }
             ExtensionDataSubBlockStart(sub_block_len) => {
                 self.ext.data.clear();
-                goto!(0, ExtensionDataSubBlock(sub_block_len))
+                if sub_block_len == 0 {
+                    // A zero-length sub-block is a block terminator (GIF89a spec §23).
+                    // Short-circuit here rather than entering ExtensionDataSubBlock(0),
+                    // which would re-present the next record byte and misparse it as a
+                    // new sub-block length.
+                    if self.ext.id.into_known() == Some(Extension::Control) {
+                        self.read_control_extension()?;
+                    }
+                    goto!(0, ExtensionBlockEnd, emit Decoded::SubBlock { ext: self.ext.id, is_last: true })
+                } else {
+                    goto!(0, ExtensionDataSubBlock(sub_block_len))
+                }
             }
             ExtensionDataSubBlock(left) => {
                 if left > 0 {
