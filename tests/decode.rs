@@ -328,3 +328,74 @@ fn check_last_extension_returns() {
 
     assert_eq!(xmp_len, EXPECTED_METADATA.len() + 257);
 }
+
+// A GIF with an empty comment extension (`21 fe 00`) immediately before the image
+// descriptor should decode to exactly one frame.
+#[test]
+fn empty_comment_extension_decodes_one_frame() {
+    // Minimal hand-crafted GIF: 1x1 pixel, global color table (2 colors),
+    // empty comment extension (21 fe 00), then a single image frame.
+    // The same bytes without the comment extension decode correctly (verified).
+    #[rustfmt::skip]
+    let gif_bytes: &[u8] = &[
+        // Header
+        b'G', b'I', b'F', b'8', b'9', b'a',
+        // Logical Screen Descriptor: 1x1, GCT flag set, GCT size=0 (2 colors)
+        0x01, 0x00, // width=1
+        0x01, 0x00, // height=1
+        0x80,       // packed: GCT flag=1, color resolution=0, sort=0, GCT size=0
+        0x00,       // background color index
+        0x00,       // pixel aspect ratio
+        // Global Color Table: 2 entries (black, white)
+        0x00, 0x00, 0x00,
+        0xFF, 0xFF, 0xFF,
+        // Empty comment extension: intro, label, immediate block terminator
+        0x21, 0xFE, 0x00,
+        // Image Descriptor
+        0x2C,
+        0x00, 0x00, // left=0
+        0x00, 0x00, // top=0
+        0x01, 0x00, // width=1
+        0x01, 0x00, // height=1
+        0x00,       // packed: no LCT
+        // LZW minimum code size=2, one sub-block (2 bytes), block terminator
+        0x02, 0x02, 0x4C, 0x01, 0x00,
+        // Trailer
+        0x3B,
+    ];
+
+    let mut decoder = DecodeOptions::new()
+        .read_info(gif_bytes)
+        .expect("decoder should initialize");
+
+    let frame = decoder
+        .read_next_frame()
+        .expect("read_next_frame should not error")
+        .expect("should return a frame, not None");
+
+    assert_eq!(frame.width, 1);
+    assert_eq!(frame.height, 1);
+
+    assert!(
+        decoder.read_next_frame().unwrap().is_none(),
+        "should have exactly one frame"
+    );
+}
+
+// Same as above, using a real-world GIF with an empty comment extension to ensure
+// it is parsed and decoded as a valid single-frame image.
+#[test]
+fn empty_comment_extension_real_world_gif() {
+    let path = "tests/samples/bufo-thinks-about-fishsticks.gif";
+    let mut decoder = DecodeOptions::new()
+        .read_info(File::open(path).unwrap())
+        .expect("decoder should initialize");
+
+    let frame = decoder
+        .read_next_frame()
+        .expect("read_next_frame should not error")
+        .expect("bufo-thinks-about-fishsticks.gif should decode to at least one frame");
+
+    assert_eq!(frame.width, 128);
+    assert_eq!(frame.height, 128);
+}
