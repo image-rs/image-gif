@@ -259,8 +259,10 @@ impl<R: Read> ReadDecoder<R> {
 const EXT_NAME_NETSCAPE: &[u8] = b"NETSCAPE2.0";
 const EXT_NAME_XMP: &[u8] = b"XMP DataXMP";
 const EXT_NAME_ICC: &[u8] = b"ICCRGBG1012";
+const EXT_NAME_MAGICK_8BIM: &[u8] = b"MGK8BIM0000";
 
 /// State when parsing application extension
+#[derive(Debug)]
 enum AppExtensionState {
     /// Waiting for app name
     None,
@@ -268,6 +270,7 @@ enum AppExtensionState {
     Xmp,
     Icc,
     Skip,
+    Magick8Bim,
 }
 
 #[allow(dead_code)]
@@ -285,6 +288,8 @@ pub struct Decoder<R: Read> {
     xmp_metadata: Option<Vec<u8>>,
     /// ICC profile bytes.
     icc_profile: Option<Vec<u8>>,
+    /// 8BIM (Photoshop) profile bytes as encoded by imagemagick.
+    magick_8bim_profile: Option<Vec<u8>>,
 }
 
 impl<R> Decoder<R>
@@ -320,6 +325,7 @@ where
             app_extension_state: AppExtensionState::None,
             xmp_metadata: None,
             icc_profile: None,
+            magick_8bim_profile: None,
         }
     }
 
@@ -375,6 +381,10 @@ where
                         self.icc_profile = Some(Vec::new());
                         AppExtensionState::Icc
                     }
+                    EXT_NAME_MAGICK_8BIM => {
+                        self.magick_8bim_profile = Some(Vec::new());
+                        AppExtensionState::Magick8Bim
+                    }
                     _ => AppExtensionState::Skip,
                 }
             }
@@ -418,6 +428,12 @@ where
                 if let Some(icc) = &mut self.icc_profile {
                     self.memory_limit.try_reserve(icc, data.len())?;
                     icc.extend_from_slice(data);
+                }
+            }
+            AppExtensionState::Magick8Bim => {
+                if let Some(profile) = &mut self.magick_8bim_profile {
+                    self.memory_limit.try_reserve(profile, data.len())?;
+                    profile.extend_from_slice(data);
                 }
             }
             AppExtensionState::Skip => {}
@@ -605,6 +621,15 @@ where
     #[must_use]
     pub fn icc_profile(&self) -> Option<&[u8]> {
         self.icc_profile.as_deref()
+    }
+
+    /// Photoshop Image Resource Block stored in the image.
+    #[inline]
+    #[must_use]
+    #[doc(alias = "8BIM")]
+    #[doc(alias = "image resource block")]
+    pub fn photoshop_irb(&self) -> Option<&[u8]> {
+        self.magick_8bim_profile.as_deref()
     }
 
     /// Abort decoding and recover the `io::Read` instance
