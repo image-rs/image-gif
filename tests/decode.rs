@@ -1,8 +1,8 @@
 #![cfg(feature = "std")]
 
 use gif::{
-    streaming_decoder::{Decoded, OutputBuffer, StreamingDecoder},
     DecodeOptions, Decoder, DisposalMethod, Encoder, Frame, Repeat,
+    streaming_decoder::{Decoded, OutputBuffer, StreamingDecoder},
 };
 use std::{fs::File, io::BufRead};
 

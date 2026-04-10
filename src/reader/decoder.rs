@@ -10,11 +10,11 @@ use core::num::NonZeroUsize;
 use std::error;
 use std::io;
 
+use crate::MemoryLimit;
 use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 use crate::reader::DecodeOptions;
-use crate::MemoryLimit;
 
-use weezl::{decode::Decoder as LzwDecoder, BitOrder, LzwError, LzwStatus};
+use weezl::{BitOrder, LzwError, LzwStatus, decode::Decoder as LzwDecoder};
 
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
@@ -314,7 +314,7 @@ impl LzwReader {
     }
 
     pub fn has_ended(&self) -> bool {
-        self.decoder.as_ref().map_or(true, |e| e.has_ended())
+        self.decoder.as_ref().is_none_or(|e| e.has_ended())
     }
 
     pub fn decode_bytes(

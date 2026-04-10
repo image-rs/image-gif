@@ -4,8 +4,8 @@ use core::iter;
 use core::mem;
 
 use super::decoder::{DecodingError, OutputBuffer, PLTE_CHANNELS};
-use crate::common::Frame;
 use crate::MemoryLimit;
+use crate::common::Frame;
 
 pub(crate) const N_CHANNELS: usize = 4;
 
@@ -148,11 +148,7 @@ impl PixelConverter {
                                     rgba[1] = colors[1];
                                     rgba[2] = colors[2];
                                     rgba[3] = if let Some(t) = transparent {
-                                        if t == idx {
-                                            0x00
-                                        } else {
-                                            0xFF
-                                        }
+                                        if t == idx { 0x00 } else { 0xFF }
                                     } else {
                                         0xFF
                                     };

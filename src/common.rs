@@ -213,7 +213,11 @@ impl Frame<'static> {
     #[cfg(feature = "color_quant")]
     #[track_caller]
     pub fn from_rgba_speed(width: u16, height: u16, pixels: &mut [u8], speed: i32) -> Self {
-        assert_eq!(width as usize * height as usize * 4, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
+        assert_eq!(
+            width as usize * height as usize * 4,
+            pixels.len(),
+            "Too much or too little pixel data for the given width and height to create a GIF Frame"
+        );
         assert!(
             speed >= 1 && speed <= 30,
             "speed needs to be in the range [1, 30]"
@@ -296,7 +300,11 @@ impl Frame<'static> {
     /// # Panics:
     /// *   If the length of pixels does not equal `width * height * 2`.
     pub fn from_grayscale_with_alpha(width: u16, height: u16, pixels: &[u8]) -> Self {
-        assert_eq!(width as usize * height as usize * 2, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
+        assert_eq!(
+            width as usize * height as usize * 2,
+            pixels.len(),
+            "Too much or too little pixel data for the given width and height to create a GIF Frame"
+        );
 
         // Input is in LumaA format.
         // Count the occurrences of all the colors, then pick the least common color as alpha.
@@ -333,7 +341,7 @@ impl Frame<'static> {
         let least_used_color = color_frequencies
             .iter()
             .enumerate()
-            .min_by_key(|(_, &value)| value)
+            .min_by_key(|&(_, &value)| value)
             .map(|(index, _)| index as u8)
             .expect("input slice is empty");
 
@@ -474,7 +482,11 @@ impl Frame<'static> {
     #[must_use]
     #[track_caller]
     pub fn from_rgb_speed(width: u16, height: u16, pixels: &[u8], speed: i32) -> Self {
-        assert_eq!(width as usize * height as usize * 3, pixels.len(), "Too much or too little pixel data for the given width and height to create a GIF Frame");
+        assert_eq!(
+            width as usize * height as usize * 3,
+            pixels.len(),
+            "Too much or too little pixel data for the given width and height to create a GIF Frame"
+        );
         let mut vec: Vec<u8> = Vec::new();
         vec.try_reserve_exact(pixels.len() + width as usize * height as usize)
             .expect("OOM");
