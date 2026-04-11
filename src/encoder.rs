@@ -7,7 +7,7 @@ use std::error;
 use std::io;
 use std::io::Write;
 
-use weezl::{encode::Encoder as LzwEncoder, BitOrder};
+use weezl::{BitOrder, encode::Encoder as LzwEncoder};
 
 use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
 use crate::traits::WriteBytesExt;
@@ -201,7 +201,7 @@ impl<W: Write> Encoder<W> {
     pub fn write_frame(&mut self, frame: &Frame<'_>) -> Result<(), EncodingError> {
         if usize::from(frame.width)
             .checked_mul(usize::from(frame.height))
-            .map_or(true, |size| frame.buffer.len() < size)
+            .is_none_or(|size| frame.buffer.len() < size)
         {
             return Err(EncodingError::FrameBufferTooSmallForDimensions);
         }
@@ -235,7 +235,7 @@ impl<W: Write> Encoder<W> {
             _ => {
                 return Err(EncodingError::from(
                     EncodingFormatError::MissingColorPalette,
-                ))
+                ));
             }
         };
         let mut tmp = tmp_buf::<10>();

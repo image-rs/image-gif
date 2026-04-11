@@ -1,7 +1,7 @@
 //! Reencodes GIF in parallel
 
-use gif::streaming_decoder::FrameDecoder;
 use gif::DecodeOptions;
+use gif::streaming_decoder::FrameDecoder;
 use rayon::iter::ParallelBridge;
 use rayon::iter::ParallelIterator;
 use std::env;

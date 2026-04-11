@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
 
-use std::io::prelude::*;
 use std::io::BufReader;
+use std::io::prelude::*;
 
 const BASE_PATH: [&str; 2] = [".", "tests"];
 

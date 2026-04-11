@@ -15,7 +15,7 @@ mod decoder;
 
 pub use self::decoder::{
     Decoded, DecodingError, DecodingFormatError, FrameDataType, FrameDecoder, OutputBuffer,
-    StreamingDecoder, Version, PLTE_CHANNELS,
+    PLTE_CHANNELS, StreamingDecoder, Version,
 };
 
 pub use self::converter::ColorOutput;
@@ -347,7 +347,7 @@ where
                 None => {
                     return Err(DecodingError::format(
                         "file does not contain any image data",
-                    ))
+                    ));
                 }
             }
         }

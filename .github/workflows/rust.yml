@@ -9,14 +9,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: ["1.62.0", stable, beta, nightly]
+        rust: ["1.85.0", stable, beta, nightly]
         features: ["", "std", "color_quant"]
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions-rs/toolchain@v1
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust }}
-        override: true
         components: clippy
     - name: build
       run: >
@@ -28,22 +27,16 @@ jobs:
     - name: test
       run: >
         cargo test --tests --benches --no-default-features --features "$FEATURES"
-      if: ${{ matrix.rust != '1.62.0' }}
+      if: ${{ matrix.rust != '1.85.0' }}
       env:
         FEATURES: ${{ matrix.features }}
   rustfmt:
     runs-on: ubuntu-latest
     continue-on-error: false
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions-rs/toolchain@v1
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: stable
-        override: true
         components: rustfmt
     - name: Run rustfmt check
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        args: -- --check
-
+      run: cargo fmt -- --check
