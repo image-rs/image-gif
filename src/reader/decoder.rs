@@ -809,20 +809,49 @@ impl StreamingDecoder {
                         return goto!(n, DecodeSubBlock(left - n), emit Decoded::Nothing);
                     }
 
-                    let (mut consumed, bytes_len, status) =
+                    let (consumed, bytes_len, status) =
                         self.lzw_reader.decode_bytes(&buf[..n], write_into)?;
 
-                    // skip if can't make progress (decode would fail if check_for_end_code was set)
-                    if matches!(status, LzwStatus::NoProgress) {
-                        consumed = n;
-                    }
-
-                    let decoded = if let Some(bytes_len) = NonZeroUsize::new(bytes_len) {
-                        Decoded::BytesDecoded(bytes_len)
+                    if matches!(status, LzwStatus::NoProgress)
+                        && consumed == 0
+                        && bytes_len == 0
+                        && !self.lzw_reader.has_ended()
+                    {
+                        // weezl returned NoProgress because the output buffer is too
+                        // small for the next LZW code entry. The input data is valid
+                        // and must NOT be skipped. Drain one byte through a temp buffer
+                        // to unstick the decoder, then append to the caller's output.
+                        // See: https://github.com/image-rs/weezl/pull/72
+                        let (written, _retry_status) = Self::lzw_drain_one(
+                            &mut self.lzw_reader,
+                            write_into,
+                            &self.memory_limit,
+                        )?;
+                        if written > 0 {
+                            goto!(0, DecodeSubBlock(left), emit Decoded::BytesDecoded(
+                                NonZeroUsize::new(written).unwrap()
+                            ))
+                        } else {
+                            // Truly stuck; skip remaining input
+                            goto!(n, DecodeSubBlock(left - n), emit Decoded::Nothing)
+                        }
+                    } else if matches!(status, LzwStatus::NoProgress) {
+                        // Had some consumed_in or consumed_out but still NoProgress.
+                        let consumed = n;
+                        let decoded = if let Some(bytes_len) = NonZeroUsize::new(bytes_len) {
+                            Decoded::BytesDecoded(bytes_len)
+                        } else {
+                            Decoded::Nothing
+                        };
+                        goto!(consumed, DecodeSubBlock(left - consumed), emit decoded)
                     } else {
-                        Decoded::Nothing
-                    };
-                    goto!(consumed, DecodeSubBlock(left - consumed), emit decoded)
+                        let decoded = if let Some(bytes_len) = NonZeroUsize::new(bytes_len) {
+                            Decoded::BytesDecoded(bytes_len)
+                        } else {
+                            Decoded::Nothing
+                        };
+                        goto!(consumed, DecodeSubBlock(left - consumed), emit decoded)
+                    }
                 } else if b != 0 {
                     // decode next sub-block
                     goto!(DecodeSubBlock(b as usize))
@@ -835,6 +864,23 @@ impl StreamingDecoder {
                         goto!(0, DecodeSubBlock(0), emit Decoded::Nothing)
                     } else if matches!(status, LzwStatus::Done) {
                         goto!(0, FrameDecoded)
+                    } else if !self.lzw_reader.has_ended() {
+                        // weezl stalled during flush but hasn't ended. Drain one
+                        // byte to unstick before treating as end-of-frame.
+                        let (written, retry_status) = Self::lzw_drain_one(
+                            &mut self.lzw_reader,
+                            write_into,
+                            &self.memory_limit,
+                        )?;
+                        if written > 0 {
+                            goto!(0, DecodeSubBlock(0), emit Decoded::BytesDecoded(
+                                NonZeroUsize::new(written).unwrap()
+                            ))
+                        } else if matches!(retry_status, LzwStatus::Done) {
+                            goto!(0, FrameDecoded)
+                        } else {
+                            goto!(0, FrameDecoded)
+                        }
                     } else {
                         goto!(0, FrameDecoded)
                     }
@@ -847,6 +893,25 @@ impl StreamingDecoder {
                 goto!(BlockEnd, emit Decoded::DataEnd)
             }
             Trailer => goto!(0, Trailer, emit Decoded::Nothing),
+        }
+    }
+
+    /// Retry LZW decode with a 1-byte temp buffer to unstick weezl when the
+    /// caller's output buffer is too small for the decoder's internal state
+    /// machine to advance. Returns the number of bytes written to `write_into`.
+    fn lzw_drain_one(
+        lzw_reader: &mut LzwReader,
+        write_into: &mut OutputBuffer<'_>,
+        memory_limit: &MemoryLimit,
+    ) -> Result<(usize, LzwStatus), DecodingError> {
+        let mut tmp = [0u8];
+        let (_, retry_len, retry_status) =
+            lzw_reader.decode_bytes(&[], &mut OutputBuffer::Slice(&mut tmp))?;
+        if retry_len > 0 {
+            let (_, copied) = write_into.append(&tmp[..retry_len], memory_limit)?;
+            Ok((copied, retry_status))
+        } else {
+            Ok((0, retry_status))
         }
     }
 
