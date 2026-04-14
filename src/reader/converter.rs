@@ -103,7 +103,8 @@ impl PixelConverter {
         current_frame: &Frame<'_>,
         mut buf: &mut [u8],
         data_callback: FillBufferCallback<'_>,
-    ) -> Result<bool, DecodingError> {
+    ) -> Result<usize, DecodingError> {
+        let original_len = buf.len();
         loop {
             let decode_into = match self.color_output {
                 // When decoding indexed data, LZW can write the pixels directly
@@ -121,9 +122,9 @@ impl PixelConverter {
                     &mut self.buffer[..buffer_size]
                 }
             };
-            match data_callback(&mut OutputBuffer::Slice(decode_into))? {
-                0 => return Ok(false),
-                bytes_decoded => {
+            match data_callback(&mut OutputBuffer::Slice(decode_into)) {
+                Ok(0) => return Ok(original_len - buf.len()),
+                Ok(bytes_decoded) => {
                     match self.color_output {
                         ColorOutput::RGBA => {
                             let transparent = current_frame.transparent;
@@ -160,9 +161,13 @@ impl PixelConverter {
                         }
                     }
                     if buf.is_empty() {
-                        return Ok(true);
+                        return Ok(original_len);
                     }
                 }
+                Err(DecodingError::UnexpectedEof) => {
+                    return Ok(original_len - buf.len());
+                }
+                Err(e) => return Err(e),
             }
         }
     }
@@ -190,11 +195,12 @@ impl PixelConverter {
     ) -> Result<(), DecodingError> {
         if frame.interlaced {
             let width = self.line_length(frame);
-            for row in (InterlaceIterator {
+            let mut row_iter = InterlaceIterator {
                 len: frame.height,
                 next: 0,
                 pass: 0,
-            }) {
+            };
+            for row in &mut row_iter {
                 // this can't overflow 32-bit, because row never equals (maximum) height
                 let start = row * width;
                 // Handle a too-small buffer and 32-bit usize overflow without panicking
@@ -202,8 +208,19 @@ impl PixelConverter {
                     .get_mut(start..)
                     .and_then(|b| b.get_mut(..width))
                     .ok_or_else(|| DecodingError::format("buffer too small"))?;
-                if !self.fill_buffer(frame, line, data_callback)? {
-                    return Err(DecodingError::format("image truncated"));
+                let filled = self.fill_buffer(frame, line, data_callback)?;
+                if filled < line.len() {
+                    // Once MSRV is >= 1.95:
+                    // core::hint::cold_path();
+                    line[filled..].fill(0);
+                    // Zero out remaining rows
+                    for rem_row in row_iter {
+                        let start = rem_row * width;
+                        if let Some(rem_line) = buf.get_mut(start..start + width) {
+                            rem_line.fill(0);
+                        }
+                    }
+                    return Err(DecodingError::Truncated);
                 }
             }
         } else {
@@ -211,8 +228,12 @@ impl PixelConverter {
                 .buffer_size(frame)
                 .and_then(|buffer_size| buf.get_mut(..buffer_size))
                 .ok_or_else(|| DecodingError::format("buffer too small"))?;
-            if !self.fill_buffer(frame, buf, data_callback)? {
-                return Err(DecodingError::format("image truncated"));
+            let filled = self.fill_buffer(frame, buf, data_callback)?;
+            if filled < buf.len() {
+                // Once MSRV is >= 1.95:
+                // core::hint::cold_path();
+                buf[filled..].fill(0);
+                return Err(DecodingError::Truncated);
             }
         };
         Ok(())

@@ -563,10 +563,12 @@ where
     /// `Self::next_frame_info` needs to be called beforehand. Returns `true` if the supplied
     /// buffer could be filled completely. Should not be called after `false` had been returned.
     pub fn fill_buffer(&mut self, buf: &mut [u8]) -> Result<bool, DecodingError> {
-        self.pixel_converter
+        let filled = self
+            .pixel_converter
             .fill_buffer(&self.current_frame, buf, &mut |out| {
                 self.decoder.decode_next_bytes(out)
-            })
+            })?;
+        Ok(filled == buf.len())
     }
 
     /// Output buffer size
