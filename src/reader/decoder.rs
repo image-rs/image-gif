@@ -57,6 +57,8 @@ pub enum DecodingError {
     LzwError(LzwError),
     /// Returned if the image is found to be malformed.
     Format(DecodingFormatError),
+    /// Image truncated. The unfilled output buffer has been zeroed and is safe to use.
+    Truncated,
     /// Wraps `std::io::Error`.
     Io(io::Error),
 }
@@ -79,6 +81,7 @@ impl fmt::Display for DecodingError {
             Self::DecoderNotFound => fmt.write_str("Decoder Not Found"),
             Self::EndCodeNotFound => fmt.write_str("End-Code Not Found"),
             Self::UnexpectedEof => fmt.write_str("Unexpected End of File"),
+            Self::Truncated => fmt.write_str("Image truncated"),
             Self::LzwError(ref err) => err.fmt(fmt),
             Self::Format(ref d) => d.fmt(fmt),
             Self::Io(ref err) => err.fmt(fmt),
@@ -98,6 +101,7 @@ impl error::Error for DecodingError {
             Self::LzwError(ref err) => Some(err),
             Self::Format(ref err) => Some(err),
             Self::Io(ref err) => Some(err),
+            Self::Truncated => None,
         }
     }
 }
