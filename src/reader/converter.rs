@@ -200,7 +200,8 @@ impl PixelConverter {
                 next: 0,
                 pass: 0,
             };
-            for row in &mut row_iter {
+            let mut truncated = false;
+            for (row, pass) in &mut row_iter {
                 // this can't overflow 32-bit, because row never equals (maximum) height
                 let start = row * width;
                 // Handle a too-small buffer and 32-bit usize overflow without panicking
@@ -210,18 +211,18 @@ impl PixelConverter {
                     .ok_or_else(|| DecodingError::format("buffer too small"))?;
                 let filled = self.fill_buffer(frame, line, data_callback)?;
                 if filled < line.len() {
-                    // Once MSRV is >= 1.95:
-                    // core::hint::cold_path();
-                    line[filled..].fill(0);
-                    // Zero out remaining rows
-                    for rem_row in row_iter {
-                        let start = rem_row * width;
-                        if let Some(rem_line) = buf.get_mut(start..start + width) {
-                            rem_line.fill(0);
-                        }
-                    }
-                    return Err(DecodingError::Truncated);
+                    truncated = true;
+                    match pass {
+                        0 => line[filled..].fill(0),
+                        1 => buf.copy_within((row - 4) * width..(row - 4) * width + width, start),
+                        2 => buf.copy_within((row - 2) * width..(row - 2) * width + width, start),
+                        3 => buf.copy_within((row - 1) * width..(row - 1) * width + width, start),
+                        _ => unreachable!(),
+                    };
                 }
+            }
+            if truncated {
+                return Err(DecodingError::Truncated);
             }
         } else {
             let buf = self
@@ -247,13 +248,14 @@ struct InterlaceIterator {
 }
 
 impl iter::Iterator for InterlaceIterator {
-    type Item = usize;
+    type Item = (usize, usize);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
             return None;
         }
+        let current_pass = self.pass;
         // although the pass never goes out of bounds thanks to len==0,
         // the optimizer doesn't see it. get()? avoids costlier panicking code.
         let mut next = self.next + *[8, 8, 4, 2].get(self.pass)?;
@@ -263,7 +265,7 @@ impl iter::Iterator for InterlaceIterator {
             self.pass += 1;
         }
         mem::swap(&mut next, &mut self.next);
-        Some(next)
+        Some((next, current_pass))
     }
 }
 
@@ -275,7 +277,7 @@ mod test {
 
     #[rustfmt::skip]
     #[test]
-    fn test_interlace_iterator() {
+    fn test_interlace_iterator_row() {
         for &(len, expect) in &[
             (0, &[][..]),
             (1, &[0][..]),
@@ -297,8 +299,37 @@ mod test {
             (17, &[0, 8, 16, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..]),
         ] {
             let iter = InterlaceIterator { len, next: 0, pass: 0 };
-            let lines = iter.collect::<Vec<_>>();
+            let lines = iter.map(|(r, _)| r).collect::<Vec<_>>();
             assert_eq!(lines, expect);
+        }
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_interlace_iterator_pass() {
+        for &(len, expect) in &[
+            (0, &[][..]),
+            (1, &[0][..]),
+            (2, &[0, 3][..]),
+            (3, &[0, 2, 3][..]),
+            (4, &[0, 2, 3, 3][..]),
+            (5, &[0, 1, 2, 3, 3][..]),
+            (6, &[0, 1, 2, 3, 3, 3][..]),
+            (7, &[0, 1, 2, 2, 3, 3, 3][..]),
+            (8, &[0, 1, 2, 2, 3, 3, 3, 3][..]),
+            (9, &[0, 0, 1, 2, 2, 3, 3, 3, 3][..]),
+            (10, &[0, 0, 1, 2, 2, 3, 3, 3, 3, 3][..]),
+            (11, &[0, 0, 1, 2, 2, 2, 3, 3, 3, 3, 3][..]),
+            (12, &[0, 0, 1, 2, 2, 2, 3, 3, 3, 3, 3, 3][..]),
+            (13, &[0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3, 3][..]),
+            (14, &[0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3][..]),
+            (15, &[0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3][..]),
+            (16, &[0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3][..]),
+            (17, &[0, 0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3][..]),
+        ] {
+            let iter = InterlaceIterator { len, next: 0, pass: 0 };
+            let passes = iter.map(|(_, p)| p).collect::<Vec<_>>();
+            assert_eq!(passes, expect);
         }
     }
 
@@ -309,6 +340,6 @@ mod test {
             next: 0,
             pass: 0,
         };
-        assert_eq!(65533, iter.last().unwrap());
+        assert_eq!((65533, 3), iter.last().unwrap());
     }
 }
