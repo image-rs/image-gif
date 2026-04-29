@@ -198,7 +198,7 @@ impl PixelConverter {
             let mut row_iter = InterlaceIterator {
                 len: frame.height,
                 next: 0,
-                pass: 0,
+                pass: Pass(0),
             };
             let mut truncated = false;
             for (row, pass) in &mut row_iter {
@@ -212,7 +212,7 @@ impl PixelConverter {
                 let filled = self.fill_buffer(frame, line, data_callback)?;
                 if filled < line.len() {
                     truncated = true;
-                    match pass {
+                    match pass.0 {
                         0 => line[filled..].fill(0),
                         1 => buf.copy_within((row - 4) * width..(row - 4) * width + width, start),
                         2 => buf.copy_within((row - 2) * width..(row - 2) * width + width, start),
@@ -241,14 +241,24 @@ impl PixelConverter {
     }
 }
 
+/// Represents one of the four GIF interlace passes.
+///
+/// GIF interlacing works in four passes:
+/// - Pass 0: every 8th row, starting from row 0
+/// - Pass 1: every 8th row, starting from row 4
+/// - Pass 2: every 4th row, starting from row 2
+/// - Pass 3: every 2nd row, starting from row 1
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Pass(pub usize);
+
 struct InterlaceIterator {
     len: u16,
     next: usize,
-    pass: usize,
+    pass: Pass,
 }
 
 impl iter::Iterator for InterlaceIterator {
-    type Item = (usize, usize);
+    type Item = (usize, Pass);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -258,11 +268,11 @@ impl iter::Iterator for InterlaceIterator {
         let current_pass = self.pass;
         // although the pass never goes out of bounds thanks to len==0,
         // the optimizer doesn't see it. get()? avoids costlier panicking code.
-        let mut next = self.next + *[8, 8, 4, 2].get(self.pass)?;
+        let mut next = self.next + *[8, 8, 4, 2].get(self.pass.0)?;
         while next >= self.len as usize {
-            debug_assert!(self.pass < 4);
-            next = *[4, 2, 1, 0].get(self.pass)?;
-            self.pass += 1;
+            debug_assert!(self.pass.0 < 4);
+            next = *[4, 2, 1, 0].get(self.pass.0)?;
+            self.pass.0 += 1;
         }
         mem::swap(&mut next, &mut self.next);
         Some((next, current_pass))
@@ -273,7 +283,7 @@ impl iter::Iterator for InterlaceIterator {
 mod test {
     use alloc::vec::Vec;
 
-    use super::InterlaceIterator;
+    use super::{InterlaceIterator, Pass};
 
     #[rustfmt::skip]
     #[test]
@@ -298,7 +308,7 @@ mod test {
             (16, &[0, 8, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..]),
             (17, &[0, 8, 16, 4, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15][..]),
         ] {
-            let iter = InterlaceIterator { len, next: 0, pass: 0 };
+            let iter = InterlaceIterator { len, next: 0, pass: Pass(0) };
             let lines = iter.map(|(r, _)| r).collect::<Vec<_>>();
             assert_eq!(lines, expect);
         }
@@ -327,8 +337,8 @@ mod test {
             (16, &[0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3][..]),
             (17, &[0, 0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3][..]),
         ] {
-            let iter = InterlaceIterator { len, next: 0, pass: 0 };
-            let passes = iter.map(|(_, p)| p).collect::<Vec<_>>();
+            let iter = InterlaceIterator { len, next: 0, pass: Pass(0) };
+            let passes = iter.map(|(_, p)| p.0).collect::<Vec<_>>();
             assert_eq!(passes, expect);
         }
     }
@@ -338,8 +348,8 @@ mod test {
         let iter = InterlaceIterator {
             len: 0xFFFF,
             next: 0,
-            pass: 0,
+            pass: Pass(0),
         };
-        assert_eq!((65533, 3), iter.last().unwrap());
+        assert_eq!((65533, Pass(3)), iter.last().unwrap());
     }
 }
