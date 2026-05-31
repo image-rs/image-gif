@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 //! Regression tests for small interlaced GIF decoding.
 //!
 //! These GIFs were produced by gifsicle 1.95 and are valid per the GIF89a spec
