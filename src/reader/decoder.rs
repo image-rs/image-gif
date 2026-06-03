@@ -543,6 +543,13 @@ impl StreamingDecoder {
         self.version
     }
 
+    /// At a post-frame block boundary, with the next block introducer not yet
+    /// read. `BlockStart(_)` is excluded: the introducer is already read there,
+    /// so an EOF is a truncated block, not a missing trailer.
+    pub(crate) fn is_at_block_boundary(&self) -> bool {
+        matches!(self.state, BlockEnd)
+    }
+
     #[inline]
     fn next_state(
         &mut self,
