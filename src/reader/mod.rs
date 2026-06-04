@@ -214,6 +214,8 @@ struct ReadDecoder<R: Read> {
     reader: io::BufReader<R>,
     decoder: StreamingDecoder,
     at_eof: bool,
+    /// At least one frame fully decoded; gates missing-trailer tolerance.
+    any_frame_decoded: bool,
 }
 
 impl<R: Read> ReadDecoder<R> {
@@ -226,6 +228,12 @@ impl<R: Read> ReadDecoder<R> {
             let (consumed, result) = {
                 let buf = self.reader.fill_buf()?;
                 if buf.is_empty() {
+                    // Missing-trailer tolerance: clean EOF at a post-frame block
+                    // boundary is end-of-stream, not truncation.
+                    if self.any_frame_decoded && self.decoder.is_at_block_boundary() {
+                        self.at_eof = true;
+                        break;
+                    }
                     return Err(DecodingError::UnexpectedEof);
                 }
 
@@ -234,6 +242,10 @@ impl<R: Read> ReadDecoder<R> {
             self.reader.consume(consumed);
             match result {
                 Decoded::Nothing => (),
+                Decoded::DataEnd => {
+                    self.any_frame_decoded = true;
+                    return Ok(Some(Decoded::DataEnd));
+                }
                 Decoded::BlockStart(Block::Trailer) => {
                     self.at_eof = true;
                 }
@@ -315,6 +327,7 @@ where
                 reader: io::BufReader::new(reader),
                 decoder,
                 at_eof: false,
+                any_frame_decoded: false,
             },
             bg_color: None,
             pixel_converter: PixelConverter::new(options.color_output),
