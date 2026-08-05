@@ -1,5 +1,5 @@
 //! Traits used in this library
-use std::io;
+use alloc::io;
 
 /// Writer extension to write little endian data
 pub trait WriteBytesExt<T> {

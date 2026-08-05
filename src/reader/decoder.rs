@@ -7,8 +7,8 @@ use core::default::Default;
 use core::mem;
 use core::num::NonZeroUsize;
 
-use std::error;
-use std::io;
+use alloc::io;
+use core::error;
 
 use crate::MemoryLimit;
 use crate::common::{AnyExtension, Block, DisposalMethod, Extension, Frame};
