@@ -1,11 +1,11 @@
 use alloc::borrow::Cow;
+use alloc::io;
+use alloc::io::prelude::*;
 use alloc::vec::Vec;
 use core::convert::{TryFrom, TryInto};
 use core::iter::FusedIterator;
 use core::mem;
 use core::num::NonZeroU64;
-use std::io;
-use std::io::prelude::*;
 
 use crate::common::{Block, Frame};
 use crate::{AnyExtension, Extension, Repeat};

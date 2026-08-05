@@ -11,7 +11,7 @@ documentation = "https://docs.rs/gif"
 edition = "2024"
 resolver = "2"
 include = ["src/**", "LICENSE-*", "README.md", "benches/*.rs"]
-rust-version = "1.88"
+rust-version = "1.99"
 
 [lib]
 bench = false

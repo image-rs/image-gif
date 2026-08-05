@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: ["1.88.0", stable, beta, nightly]
+        rust: [nightly]
         features: ["", "std", "color_quant"]
     steps:
     - uses: actions/checkout@v4

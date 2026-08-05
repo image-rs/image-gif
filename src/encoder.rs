@@ -2,10 +2,10 @@
 
 use alloc::borrow::Cow;
 use alloc::fmt;
+use alloc::io;
+use alloc::io::Write;
 use alloc::vec::Vec;
-use std::error;
-use std::io;
-use std::io::Write;
+use core::error;
 
 use weezl::{BitOrder, encode::Encoder as LzwEncoder};
 
