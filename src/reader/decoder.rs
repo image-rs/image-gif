@@ -722,6 +722,11 @@ impl StreamingDecoder {
                 goto!(ExtensionDataSubBlockStart(b as usize), emit Decoded::BlockStart(Block::Extension))
             }
             ExtensionBlockEnd => {
+                // Plain Text Extension is a Graphic-Rendering Block (GIF89a §23/§25)
+                // that consumes the scope of any preceding Graphic Control Extension.
+                if self.ext.id.into_known() == Some(Extension::Text) {
+                    self.current = None;
+                }
                 self.ext.data.clear();
                 goto!(0, BlockEnd)
             }
@@ -874,7 +879,10 @@ impl StreamingDecoder {
 
     fn add_frame(&mut self) {
         if self.current.is_none() {
-            self.current = Some(Frame::default());
+            self.current = Some(Frame {
+                dispose: DisposalMethod::Any,
+                ..Frame::default()
+            });
         }
     }
 }

@@ -7,7 +7,7 @@ use core::num::NonZeroU64;
 use std::io;
 use std::io::prelude::*;
 
-use crate::common::{Block, Frame};
+use crate::common::{Block, DisposalMethod, Frame};
 use crate::{AnyExtension, Extension, Repeat};
 
 mod converter;
@@ -320,7 +320,10 @@ where
             pixel_converter: PixelConverter::new(options.color_output),
             memory_limit: options.memory_limit.clone(),
             repeat: Repeat::default(),
-            current_frame: Frame::default(),
+            current_frame: Frame {
+                dispose: DisposalMethod::Any,
+                ..Frame::default()
+            },
             current_frame_data_type: FrameDataType::Pixels,
             app_extension_state: AppExtensionState::None,
             xmp_metadata: None,
