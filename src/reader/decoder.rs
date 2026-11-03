@@ -204,7 +204,7 @@ enum State {
 }
 use self::State::*;
 
-use super::converter::PixelConverter;
+use super::converter::{ColorOutput, PixelConverter};
 
 /// Decoder for `Frame::make_lzw_pre_encoded`
 pub struct FrameDecoder {
@@ -254,6 +254,14 @@ impl FrameDecoder {
         frame: &Frame<'_>,
         buf: &mut [u8],
     ) -> Result<(), DecodingError> {
+        if self.pixel_converter.color_output() == ColorOutput::RGBA
+            && frame.palette.is_none()
+            && self.pixel_converter.global_palette().is_none()
+        {
+            return Err(DecodingError::format(
+                "no color table available for current frame",
+            ));
+        }
         let (&min_code_size, mut data) = frame.buffer.split_first().unwrap_or((&2, &[]));
         self.lzw_reader.reset(min_code_size)?;
         let lzw_reader = &mut self.lzw_reader;

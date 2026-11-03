@@ -1,8 +1,8 @@
 #![cfg(feature = "std")]
 
 use gif::{
-    DecodeOptions, Decoder, DisposalMethod, Encoder, Frame, Repeat,
-    streaming_decoder::{Decoded, OutputBuffer, StreamingDecoder},
+    ColorOutput, DecodeOptions, Decoder, DisposalMethod, Encoder, Frame, Repeat,
+    streaming_decoder::{Decoded, FrameDecoder, OutputBuffer, StreamingDecoder},
 };
 use std::{fs::File, io::BufRead};
 
@@ -398,4 +398,48 @@ fn empty_comment_extension_real_world_gif() {
 
     assert_eq!(frame.width, 128);
     assert_eq!(frame.height, 128);
+}
+
+#[test]
+fn indexed_and_skipped_frames_without_palette() {
+    let gif: &[u8] = include_bytes!("regression/missing-palette.gif");
+
+    // ColorOutput::Indexed decodes raw indices without requiring a palette.
+    let mut indexed = DecodeOptions::new().read_info(gif).unwrap();
+    let frame = indexed.read_next_frame().unwrap().unwrap();
+    assert_eq!(frame.palette, None);
+    assert_eq!(&*frame.buffer, &[1]);
+    assert!(indexed.palette().is_err());
+
+    // ColorOutput::RGBA requires a color table unless frame decoding is skipped.
+    let mut rgba_opts = DecodeOptions::new();
+    rgba_opts.set_color_output(ColorOutput::RGBA);
+    assert!(
+        rgba_opts
+            .clone()
+            .read_info(gif)
+            .unwrap()
+            .read_next_frame()
+            .is_err()
+    );
+
+    let mut skip_opts = rgba_opts.clone();
+    skip_opts.skip_frame_decoding(true);
+    let mut lzw_frame = skip_opts
+        .read_info(gif)
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap()
+        .unwrap();
+
+    assert!(
+        FrameDecoder::new(rgba_opts)
+            .decode_lzw_encoded_frame(&mut lzw_frame)
+            .is_err()
+    );
+    FrameDecoder::new(DecodeOptions::new())
+        .decode_lzw_encoded_frame(&mut lzw_frame)
+        .unwrap();
+    assert_eq!(&*lzw_frame.buffer, &[1]);
 }

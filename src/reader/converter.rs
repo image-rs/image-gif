@@ -42,6 +42,11 @@ impl PixelConverter {
         }
     }
 
+    #[inline]
+    pub(crate) const fn color_output(&self) -> ColorOutput {
+        self.color_output
+    }
+
     pub(crate) fn check_buffer_size(
         &self,
         frame: &Frame<'_>,

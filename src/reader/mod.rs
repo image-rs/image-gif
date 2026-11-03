@@ -451,7 +451,11 @@ where
                 Some(Decoded::FrameMetadata(frame_data_type)) => {
                     self.current_frame = self.decoder.decoder.current_frame_mut().take();
                     self.current_frame_data_type = frame_data_type;
-                    if self.current_frame.palette.is_none() && self.global_palette().is_none() {
+                    if self.pixel_converter.color_output() == ColorOutput::RGBA
+                        && matches!(frame_data_type, FrameDataType::Pixels)
+                        && self.current_frame.palette.is_none()
+                        && self.global_palette().is_none()
+                    {
                         return Err(DecodingError::format(
                             "no color table available for current frame",
                         ));
