@@ -1,7 +1,7 @@
 #![cfg(feature = "std")]
 
 use gif::{
-    DecodeOptions, Decoder, DisposalMethod, Encoder, Frame, Repeat,
+    ColorOutput, DecodeOptions, Decoder, DisposalMethod, Encoder, Frame, Repeat,
     streaming_decoder::{Decoded, OutputBuffer, StreamingDecoder},
 };
 use std::{fs::File, io::BufRead};
@@ -398,4 +398,29 @@ fn empty_comment_extension_real_world_gif() {
 
     assert_eq!(frame.width, 128);
     assert_eq!(frame.height, 128);
+}
+
+#[test]
+fn rgba_out_of_range_palette_indices_zero_buffer() {
+    // 2x1 GIF89a with a 2-color GCT (indices 0 and 1) whose frame emits
+    // out-of-range palette indices [2, 3].
+    #[rustfmt::skip]
+    let gif_bytes: &[u8] = &[
+        b'G', b'I', b'F', b'8', b'9', b'a',
+        0x02, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00,
+        0x11, 0x22, 0x33,
+        0x44, 0x55, 0x66,
+        0x2C, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0x00, 0x00,
+        0x02, 0x02, 0xD4, 0x0A, 0x00,
+        0x3B,
+    ];
+
+    let mut opts = DecodeOptions::new();
+    opts.set_color_output(ColorOutput::RGBA);
+    let mut decoder = opts.read_info(gif_bytes).unwrap();
+    assert!(decoder.next_frame_info().unwrap().is_some());
+
+    let mut buf = vec![0xAA; decoder.buffer_size()];
+    decoder.read_into_buffer(&mut buf).unwrap();
+    assert_eq!(buf, [0; 8]);
 }

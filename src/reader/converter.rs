@@ -142,18 +142,19 @@ impl PixelConverter {
                                 .zip(self.buffer.iter().copied().take(bytes_decoded))
                             {
                                 let plte_offset = PLTE_CHANNELS * idx as usize;
-                                if let Some(colors) =
+                                let pixel = if let Some(colors) =
                                     palette.get(plte_offset..plte_offset + PLTE_CHANNELS)
                                 {
-                                    rgba[0] = colors[0];
-                                    rgba[1] = colors[1];
-                                    rgba[2] = colors[2];
-                                    rgba[3] = if let Some(t) = transparent {
+                                    let alpha = if let Some(t) = transparent {
                                         if t == idx { 0x00 } else { 0xFF }
                                     } else {
                                         0xFF
                                     };
-                                }
+                                    [colors[0], colors[1], colors[2], alpha]
+                                } else {
+                                    [0, 0, 0, 0]
+                                };
+                                rgba.copy_from_slice(&pixel);
                             }
                         }
                         ColorOutput::Indexed => {
