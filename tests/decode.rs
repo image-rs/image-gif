@@ -399,3 +399,39 @@ fn empty_comment_extension_real_world_gif() {
     assert_eq!(frame.width, 128);
     assert_eq!(frame.height, 128);
 }
+
+#[test]
+fn frame_without_gcb_defaults_to_disposal_any() {
+    let disposals = |gif: &[u8]| -> Vec<DisposalMethod> {
+        DecodeOptions::new()
+            .read_info(gif)
+            .unwrap()
+            .into_iter()
+            .map(|f| f.unwrap().dispose)
+            .collect()
+    };
+
+    assert_eq!(
+        disposals(include_bytes!("regression/no-gcb.gif")),
+        [DisposalMethod::Any]
+    );
+    assert_eq!(
+        disposals(include_bytes!("regression/mixed-gcb.gif")),
+        [DisposalMethod::Any, DisposalMethod::Keep]
+    );
+    assert_eq!(
+        disposals(include_bytes!("regression/keep-then-no-gcb.gif")),
+        [DisposalMethod::Keep, DisposalMethod::Any]
+    );
+    // Plain Text Extension consumes any preceding GCB; Comment Extension does not.
+    assert_eq!(
+        disposals(include_bytes!(
+            "regression/plain-text-and-comment-gcb-scope.gif"
+        )),
+        [
+            DisposalMethod::Any,
+            DisposalMethod::Any,
+            DisposalMethod::Keep,
+        ]
+    );
+}
